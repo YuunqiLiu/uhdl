@@ -185,6 +185,9 @@ class Reg(SingleVar):
 
     def __init__(self,template,clk:SingleVar,arst:SingleVar=None,rst:SingleVar=None):
         super().__init__(template=template)
+        self._aclk = None
+        self._arst = None
+        self._rst  = None
         object.__setattr__(self,'_aclk',clk)
         object.__setattr__(self,'_arst',arst)
         object.__setattr__(self,'_rst',rst)
@@ -640,6 +643,26 @@ class IfExpression(Expression):
 # def Const(const,width):
 #     return ConstExpression(const,width)
 
+class NotExpression(Expression):
+
+    def __init__(self,op):
+        super().__init__()
+        self.__op = op
+
+    @property
+    def attribute(self) -> int:
+        return self.__op.attribute
+
+    @property
+    def string(self) -> str:
+        return '(~%s)' % self.__op.string
+
+    @property
+    def rstring(self) -> str:
+        return '(~%s)' % self.__op.rstring
+
+def Not(op):
+    return NotExpression(op)
 
 class CombineExpression(Expression):
 

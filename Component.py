@@ -103,11 +103,11 @@ class Component(Root):
 
         # combine logic assignment
         str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment for i in self.lvalue_list if i.verilog_assignment],[]),'')
+        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in self.lvalue_list if i.verilog_assignment],[]),'')
 
         sub_io_list = reduce(concat,[i.outer_lvalue_list for i in self.component_list],[])
         str_list += ['','\t//Wire this module connect to sub module.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment for i in sub_io_list if i.verilog_assignment],[]),'')
+        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in sub_io_list if i.verilog_assignment],[]),'')
 
         # component inst
         str_list += ['','\t//module inst.']
