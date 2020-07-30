@@ -249,7 +249,7 @@ class IOSig(WireSig):
         return ["wire %s %s" %('' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),self.name_until_component)]
     
     @property
-    def verilog_outer_def_as_list(self):
+    def verilog_outer_def_as_list_io(self):
         return ["wire",
                 '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
                 self.name_until_component]
