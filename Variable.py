@@ -229,11 +229,13 @@ class Wire(WireSig):
     @property
     def verilog_def(self):
         '''生成端口定义的RTL'''
-        return ['wire [%s:0] %s' % ((self.attribute.width-1),self.name_before_component)]
+        def_keyword = 'reg' if self._need_always else 'wire'
+        return ['%s [%s:0] %s' % (def_keyword,(self.attribute.width-1),self.name_before_component)]
     
     @property
     def verilog_def_as_list(self):
-        return ['wire','[%s:0]'%(self.attribute.width-1),self.name_before_component]
+        def_keyword = 'reg' if self._need_always else 'wire'
+        return [def_keyword,'[%s:0]'%(self.attribute.width-1),self.name_before_component]
 
 
 class IOSig(WireSig):
@@ -307,7 +309,7 @@ class Output(IOSig):
 
     @property
     def _iosig_type_prefix(self):
-        return 'output'
+        return 'output reg' if self._need_always else 'output'
 
     def reverse(self):
         return Input(self.attribute)
