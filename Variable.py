@@ -57,7 +57,7 @@ class Value():
             object.__setattr__(self,'_rvalue',rvalue)
             object.__setattr__(rvalue,'_des_lvalue',self)
             #self.__rvalue = rvalue
-            if isinstance(rvalue,IfExpression):
+            if isinstance(rvalue,AlwaysCombExpression):
                 self._need_always = True
         return self
 
@@ -494,7 +494,7 @@ class IOGroup(GroupVar):
             #print('%s get rvalue %s'  %(self,rvalue))
             object.__setattr__(self,'_rvalue',rvalue)
             #self.__rvalue = rvalue
-            if isinstance(rvalue,IfExpression):
+            if isinstance(rvalue,AlwaysCombExpression):
                 self._need_always = True
         return self
 
@@ -560,9 +560,72 @@ class Expression(Value):
         if not isinstance(op,Value):
             raise ArithmeticError('Input %s can not be a Right Value.' % type(op))
 
+class AlwaysCombExpression(Expression):
+
+    def __init__(self):
+        super().__init__()
+
+    
+class CaseExpression(AlwaysCombExpression):
+
+    def __init__(self,select,case_pair={},default=None):
+        super().__init__()
+        self.__select   = select
+        self.__case_pair = case_pair
+        self.__default  = default
+        self.__attr     = None
+
+        if not isinstance(select,Value):                            ArithmeticError('select signal must be a kind of Value.')
+        if default is not None or not isinstance(default,Value):    
+            ArithmeticError('select signal must be a kind of Value or None.')
+            self.__attr = default.attribute
+        for k,v in case_pair:
+            if not isinstance(k,Value):                                 ArithmeticError('Key in case_pair must be a kind of Value,but %s is not.' % k)
+            if k.attribute != select.attribute:                         ArithmeticError('key in case_pair must have the same data width with select signal.' % k)
+            if self.__attr is not None and v.attribute != self.__attr:  ArithmeticError('All Value in case_pair must have same attribute.')
+            self.__attr = v.attribute
+    
+    @property
+    def attribute(self) -> int:
+        return self.__attr
 
 
-class IfExpression(Expression):
+    def bstring(self,lstring,assign_method) -> str:
+        str_list = ['case(%s)' % self.__select.rstring]
+
+        for k,v in self.__case_pair:
+            str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
+
+        if self.__default != None:
+            str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
+        str_list.append('endcase')
+        return list(map(lambda x:"    "+x,str_list))
+
+        # def get_string(if_pair):
+        #     str_list = []
+        #     str_list.append("if(%s)"%(if_pair[0].rstring))
+        #     if isinstance(if_pair[1],IfExpression):
+        #         str_list[0] += " begin"
+        #         str_list += if_pair[1].bstring(lstring,assign_method)
+        #     else:
+        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
+        #     return  str_list
+        # str_list = []
+        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
+        #     if_block = get_string(if_pair)
+        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
+        #     str_list += if_block
+        # if self._closed:
+        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
+        # return list(map(lambda x:"    "+x,str_list))
+
+
+
+
+def Case(select,case_pair,default):
+    return CaseExpression(select,case_pair,default)
+
+class IfExpression(AlwaysCombExpression):
     def __init__(self,exp: Expression):
         super().__init__()
         self._condition_list = []
@@ -572,7 +635,7 @@ class IfExpression(Expression):
         self.__push_condition(exp)
         
     
-    def __push_condition(self,exp: Expression):
+    def __push_condition(self,exp: Value):
         if exp.attribute != UInt(1):
             raise ArithmeticError('condition expression must be instance of UInt(1).')
         elif len(self._condition_list) != len(self._action_list):
