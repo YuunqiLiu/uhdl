@@ -56,13 +56,11 @@ class Value():
             object.__setattr__(self,'_rvalue',rvalue)
             object.__setattr__(rvalue,'_des_lvalue',self)
             #self.__rvalue = rvalue
-            if isinstance(rvalue,AlwaysCombExpression):
-                self._need_always = True
         return self
 
     @property
     def _need_always(self):
-        return (self._rvalue and isinstance(self._rvalue,IfExpression)) or isinstance(self,Reg)
+        return (self._rvalue and isinstance(self._rvalue,AlwaysCombExpression)) or isinstance(self,Reg)
 
     def __getitem__(self,s:slice):
         return CutExpression(self,s.start,s.stop)
@@ -506,8 +504,6 @@ class IOGroup(GroupVar):
             #print('%s get rvalue %s'  %(self,rvalue))
             object.__setattr__(self,'_rvalue',rvalue)
             #self.__rvalue = rvalue
-            if isinstance(rvalue,AlwaysCombExpression):
-                self._need_always = True
         return self
 
     def exclude(self,*args):
