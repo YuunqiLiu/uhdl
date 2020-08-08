@@ -2,8 +2,8 @@ import os
 from operator       import concat
 from functools      import reduce
 
-from uhdl.Root          import Root
-from uhdl.Variable      import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
+from .Root          import Root
+from .Variable      import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
 from .              import FileProcess
 
 
@@ -273,7 +273,7 @@ def isComponent(obj):
     #         if hasattr(self,name):
     #             raise NameError("The name '%s' has used in this Component." % name)
     #         elif isinstance(item,Component):
-    #             selfuhdl.Component.new(**{name:item})
+    #             self.Component.new(**{name:item})
     #         elif isinstance(item,Interface):
     #             self.port.new(**{name:item})
     #         else:

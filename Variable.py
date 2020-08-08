@@ -4,7 +4,7 @@ from operator   import concat
 from copy       import copy
 
 #from Num       import UInt
-from uhdl.Root      import Root
+from .Root      import Root
 #from Value     import Value
 import string
 

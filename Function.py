@@ -1,8 +1,8 @@
 
 #from .Value import Value
-from uhdl.Variable import Input,Output,Value
+from .Variable import Input,Output,Value
 from functools import reduce
-from uhdl.Root      import Root
+from .Root      import Root
 
 
 

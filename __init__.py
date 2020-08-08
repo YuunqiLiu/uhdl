@@ -8,13 +8,13 @@ __all__ = ['assign','smart_assign','LCA','linkable',
            'Circuit','get_circuit','set_circuit',
            'when']
 
-from uhdl.Function      import Assign,SmartAssign,LCA,Linkable
-from uhdl.BasicFunction import join_name
-from uhdl.Component     import Component
-from uhdl.Variable      import Input,Output,UInt,SInt,IOGroup,Parameter,Wire,Reg,Combine,Equal,IfExpression,And,Or,LessEqual,GreaterEqual,Not,Case
+from .Function      import Assign,SmartAssign,LCA,Linkable
+from .BasicFunction import join_name
+from .Component     import Component
+from .Variable      import Input,Output,UInt,SInt,IOGroup,Parameter,Wire,Reg,Combine,Equal,IfExpression,And,Or,LessEqual,GreaterEqual,Not,Case
 #from .Value     import Combine
 #from .Expression import 
-from uhdl.Root          import Root,get_circuit,set_circuit
+from .Root          import Root,get_circuit,set_circuit
 
 Circuit      = Root
 when         = IfExpression
