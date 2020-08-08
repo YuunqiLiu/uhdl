@@ -1,1 +1,1 @@
-# uhdl_core
+# uhdl
