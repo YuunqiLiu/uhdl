@@ -1,6 +1,6 @@
 #import traceback
 #from abc import abstractmethod
-from .BasicFunction import join_name
+from uhdl_core.BasicFunction import join_name
 
 
 

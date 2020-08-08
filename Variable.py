@@ -3,9 +3,9 @@ from functools  import reduce
 from operator   import concat
 from copy       import copy
 
-#from .Num       import UInt
-from .Root      import Root
-#from .Value     import Value
+#from Num       import UInt
+from uhdl_core.Root      import Root
+#from Value     import Value
 import string
 
 class Variable(Root):
@@ -44,7 +44,6 @@ class Value():
         #print('init',self)
         self._rvalue     = None
         self._des_lvalue = None
-        self._need_always = False
 
     # += as circuit assignment
     def __iadd__(self,rvalue):
@@ -57,10 +56,13 @@ class Value():
             object.__setattr__(self,'_rvalue',rvalue)
             object.__setattr__(rvalue,'_des_lvalue',self)
             #self.__rvalue = rvalue
-            if isinstance(rvalue,IfExpression):
-                self._need_always = True
+
+                
         return self
 
+    @property
+    def _need_always(self):
+        return (self._rvalue and isinstance(self._rvalue,IfExpression)) or isinstance(self,Reg)
 
     def __getitem__(self,s:slice):
         return CutExpression(self,s.start,s.stop)
@@ -98,9 +100,8 @@ class Value():
     def rstring(self):
         raise NotImplementedError
 
-    @property
-    def bstring(self,**args):
-        raise NotImplementedError
+    def bstring(self,lstring,assign_method) -> str:
+        return ["    " + " ".join([lstring,assign_method,self.rstring]) + ";"]
 
 
     @property
@@ -183,11 +184,13 @@ class WireSig(SingleVar):
 
 class Reg(SingleVar):
 
-    def __init__(self,template,clk:SingleVar,arst:SingleVar=None,rst:SingleVar=None):
+    def __init__(self,template,clk:SingleVar,rst:SingleVar=None,async_rst:bool=True,rst_active_low:bool=True,clk_active_neg:bool=False):
         super().__init__(template=template)
         object.__setattr__(self,'_aclk',clk)
-        object.__setattr__(self,'_arst',arst)
         object.__setattr__(self,'_rst',rst)
+        object.__setattr__(self,'_async_rst',async_rst)
+        object.__setattr__(self,'_rst_active_low',rst_active_low)
+        object.__setattr__(self,'_clk_active_neg',clk_active_neg)
 
 
     @property
@@ -195,13 +198,22 @@ class Reg(SingleVar):
         if not hasattr(self,'_rvalue') or self._rvalue is None:
             return []
         else:
-            #if self._rvalue.string is None:
-            #    print(self._rvalue)
-            return ['always @(posedge %s or negedge %s) begin' %(self._aclk.rstring,self._arst.rstring)] + \
+            sensitivity_list = [("negedge" if self._clk_active_neg else "posedge") + " " + self._aclk.rstring]
+            if self._rst and self._async_rst:
+                sensitivity_list += [("negedge" if self._rst_active_low else "posedge") + " " + self._rst.rstring]
+            return ['always @(%s) begin' %(" or ".join(sensitivity_list))] + \
                     self._rvalue.bstring(self.lstring,"<=") + \
                     ['end']
 
             #return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring)]
+
+    def __iadd__(self,rvalue):
+        if self._rst:
+            rst_signal = Not(self._rst) if self._rst_active_low else self._rst
+            super().__iadd__(IfExpression(rst_signal).then(Bits(self.width,0)).otherwise(rvalue))
+        else:
+            super().__iadd__(rvalue)
+        return self
 
     @property
     def verilog_def(self):
@@ -489,8 +501,6 @@ class IOGroup(GroupVar):
             #print('%s get rvalue %s'  %(self,rvalue))
             object.__setattr__(self,'_rvalue',rvalue)
             #self.__rvalue = rvalue
-            if isinstance(rvalue,IfExpression):
-                self._need_always = True
         return self
 
     def exclude(self,*args):
@@ -558,49 +568,49 @@ class Expression(Value):
 
 
 class IfExpression(Expression):
-    def __init__(self,exp: Expression):
+    def __init__(self,val: Value):
         super().__init__()
         self._condition_list = []
         self._action_list = []
         self._closed = False
 
-        self.__push_condition(exp)
+        self.__push_condition(val)
         
     
-    def __push_condition(self,exp: Expression):
-        if exp.attribute != UInt(1):
+    def __push_condition(self,val: Value):
+        if val.attribute != UInt(1):
             raise ArithmeticError('condition expression must be instance of UInt(1).')
         elif len(self._condition_list) != len(self._action_list):
             raise Exception('When and then method must be used in pairs.')
-        self._condition_list.append(exp)
+        self._condition_list.append(val)
     
-    def __push_action(self,exp: Expression,tail=False):
+    def __push_action(self,val: Value,tail=False):
         if self._action_list != []:
-            if self._action_list[0].attribute != exp.attribute:
-                raise ArithmeticError('Attribute mismatch between different paths.')
+            if self.attribute != val.attribute:
+                raise ArithmeticError('width mismatch between different paths.')
         elif not tail:
             if len(self._condition_list) != len(self._action_list)+1:
                 raise Exception('When and then method don\'t be used in pairs.')
-        self._action_list.append(exp)
+        self._action_list.append(val)
     
-    def when(self,exp: Expression):
-        self.__push_condition(exp)
+    def when(self,val: Value):
+        self.__push_condition(val)
         return self
 
-    def then(self,exp:Expression):
-        self.__push_action(exp)
+    def then(self,val:Value):
+        self.__push_action(val)
         return self
     
-    def otherwise(self,exp: Expression):
+    def otherwise(self,val: Value):
         if self._closed:
             raise Exception('When expression has already been close.')
-        self.__push_action(exp,tail=True)
+        self.__push_action(val,tail=True)
         self._closed = True
         return self
 
     @property
     def attribute(self) -> int:
-        return self._action_list[0].attribute
+        return UInt(self._action_list[0].attribute.width)
 
     def bstring(self,lstring,assign_method) -> str:
         def get_string(if_pair):
@@ -609,6 +619,7 @@ class IfExpression(Expression):
             if isinstance(if_pair[1],IfExpression):
                 str_list[0] += " begin"
                 str_list += if_pair[1].bstring(lstring,assign_method)
+                str_list += ["end"]
             else:
                 str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
             return  str_list
@@ -814,6 +825,26 @@ class GreaterEqualExpression(TwoOpExpression):
 def GreaterEqual(lhs,rhs):
     return GreaterEqualExpression(lhs,rhs)
 
+class Not(Expression):
+
+    def __init__(self,op:Value):
+        super().__init__()
+        #super(TwoOpExpression,self).__init__()
+        self.check_rvalue(op)
+        self.op = op
+
+    @property
+    def attribute(self) -> int:
+        return UInt(1)
+        #type(self.opL.attribute)(self.opL.attribute.width + self.opR.attribute.width)
+
+    @property
+    def string(self) -> str:
+        return '(!%s)'  % (self.op.string)
+    
+    @property
+    def rstring(self) -> str:
+        return '(!%s)'  % (self.op.rstring)
 
 class And(TwoOpExpression):
 
@@ -851,9 +882,9 @@ class Or(TwoOpExpression):
     #     '''生成信号声明的RTL'''
     #     return ["wire %s %s;" %('' if self.data_width==1 else '[%s:0]' % (self.data_width-1),self.name_until(Component))]
 
-#from .Entity    import Entity
-#from .Virtual import Virtual
-#from .Component import Component
+#from Entity    import Entity
+#from Virtual import Virtual
+#from Component import Component
         #self.__name = None
         #if self.__name is None:
         #self.__get_name()
