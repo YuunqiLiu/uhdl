@@ -681,7 +681,7 @@ class IfExpression(AlwaysCombExpression):
         def get_string(if_pair):
             str_list = []
             str_list.append("if(%s)"%(if_pair[0].rstring))
-            if isinstance(if_pair[1],IfExpression):
+            if isinstance(if_pair[1],AlwaysCombExpression):
                 str_list[0] += " begin"
                 str_list += if_pair[1].bstring(lstring,assign_method)
                 str_list += ["end"]
@@ -694,7 +694,12 @@ class IfExpression(AlwaysCombExpression):
             if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
             str_list += if_block
         if self._closed:
-            str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
+            if isinstance(self._action_list[-1],AlwaysCombExpression):
+                str_list += ["else begin"]
+                str_list += self._action_list[-1].bstring(lstring,assign_method)
+                str_list += ["end"]
+            else:
+                str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
         return list(map(lambda x:"    "+x,str_list))
 
 
