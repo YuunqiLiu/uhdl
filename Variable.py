@@ -56,8 +56,8 @@ class Value():
             object.__setattr__(self,'_rvalue',rvalue)
             object.__setattr__(rvalue,'_des_lvalue',self)
             #self.__rvalue = rvalue
-
-                
+            if isinstance(rvalue,AlwaysCombExpression):
+                self._need_always = True
         return self
 
     @property
@@ -186,6 +186,9 @@ class Reg(SingleVar):
 
     def __init__(self,template,clk:SingleVar,rst:SingleVar=None,async_rst:bool=True,rst_active_low:bool=True,clk_active_neg:bool=False):
         super().__init__(template=template)
+        self._aclk = None
+        self._arst = None
+        self._rst  = None
         object.__setattr__(self,'_aclk',clk)
         object.__setattr__(self,'_rst',rst)
         object.__setattr__(self,'_async_rst',async_rst)
@@ -238,11 +241,13 @@ class Wire(WireSig):
     @property
     def verilog_def(self):
         '''生成端口定义的RTL'''
-        return ['wire [%s:0] %s' % ((self.attribute.width-1),self.name_before_component)]
+        def_keyword = 'reg' if self._need_always else 'wire'
+        return ['%s [%s:0] %s' % (def_keyword,(self.attribute.width-1),self.name_before_component)]
     
     @property
     def verilog_def_as_list(self):
-        return ['wire','[%s:0]'%(self.attribute.width-1),self.name_before_component]
+        def_keyword = 'reg' if self._need_always else 'wire'
+        return [def_keyword,'[%s:0]'%(self.attribute.width-1),self.name_before_component]
 
 
 class IOSig(WireSig):
@@ -258,7 +263,7 @@ class IOSig(WireSig):
         return ["wire %s %s" %('' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),self.name_until_component)]
     
     @property
-    def verilog_outer_def_as_list(self):
+    def verilog_outer_def_as_list_io(self):
         return ["wire",
                 '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
                 self.name_until_component]
@@ -316,7 +321,7 @@ class Output(IOSig):
 
     @property
     def _iosig_type_prefix(self):
-        return 'output'
+        return 'output reg' if self._need_always else 'output'
 
     def reverse(self):
         return Input(self.attribute)
@@ -501,6 +506,8 @@ class IOGroup(GroupVar):
             #print('%s get rvalue %s'  %(self,rvalue))
             object.__setattr__(self,'_rvalue',rvalue)
             #self.__rvalue = rvalue
+            if isinstance(rvalue,AlwaysCombExpression):
+                self._need_always = True
         return self
 
     def exclude(self,*args):
@@ -565,9 +572,71 @@ class Expression(Value):
         if not isinstance(op,Value):
             raise ArithmeticError('Input %s can not be a Right Value.' % type(op))
 
+class AlwaysCombExpression(Expression):
+
+    def __init__(self):
+        super().__init__()
+
+    
+class CaseExpression(AlwaysCombExpression):
+
+    def __init__(self,select,case_pair={},default=None):
+        super().__init__()
+        self.__select   = select
+        self.__case_pair = case_pair
+        self.__default  = default
+        self.__attr     = None
+
+        if not isinstance(select,Value):                            ArithmeticError('select signal must be a kind of Value.')
+        if default is not None or not isinstance(default,Value):    
+            ArithmeticError('select signal must be a kind of Value or None.')
+            self.__attr = default.attribute
+        for k,v in case_pair:
+            if not isinstance(k,Value):                                 ArithmeticError('Key in case_pair must be a kind of Value,but %s is not.' % k)
+            if k.attribute != select.attribute:                         ArithmeticError('key in case_pair must have the same data width with select signal.' % k)
+            if self.__attr is not None and v.attribute != self.__attr:  ArithmeticError('All Value in case_pair must have same attribute.')
+            self.__attr = v.attribute
+    
+    @property
+    def attribute(self) -> int:
+        return self.__attr
 
 
-class IfExpression(Expression):
+    def bstring(self,lstring,assign_method) -> str:
+        str_list = ['case(%s)' % self.__select.rstring]
+
+        for k,v in self.__case_pair:
+            str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
+
+        if self.__default != None:
+            str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
+        str_list.append('endcase')
+        return list(map(lambda x:"    "+x,str_list))
+
+        # def get_string(if_pair):
+        #     str_list = []
+        #     str_list.append("if(%s)"%(if_pair[0].rstring))
+        #     if isinstance(if_pair[1],IfExpression):
+        #         str_list[0] += " begin"
+        #         str_list += if_pair[1].bstring(lstring,assign_method)
+        #     else:
+        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
+        #     return  str_list
+        # str_list = []
+        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
+        #     if_block = get_string(if_pair)
+        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
+        #     str_list += if_block
+        # if self._closed:
+        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
+        # return list(map(lambda x:"    "+x,str_list))
+
+
+
+def Case(select,case_pair,default):
+    return CaseExpression(select,case_pair,default)
+
+class IfExpression(AlwaysCombExpression):
     def __init__(self,val: Value):
         super().__init__()
         self._condition_list = []
@@ -651,13 +720,140 @@ class IfExpression(Expression):
 # def Const(const,width):
 #     return ConstExpression(const,width)
 
+class OneOpExpression(Expression):
 
-class CombineExpression(Expression):
+    def __init__(self,op):
+        super().__init__()
+        self.__op = op
+
+    @property
+    def attribute(self) -> int:
+        return UInt(1)
+        #return self.__op.attribute
+
+    @property
+    def op_str(self):
+        raise NotImplementedError()
+
+    @property
+    def string(self) -> str:
+        return '(%s%s)' % (self.op_str,self.__op.string)
+
+    @property
+    def rstring(self) -> str:
+        return '(%s%s)' % (self.op_str,self.__op.string)
+
+class NotExpression(OneOpExpression):
+
+    @property
+    def op_str(self):
+        return '!'
+
+class InverseExpression(OneOpExpression):
+
+    @property
+    def attribute(self):
+        return self.__op.attribute
+
+    @property
+    def op_str(self):
+        return '~'
+
+class SelfOrExpression(OneOpExpression):
+
+    @property
+    def op_str(self):
+        return '|'
+
+class SelfAndExpression(OneOpExpression):
+
+    @property
+    def op_str(self):
+        return '&'
+
+class SelfXorExpression(OneOpExpression):
+
+    @property
+    def op_str(self):
+        return '^'
+
+class SelfXnorExpression(OneOpExpression):
+
+    @property
+    def op_str(self):
+        return '^~'
+
+def Not(op):
+    return NotExpression(op)
+
+def Inverse(op):
+    return InverseExpression(op)
+
+def SelfOr(op):
+    return SelfOrExpression(op)
+
+def SelfAnd(op):
+    return SelfAndExpression(op)
+
+def SelfXor(op):
+    return SelfXorExpression(op)
+
+def SelfXnor(op):
+    return SelfXnorExpression(op)
+
+
+class ListExpression(Expression):
 
     def __init__(self,*op_list):
         super().__init__()
-        #super(CombineExpression,self).__init__()
         self.op_list = op_list
+
+class SameListExpression(ListExpression):
+
+    def __init__(self, *op_list):
+        super().__init__()
+        for op in op_list:
+            self.check_rvalue(op)
+
+    @property
+    def attribute(self) -> int:
+        return self.op_list[0].attribute
+
+
+class AndList(SameListExpression):
+
+    def __init__(self,opList):
+        super().__init__()
+
+    @property
+    def string(self) -> str:
+        return '(%s)' % ' && '.join([op.string for op in self.op_list])
+    
+    @property
+    def rstring(self) -> str:
+        return '{%s}' % ' && '.join([op.rstring for op in self.op_list])
+
+
+class OrList(SameListExpression):
+
+    def __init__(self,opList):
+        super().__init__()
+
+    @property
+    def string(self) -> str:
+        return '(%s)' % ' || '.join([op.string for op in self.op_list])
+    
+    @property
+    def rstring(self) -> str:
+        return '{%s}' % ' || '.join([op.rstring for op in self.op_list])
+    
+
+class CombineExpression(ListExpression):
+
+    # def __init__(self,*op_list):
+    #     super().__init__()
+    #     #super(CombineExpression,self).__init__()
+    #     self.op_list = op_list
 
     @property
     def attribute(self) -> int:
@@ -725,6 +921,120 @@ class TwoOpExpression(Expression):
         raise NotImplementedError
 
 
+class CompareExpression(TwoOpExpression):
+
+    def __init__(self, opL, opR):
+        super().__init__(opL, opR)
+        if opL.attribute != opR.attribute: raise ArithmeticError('Can not compare two operator with different attributes.')
+
+    @property
+    def attribute(self):
+        return UInt(1)
+
+    @property
+    def op_str(self):
+        raise NotImplementedError()
+
+    @property
+    def string(self) -> str:
+        return '(%s %s %s)'  % (self.opL.string ,self.op_str,self.opR.string)
+    
+    @property
+    def rstring(self) -> str:
+        return '(%s %s %s)'  % (self.opL.rstring ,self.op_str,self.opR.rstring)
+
+
+class EqualExpression(CompareExpression):
+
+    # @property
+    # def attribute(self) -> int:
+    #     return UInt(1)
+    #     #type(self.opL.attribute)(self.opL.attribute.width + self.opR.attribute.width)
+
+    @property
+    def op_str(self):
+        return '=='
+
+    # @property
+    # def string(self) -> str:
+    #     return '(%s == %s)'  % (self.opL.string ,self.opR.string)
+    # 
+    # @property
+    # def rstring(self) -> str:
+    #     return '(%s == %s)'  % (self.opL.rstring ,self.opR.rstring)
+
+def Equal(lhs,rhs):
+    return EqualExpression(lhs,rhs)
+
+class NotEqualExpression(CompareExpression):
+
+    @property
+    def op_str(self):
+        return '!='
+
+class LessEqualExpression(CompareExpression):
+
+    @property
+    def op_str(self):
+        return '<='
+
+    # @property
+    # def attribute(self) -> int:
+    #     return UInt(1)
+# 
+    # @property
+    # def string(self) -> str:
+    #     return '(%s <= %s)'  % (self.opL.string ,self.opR.string)
+    # 
+    # @property
+    # def rstring(self) -> str:
+    #     return '(%s <= %s)'  % (self.opL.rstring ,self.opR.rstring)
+
+def LessEqual(lhs,rhs):
+    return LessEqualExpression(lhs,rhs)
+
+class GreaterEqualExpression(CompareExpression):
+
+    @property
+    def op_str(self):
+        return '>+'
+
+    # @property
+    # def attribute(self) -> int:
+    #     return UInt(1)
+# 
+    # @property
+    # def string(self) -> str:
+    #     return '(%s >= %s)'  % (self.opL.string ,self.opR.string)
+    # 
+    # @property
+    # def rstring(self) -> str:
+    #     return '(%s >= %s)'  % (self.opL.rstring ,self.opR.rstring)
+
+def GreaterEqual(lhs,rhs):
+    return GreaterEqualExpression(lhs,rhs)
+
+class LessExpression(CompareExpression):
+
+    @property
+    def op_str(self):
+        return '<'
+
+def Less(opL,opR):
+    return LessExpression(opL,opR)
+
+class GreaterExpression(CompareExpression):
+
+    @property
+    def op_str(self):
+        return '>'
+
+def Greater(opL,opR):
+    return GreaterExpression(opL,opR)
+
+
+
+
 
 class AddExpression(TwoOpExpression):
 
@@ -772,58 +1082,7 @@ class MulExpression(TwoOpExpression):
         return '(%s * %s)'  % (self.opL.rstring ,self.opR.rstring)
 
 
-class EqualExpression(TwoOpExpression):
 
-    @property
-    def attribute(self) -> int:
-        return UInt(1)
-        #type(self.opL.attribute)(self.opL.attribute.width + self.opR.attribute.width)
-
-    @property
-    def string(self) -> str:
-        return '(%s == %s)'  % (self.opL.string ,self.opR.string)
-    
-    @property
-    def rstring(self) -> str:
-        return '(%s == %s)'  % (self.opL.rstring ,self.opR.rstring)
-
-def Equal(lhs,rhs):
-    return EqualExpression(lhs,rhs)
-
-
-class LessEqualExpression(TwoOpExpression):
-
-    @property
-    def attribute(self) -> int:
-        return UInt(1)
-
-    @property
-    def string(self) -> str:
-        return '(%s <= %s)'  % (self.opL.string ,self.opR.string)
-    
-    @property
-    def rstring(self) -> str:
-        return '(%s <= %s)'  % (self.opL.rstring ,self.opR.rstring)
-
-def LessEqual(lhs,rhs):
-    return LessEqualExpression(lhs,rhs)
-
-class GreaterEqualExpression(TwoOpExpression):
-
-    @property
-    def attribute(self) -> int:
-        return UInt(1)
-
-    @property
-    def string(self) -> str:
-        return '(%s >= %s)'  % (self.opL.string ,self.opR.string)
-    
-    @property
-    def rstring(self) -> str:
-        return '(%s >= %s)'  % (self.opL.rstring ,self.opR.rstring)
-
-def GreaterEqual(lhs,rhs):
-    return GreaterEqualExpression(lhs,rhs)
 
 class Not(Expression):
 
@@ -876,6 +1135,8 @@ class Or(TwoOpExpression):
     @property
     def rstring(self) -> str:
         return '(%s || %s)'  % (self.opL.rstring ,self.opR.rstring)
+
+
 
     # @property
     # def gen_rtl_io(self):

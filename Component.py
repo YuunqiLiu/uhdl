@@ -66,8 +66,12 @@ class Component(Root):
         return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input,Inout,))] 
 
     @property
-    def verilog_outer_def(self):
-        return reduce(concat,[i.verilog_outer_def for i in self.io_list],[])
+    def verilog_outer_def_as_list(self):
+
+        #return reduce(concat,[i.verilog_outer_def_as_list for i in self.io_list],[])
+        result = [i.verilog_outer_def_as_list_io for i in self.io_list]
+        #print(result)
+        return result
 
     def __gen_aligned_signal_def(self,io_para_list):
         max_prefix_length = 0
@@ -98,16 +102,17 @@ class Component(Root):
         str_list += ['','\t//Wire define for this module.']
         str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.wire_list]),';',';')
 
+
         str_list += ['','\t//Wire define for sub module.']
-        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_outer_def_as_list for i in self.component_list]),';',';')
+        str_list += self.__eol_append(self.__gen_aligned_signal_def(reduce(concat,[i.verilog_outer_def_as_list for i in self.component_list],[])),';',';')
 
         # combine logic assignment
         str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment for i in self.lvalue_list if i.verilog_assignment],[]),'')
+        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in self.lvalue_list if i.verilog_assignment],[]),'')
 
         sub_io_list = reduce(concat,[i.outer_lvalue_list for i in self.component_list],[])
         str_list += ['','\t//Wire this module connect to sub module.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment for i in sub_io_list if i.verilog_assignment],[]),'')
+        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in sub_io_list if i.verilog_assignment],[]),'')
 
         # component inst
         str_list += ['','\t//module inst.']
