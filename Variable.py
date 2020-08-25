@@ -51,6 +51,10 @@ class Value():
         object.__setattr__(rvalue,'_des_lvalue',self)
         return self
 
+    def check_rvalue(self,op:Value):
+        if not isinstance(op,Value):
+            raise ErrExpInTypeWrong('',self,op)
+
     @property
     def _need_always(self):
         return (self._rvalue and isinstance(self._rvalue,AlwaysCombExpression)) or isinstance(self,Reg)
@@ -153,6 +157,12 @@ class Reg(SingleVar):
 
     def __init__(self,template,clk:SingleVar,rst:SingleVar=None,async_rst:bool=True,rst_active_low:bool=True,clk_active_neg:bool=False):
         super().__init__(template=template)
+        # input value check
+        self.check_rvalue(clk)
+        if rst is not None: self.check_rvalue(rst)
+        if not isinstance(async_rst     ,bool):pass
+        if not isinstance(rst_active_low,bool):pass
+        if not isinstance(clk_active_neg,bool):pass
         self._aclk           = None
         self._rst            = None
         self._async_rst      = None
@@ -172,19 +182,36 @@ class Reg(SingleVar):
             sensitivity_list = [("negedge" if self._clk_active_neg else "posedge") + " " + self._aclk.rstring]
             if self._rst and self._async_rst:
                 sensitivity_list += [("negedge" if self._rst_active_low else "posedge") + " " + self._rst.rstring]
-            return ['always @(%s) begin' %(" or ".join(sensitivity_list))] + \
-                    self._rvalue.bstring(self.lstring,"<=") + \
-                    ['end']
 
+            str_list = ['always @(%s) begin' %(" or ".join(sensitivity_list))]
+
+            if self._rst:
+                str_list += ['    if(%s%s) %s <= %s;' % ('~' if self._rst_active_low else '',self._rst.rstring,self.lstring,self.attribute.rstring)] 
+                tmp_str_list = self._rvalue.bstring(self.lstring,'<=')
+                tmp_str_list[0] = '    else %s' % tmp_str_list[0]
+                tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:]]
+                str_list += tmp_str_list
+            else:
+                str_list = self._rvalue.bstring(self.lstring,'<=')
+                str_list[0] = '    %s' % str_list[0]
+                tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:0]]
+            str_list += ['end']
+            return str_list
+
+            #return ['always @(%s) begin' %(" or ".join(sensitivity_list))] + \
+            #        self._rvalue.bstring(self.lstring,"<=") + \
+            #        ['end']
+
+            #sensitivity_list = ["%s %s" % ("negedge" if self._clk_active_neg else "posedge",self._aclk.rstring)]
             #return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring)]
 
-    def __iadd__(self,rvalue):
-        if self._rst:
-            rst_signal = Not(self._rst) if self._rst_active_low else self._rst
-            super().__iadd__(When(rst_signal).then(Bits(self.width,0)).otherwise(rvalue))
-        else:
-            super().__iadd__(rvalue)
-        return self
+    #def __iadd__(self,rvalue):
+    #    super().__iadd__(rvalue)
+        #if self._rst:
+        #    rst_signal = Not(self._rst) if self._rst_active_low else self._rst
+        #    super().__iadd__(When(rst_signal).then(Bits(self.width,0)).otherwise(rvalue))
+        #else:
+    #    return self
 
     @property
     def verilog_def(self):
@@ -536,9 +563,7 @@ class Expression(Value):
     #     if not op.is_lvalue:
     #         raise ArithmeticError('Input %s can not be a Left Value.' % type(op))
 
-    def check_rvalue(self,op:Value):
-        if not isinstance(op,Value):
-            raise ErrExpInTypeWrong('',self,op)
+
 
     @property
     def op_str(self):
@@ -582,12 +607,6 @@ class CaseExpression(AlwaysCombExpression):
                 else                     : ErrAttrMismatch('All value in case_pair must have same attribute.',*self.__case_value,self.__default)
             self.__attr = v.attribute
 
-
-        #if not isinstance(k,Value):                                 ArithmeticError('Key in case_pair must be a kind of Value,but %s is not.' % k)
-        #if not isinstance(select,Value): ArithmeticError('select signal must be a kind of Value.')
-        #if default is not None and not isinstance(default,Value):    
-        #    ArithmeticError('select signal must be a kind of Value or None.')
-
     @property
     def __case_key(self):
         return [x[0] for x in self.__case_pair]
@@ -618,85 +637,9 @@ class CaseExpression(AlwaysCombExpression):
         str_list.append('endcase')
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
 
-            #str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
-            #str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
-        # def get_string(if_pair):
-        #     str_list = []
-        #     str_list.append("if(%s)"%(if_pair[0].rstring))
-        #     if isinstance(if_pair[1],IfExpression):
-        #         str_list[0] += " begin"
-        #         str_list += if_pair[1].bstring(lstring,assign_method)
-        #     else:
-        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
-        #     return  str_list
-        # str_list = []
-        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
-        #     if_block = get_string(if_pair)
-        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
-        #     str_list += if_block
-        # if self._closed:
-        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
-        # return list(map(lambda x:"    "+x,str_list))
-
-
-
 def Case(select,case_pair,default):
     return CaseExpression(select,case_pair,default)
 
-
-# class WhenOperate(Enum):
-#     when                = 1
-#     then                = 2
-#     otherwise           = 3
-# 
-# class WhenState(Enum):
-#     # when_only           = 1
-#     then_only           = 1
-#     when_or_otherwise   = 2
-#     close               = 3
-# 
-# 
-#     self.__push_condition(val)
-# 
-#     self._state = WhenState.then_only
-# 
-#     def state_change(self,operate):
-#         if not isinstance(self._state,WhenState)  : raise Exception('Internal error')
-#         if not isinstance(operate,WhenOperate)      : raise Exception('Internal error.')
-# 
-#         # def when_only_state_change(operate):
-#         #     #when状态机的第一次跳转在构建函数中完成，任何错误都是内部错误
-#         #     if operate == WhenOperate.when      : return WhenState.then_only
-#         #     if operate == WhenOperate.then      : raise  Exception('Internal error.')
-#         #     if operate == WhenOperate.otherwise : raise  Exception('Internal error.')
-# 
-#         def then_only_state_change(operate):
-#             if operate == WhenOperate.when      : 
-#                 raise  ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "when".')
-#             if operate == WhenOperate.then      : return WhenState.when_or_otherwise
-#             if operate == WhenOperate.otherwise : 
-#                 raise  ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "otherwise".')
-# 
-#         def when_or_otherwise_state_change(operate):
-#             if operate == WhenOperate.when      : return WhenState.then_only
-#             if operate == WhenOperate.then      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
-#             if operate == WhenOperate.otherwise : return WhenState.close
-# 
-#         def close_state_change(operate):
-#             raise ErrWhenExpOperateWrong('This when expression has "otherwise" and closed,no longer accepts new "when-then" pairing.')
-# 
-#         state_change_lut = {
-#             #WhenState.when_only         :when_only_state_change         ,
-#             WhenState.then_only         :then_only_state_change         ,
-#             WhenState.when_or_otherwise :when_or_otherwise_state_change ,
-#             WhenState.close             :close_state_change             }
-#         self._state = state_change_lut[self._state](operate)
-
-#    def __push_condition(self,val: Value):
-#        pass
-#    
-#    def __push_action(self,val: Value,tail=False):
-#        pass
 
 class WhenExpression(AlwaysCombExpression):
     def __init__(self):
@@ -772,54 +715,6 @@ def When(val):
     return when.when(val)
 
 
-        #str_list = ["if(%s)" % condition.rstring ]
-        #str_list.append("if(%s)"%(if_pair[0].rstring))
-           # str_list[0] += " begin"
-           # str_list += action.bstring(lstring,assign_method)
-           # str_list += ["end"]
-            #str_list[0] += " %s %s %s;"%(lstring,assign_method,action.rstring)
-        #if isinstance(action,AlwaysCombExpression):
-        #    str_list =  ["if(%s) begin" % condition.rstring]  +\
-        #                action.bstring(lstring,assign_method) +\
-        #                ["end"]
-        #else:
-            #str_list = ["if(%s) %s %s %s;" % (condition.rstring,lstring,assign_method,action.rstring)]
-            #str_list = ["if(%s) %s;" %(condition.rstring,action.bstring(lstring,assign_method))]
-
-            #if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
-            #if_block = self.get_string(lstring,assign_method,condition,action)
-
-    # def get_string(self,lstring,assign_method,condition,action):
-    #     str_list = action.bstring(lstring,assign_method)
-    #     str_list[0] = "if(%s) %s" % (condition.rstring,str_list[0])
-    #     return  str_list
-            # if isinstance(self._otherwise_action,AlwaysCombExpression):
-            #     str_list += ["else begin"]
-            #     str_list += self._otherwise_action.bstring(lstring,assign_method)
-            #     str_list += ["end"]
-            # else:
-            #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._otherwise_action.rstring))
-        #print(str_list)
-
-
-# class ConstExpression(Expression):
-# 
-#     def __init__(self,const,width):
-#         super(ConstExpression,self).__init__()
-#         self.const = const
-#         self.width = width
-# 
-#     @property
-#     def attribute(self) -> int:
-#         return self.width
-# 
-#     @property
-#     def string(self) -> str:
-#         return str(self.const)
-# 
-# def Const(const,width):
-#     return ConstExpression(const,width)
-
 class CutExpression(Expression):
 
     def __init__(self,op:Value,hbound:int,lbound:int):
@@ -846,7 +741,6 @@ class CutExpression(Expression):
     def op_name(self):
         return 'Cut([*:*])'
 
-
     @property
     def attribute(self) -> int:
         return type(self.op.attribute)(self.hbound - self.lbound + 1)
@@ -862,7 +756,6 @@ class CutExpression(Expression):
 
 def Cut(op,hbound,lbound):
     CutExpression(op,hbound,lbound)
-
 
 
 ################################################################################################################
@@ -890,6 +783,7 @@ class ListExpression(Expression):
         tmp_op_str = ' %s '%self.op_str
         return '(%s)' %  tmp_op_str.join([self.string for op in self.op_list])
 
+
 class MultiListExpression(ListExpression):
 
     def __init__(self, *op_list):
@@ -899,6 +793,7 @@ class MultiListExpression(ListExpression):
     @property
     def attribute(self):
         return UInt(1)
+
 
 class MultiSameListExpression(MultiListExpression):
 
@@ -1003,10 +898,6 @@ def BitXnorList(*opList):
     return BitXnorListExpression(*opList)
 
 
-
-
-
-
 class CombineExpression(ListExpression):
 
     @property
@@ -1027,12 +918,6 @@ class CombineExpression(ListExpression):
 
 def Combine(*op_list):
     return CombineExpression(*op_list)
-
-
-
-
-
-
 
 
 ################################################################################################################
@@ -1437,3 +1322,146 @@ def Or(opL,opR):
     return OrExpression(opL,opR)
 
 
+
+
+#==============================================================================================================================================
+        #str_list = ["if(%s)" % condition.rstring ]
+        #str_list.append("if(%s)"%(if_pair[0].rstring))
+           # str_list[0] += " begin"
+           # str_list += action.bstring(lstring,assign_method)
+           # str_list += ["end"]
+            #str_list[0] += " %s %s %s;"%(lstring,assign_method,action.rstring)
+        #if isinstance(action,AlwaysCombExpression):
+        #    str_list =  ["if(%s) begin" % condition.rstring]  +\
+        #                action.bstring(lstring,assign_method) +\
+        #                ["end"]
+        #else:
+            #str_list = ["if(%s) %s %s %s;" % (condition.rstring,lstring,assign_method,action.rstring)]
+            #str_list = ["if(%s) %s;" %(condition.rstring,action.bstring(lstring,assign_method))]
+
+            #if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
+            #if_block = self.get_string(lstring,assign_method,condition,action)
+
+    # def get_string(self,lstring,assign_method,condition,action):
+    #     str_list = action.bstring(lstring,assign_method)
+    #     str_list[0] = "if(%s) %s" % (condition.rstring,str_list[0])
+    #     return  str_list
+            # if isinstance(self._otherwise_action,AlwaysCombExpression):
+            #     str_list += ["else begin"]
+            #     str_list += self._otherwise_action.bstring(lstring,assign_method)
+            #     str_list += ["end"]
+            # else:
+            #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._otherwise_action.rstring))
+        #print(str_list)
+
+
+# class ConstExpression(Expression):
+# 
+#     def __init__(self,const,width):
+#         super(ConstExpression,self).__init__()
+#         self.const = const
+#         self.width = width
+# 
+#     @property
+#     def attribute(self) -> int:
+#         return self.width
+# 
+#     @property
+#     def string(self) -> str:
+#         return str(self.const)
+# 
+# def Const(const,width):
+#     return ConstExpression(const,width)
+
+# class WhenOperate(Enum):
+#     when                = 1
+#     then                = 2
+#     otherwise           = 3
+# 
+# class WhenState(Enum):
+#     # when_only           = 1
+#     then_only           = 1
+#     when_or_otherwise   = 2
+#     close               = 3
+# 
+# 
+#     self.__push_condition(val)
+# 
+#     self._state = WhenState.then_only
+# 
+#     def state_change(self,operate):
+#         if not isinstance(self._state,WhenState)  : raise Exception('Internal error')
+#         if not isinstance(operate,WhenOperate)      : raise Exception('Internal error.')
+# 
+#         # def when_only_state_change(operate):
+#         #     #when状态机的第一次跳转在构建函数中完成，任何错误都是内部错误
+#         #     if operate == WhenOperate.when      : return WhenState.then_only
+#         #     if operate == WhenOperate.then      : raise  Exception('Internal error.')
+#         #     if operate == WhenOperate.otherwise : raise  Exception('Internal error.')
+# 
+#         def then_only_state_change(operate):
+#             if operate == WhenOperate.when      : 
+#                 raise  ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "when".')
+#             if operate == WhenOperate.then      : return WhenState.when_or_otherwise
+#             if operate == WhenOperate.otherwise : 
+#                 raise  ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "otherwise".')
+# 
+#         def when_or_otherwise_state_change(operate):
+#             if operate == WhenOperate.when      : return WhenState.then_only
+#             if operate == WhenOperate.then      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
+#             if operate == WhenOperate.otherwise : return WhenState.close
+# 
+#         def close_state_change(operate):
+#             raise ErrWhenExpOperateWrong('This when expression has "otherwise" and closed,no longer accepts new "when-then" pairing.')
+# 
+#         state_change_lut = {
+#             #WhenState.when_only         :when_only_state_change         ,
+#             WhenState.then_only         :then_only_state_change         ,
+#             WhenState.when_or_otherwise :when_or_otherwise_state_change ,
+#             WhenState.close             :close_state_change             }
+#         self._state = state_change_lut[self._state](operate)
+
+#    def __push_condition(self,val: Value):
+#        pass
+#    
+#    def __push_action(self,val: Value,tail=False):
+#        pass
+
+            #str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
+            #str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
+        # def get_string(if_pair):
+        #     str_list = []
+        #     str_list.append("if(%s)"%(if_pair[0].rstring))
+        #     if isinstance(if_pair[1],IfExpression):
+        #         str_list[0] += " begin"
+        #         str_list += if_pair[1].bstring(lstring,assign_method)
+        #     else:
+        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
+        #     return  str_list
+        # str_list = []
+        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
+        #     if_block = get_string(if_pair)
+        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
+        #     str_list += if_block
+        # if self._closed:
+        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
+        # return list(map(lambda x:"    "+x,str_list))
+            #str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
+            #str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
+        # def get_string(if_pair):
+        #     str_list = []
+        #     str_list.append("if(%s)"%(if_pair[0].rstring))
+        #     if isinstance(if_pair[1],IfExpression):
+        #         str_list[0] += " begin"
+        #         str_list += if_pair[1].bstring(lstring,assign_method)
+        #     else:
+        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
+        #     return  str_list
+        # str_list = []
+        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
+        #     if_block = get_string(if_pair)
+        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
+        #     str_list += if_block
+        # if self._closed:
+        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
+        # return list(map(lambda x:"    "+x,str_list))
