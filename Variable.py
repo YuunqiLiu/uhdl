@@ -51,7 +51,7 @@ class Value():
         object.__setattr__(rvalue,'_des_lvalue',self)
         return self
 
-    def check_rvalue(self,op:Value):
+    def check_rvalue(self,op):
         if not isinstance(op,Value):
             raise ErrExpInTypeWrong('',self,op)
 
