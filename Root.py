@@ -195,6 +195,9 @@ class Root(object):
     get = get_circuit
     set = set_circuit
 
+    Get = get_circuit
+    Set = set_circuit
+
 
 def get_circuit(obj:Root,name:str) -> Root:
     return getattr(obj,name)
