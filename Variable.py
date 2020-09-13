@@ -4,12 +4,11 @@ from functools  import reduce
 from operator   import concat
 from copy       import copy
 
-#from Num       import UInt
 from .Root      import Root
-#from Value     import Value
 import string
 
-from .Exception import *
+from .Exception     import *
+from .InternalTool  import *
 
 class Variable(Root):
 
@@ -25,35 +24,45 @@ class Variable(Root):
         return self.name_before_not(Variable)
             
     def __gt__(self,other):
-        if not isinstance(other,Variable):  raise TypeError('%s should compare with a Variable,but get a %s' %(type(self),type(other)))
-        if self.name == other.name:         raise Exception()
+        if not isinstance(other,Variable):  raise ErrVarCmpWrong('%s should compare with a Variable,but get a %s.' % (GetClsName(self),GetClsName(other)))
+        if self.name == other.name:         raise ErrVarCmpWrong('Two Variable with the same name "%s" cannot be compared.' % (self.name))
         if self.name > other.name:          return True
         else:                               return False
 
     def __lt__(self,other):
         return not self.__gt__(other)
 
+    @property
+    def attribute(self):
+        raise NotImplementedError
+
+    @property
+    def var_name(self):
+        return self.__class__.__name__
+
+    # += as circuit assignment
+    def __iadd__(self,rvalue):
+        if not isinstance(rvalue,Value):        raise ErrAssignTypeWrong(self,rvalue)
+        if self.attribute != rvalue.attribute:  raise ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
+        object.__setattr__(self,'_rvalue',rvalue)
+        object.__setattr__(rvalue,'_des_lvalue',self)
+        return self
+    #raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
 
 
+class ValueRoot():
+    pass
 
-class Value():
+class Value(ValueRoot):
 
     def __init__(self):
         super().__init__()
         self._rvalue     = None
         self._des_lvalue = None
 
-    # += as circuit assignment
-    def __iadd__(self,rvalue):
-        if not isinstance(rvalue,Value):        raise ArithmeticError('A left value expect assigned by a right value.')
-        if self.attribute != rvalue.attribute:  raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
-        object.__setattr__(self,'_rvalue',rvalue)
-        object.__setattr__(rvalue,'_des_lvalue',self)
-        return self
 
-    def check_rvalue(self,op:Value):
-        if not isinstance(op,Value):
-            raise ErrExpInTypeWrong('',self,op)
+    def check_rvalue(self,op:ValueRoot):
+        if not isinstance(op,ValueRoot):    raise ErrExpInTypeWrong('',self,op)
 
     @property
     def _need_always(self):
@@ -126,6 +135,7 @@ class SingleVar(Variable,Value):
 
     def __init__(self,template):
         super().__init__()
+        if not isinstance(template,Constant): raise ErrAttrTypeWrong(self,template)
         self.__template = template
 
     @property
@@ -160,9 +170,9 @@ class Reg(SingleVar):
         # input value check
         self.check_rvalue(clk)
         if rst is not None: self.check_rvalue(rst)
-        if not isinstance(async_rst     ,bool):pass
-        if not isinstance(rst_active_low,bool):pass
-        if not isinstance(clk_active_neg,bool):pass
+        if not isinstance(async_rst     ,bool): raise ErrNeedBool('Reg\'s input async_rst need a bool value,bug get a %s'      % async_rst.__class__.__name__)
+        if not isinstance(rst_active_low,bool): raise ErrNeedBool('Reg\'s input rst_active_low need a bool value,bug get a %s' % rst_active_low.__class__.__name__)
+        if not isinstance(clk_active_neg,bool): raise ErrNeedBool('Reg\'s input clk_active_neg need a bool value,bug get a %s' % clk_active_neg.__class__.__name__)
         self._aclk           = None
         self._rst            = None
         self._async_rst      = None
@@ -197,21 +207,6 @@ class Reg(SingleVar):
                 tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:0]]
             str_list += ['end']
             return str_list
-
-            #return ['always @(%s) begin' %(" or ".join(sensitivity_list))] + \
-            #        self._rvalue.bstring(self.lstring,"<=") + \
-            #        ['end']
-
-            #sensitivity_list = ["%s %s" % ("negedge" if self._clk_active_neg else "posedge",self._aclk.rstring)]
-            #return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring)]
-
-    #def __iadd__(self,rvalue):
-    #    super().__iadd__(rvalue)
-        #if self._rst:
-        #    rst_signal = Not(self._rst) if self._rst_active_low else self._rst
-        #    super().__iadd__(When(rst_signal).then(Bits(self.width,0)).otherwise(rvalue))
-        #else:
-    #    return self
 
     @property
     def verilog_def(self):
@@ -350,10 +345,16 @@ class Bits(Constant):
         if isinstance(width_or_string,int):
             self.__width = width_or_string
             self.__value = value
+            self.__is_string = True
         elif isinstance(width_or_string,str):
             self.__width,self.__value = self._slove_wid_val_from_str(width_or_string)
+            self.__is_string = False
         else:
-            raise Exception('Input is not String or Int')
+            #raise Exception('Input is not String or Int')
+            raise ErrConstInWrong(self,width_or_string)
+
+        if self.__value > (pow(2,self.__width)-1):
+            raise ErrBitsValOverflow('The input bit width %s of %s does not match the value %s, and the value is greater than the upper limit.' % (self.__width,GetClsNameFromObj(self),self.__value))
 
     def _slove_wid_val_from_str(self,string):
         mb = re.match('([0-9]+)(\'[bB])([01_]+)'        ,string)
@@ -370,9 +371,8 @@ class Bits(Constant):
             width = int(mh.group(1))
             value = int(mh.group(3).replace('_',''),16)
         else:
-            raise Exception()
-        if value > (pow(2,width)-1):
-            raise ArithmeticError('Overflow:%s' % string)
+            raise ErrBitsInvalidStr('"%s" is not a legal string and cannot be decoded as bit width and value' % string)
+
         return width,value
 
     @property
@@ -404,8 +404,6 @@ class Bits(Constant):
         raise NotImplementedError
 
     def __eq__(self,other):
-        #print(self,other)
-        #print(self.width,other.width)
         return True if type(self) == type(other) and self.width == other.width else False
 
     def __str__(self):
@@ -529,9 +527,6 @@ class IOGroup(GroupVar):
     def verilog_assignment(self) -> str:
         return reduce(concat,[x.verilog_assignment for x in self.io_list],[])
 
-  
-
-
     @property
     def verilog_def(self):
         return reduce(concat,[x.verilog_def for x in self.io_list],[])
@@ -543,8 +538,6 @@ class IOGroup(GroupVar):
     @property
     def verilog_inst(self):
         return reduce(concat,[x.verilog_inst for x in self.io_list],[])
-
-
 
     def reverse(self):
         reverse = IOGroup()
@@ -558,12 +551,6 @@ class Expression(Value):
 
     def __init__(self):
         super().__init__()
-
-    # def check_lvalue(self,op:Value):
-    #     if not op.is_lvalue:
-    #         raise ArithmeticError('Input %s can not be a Left Value.' % type(op))
-
-
 
     @property
     def op_str(self):
@@ -655,23 +642,24 @@ class WhenExpression(AlwaysCombExpression):
     def when(self,val: Value):
         # operate struct check
         if self._next_is_when == False : raise ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "otherwise".')
+        
         # input value check
         self.check_rvalue(val)
         if val.attribute != UInt(1)    : raise ErrLogicSigAttrWrong('"when" need a boolean rhs as input.',Value)
 
-        self._next_is_when = True
+        self._next_is_when = False
         self._condition_list.append(val)
         return self
 
     def then(self,val:Value):
         # operate struck check
-        if self._next_is_when == False      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
+        if self._next_is_when == True      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
         # input value check
         self.check_rvalue(val)
         if self._attribute == None         : self._attribute = val.attribute
         if self.attribute != val.attribute : raise ErrAttrMismatch('In a When expression, all variables declared by "then" and "otherwise" must have the same attribute.',*self._action_list,self._otherwise_action)
 
-        self._next_is_when = False
+        self._next_is_when = True
         self._action_list.append(val)
         return self
     
@@ -1465,3 +1453,19 @@ def Or(opL,opR):
         # if self._closed:
         #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
         # return list(map(lambda x:"    "+x,str_list))
+            #return ['always @(%s) begin' %(" or ".join(sensitivity_list))] + \
+            #        self._rvalue.bstring(self.lstring,"<=") + \
+            #        ['end']
+
+            #sensitivity_list = ["%s %s" % ("negedge" if self._clk_active_neg else "posedge",self._aclk.rstring)]
+            #return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring)]
+
+    #def __iadd__(self,rvalue):
+    #    super().__iadd__(rvalue)
+        #if self._rst:
+        #    rst_signal = Not(self._rst) if self._rst_active_low else self._rst
+        #    super().__iadd__(When(rst_signal).then(Bits(self.width,0)).otherwise(rvalue))
+        #else:
+    #    return self
+
+    
