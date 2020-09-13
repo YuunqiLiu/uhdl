@@ -61,14 +61,8 @@ class Value(ValueRoot):
         self._des_lvalue = None
 
 
-<<<<<<< HEAD
     def check_rvalue(self,op:ValueRoot):
         if not isinstance(op,ValueRoot):    raise ErrExpInTypeWrong('',self,op)
-=======
-    def check_rvalue(self,op):
-        if not isinstance(op,Value):
-            raise ErrExpInTypeWrong('',self,op)
->>>>>>> 541d121dc1957c6de712e6b9d68c735523cc6384
 
     @property
     def _need_always(self):
