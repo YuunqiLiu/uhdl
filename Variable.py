@@ -592,7 +592,7 @@ class CaseExpression(AlwaysCombExpression):
             if self.__attr is not None and v.attribute != self.__attr:  
                 if self.__default is None: ErrAttrMismatch('All value in case_pair must have same attribute.',*self.__case_value)
                 else                     : ErrAttrMismatch('All value in case_pair must have same attribute.',*self.__case_value,self.__default)
-            self.__attr = v.attribute
+            self.__attr = v.attribute 
 
     @property
     def __case_key(self):
@@ -640,6 +640,25 @@ class WhenExpression(AlwaysCombExpression):
         self._has_otherwise     = False
     
     def when(self,val: Value):
+        '''
+        When is used to construct a complex selection circuit, and the input of when is 
+            
+            rhs I - UInt(1)
+            
+        The return value of when will only be calculated after the when selection circuit is completed. 
+        When the when selection circuit uses multiple "when", "then", "otherwise" completions, 
+        the attribute of its return value O will be the same as the input specified by "then" and "otherwise".
+        
+        A typical example is:
+
+            when(A).then(Ares).when(B).then(Bres).otherwise(DFTres)
+
+        The corresponding behavior of this selection circuit example it expresses is 
+
+            if(A)       O = Ares
+            else if(B)  O = Bres
+            else        O = DFTres
+        '''
         # operate struct check
         if self._next_is_when == False : raise ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "otherwise".')
         
@@ -654,6 +673,16 @@ class WhenExpression(AlwaysCombExpression):
     When = when
 
     def then(self,val:Value):
+        '''
+        Then is used to continue filling information into the complex selection circuit constructed by "When" and "EmptyWhen". 
+        The input of Then is 
+            
+            rhs I - UInt/SInt(i)
+            
+        which represents the output result of the selection circuit when the condition specified by "When" before "Then" is satisfied. 
+        
+        All output results specified by "Then" and "Otherwise" must have the same attributes.
+        '''
         # operate struck check
         if self._next_is_when == True      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
         # input value check
@@ -668,6 +697,16 @@ class WhenExpression(AlwaysCombExpression):
     Then = then
     
     def otherwise(self,val: Value):
+        '''
+        Otherwise is used to continue filling information into the complex selection circuit constructed by "When" and "EmptyWhen". 
+        The input of Otherwise is 
+            
+            rhs I - UInt/SInt(i)
+            
+        which represents the default result selected by the selection circuit when all the conditions specified by "When" are not established.
+        
+        All output results specified by "Then" and "Otherwise" must have the same attributes.
+        '''
         # operate struct check
         if self._has_otherwise == True      : raise ErrWhenExpOperateWrong('A when expression can only have one "otherwise".')
         # input value check
@@ -702,9 +741,53 @@ class WhenExpression(AlwaysCombExpression):
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
 
 def EmptyWhen():
+    '''
+    EmptyWhen is used to construct a complex selection circuit, it has no input.
+
+    EmptyWhen is only used to construct a temporarily empty selection circuit, 
+    which is used to allow users to use "when", "then", "otherwise" methods to complete the selection circuit
+    
+    A typical example is:
+
+        ew = EmptyWhen()
+        for cond,dat in CondDatPair:
+            ew = ew.when(cond).then(dat)
+        ew.otherwise(UInt(32,0))
+        O += ew
+
+    The behavior model corresponding to this typical example is:
+
+        if(cond0)       O = dat0
+        else if(cond1)  O = dat1
+        else if(cond2)  O = dat2
+        ..
+        else if（condN) O = datN
+        else            O = 32'b0
+
+        
+    '''
     return WhenExpression()
 
 def When(val):
+    '''
+    When is used to construct a complex selection circuit, and the input of when is 
+        
+        rhs I - UInt(1)
+        
+    The return value of when will only be calculated after the when selection circuit is completed. 
+    When the when selection circuit uses multiple "when", "then", "otherwise" completions, 
+    the attribute of its return value O will be the same as the input specified by "then" and "otherwise".
+    
+    A typical example is:
+
+        when(A).then(Ares).when(B).then(Bres).otherwise(DFTres)
+
+    The corresponding behavior of this selection circuit example it expresses is 
+
+        if(A)       O = Ares
+        else if(B)  O = Bres
+        else        O = DFTres
+    '''
     when = WhenExpression()
     return when.when(val)
 
@@ -748,8 +831,27 @@ class CutExpression(Expression):
         return self.op.rstring + '[%s:%s]' % ( self.hbound, self.lbound )
 
 
-def Cut(op,hbound,lbound):
-    CutExpression(op,hbound,lbound)
+def Cut(I,H,L):
+    '''
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(a)
+        int H - 0 <= H < I.width
+        int L - 0 <= L <= H
+    
+    as input to realize a circuit that intercepts the [H:L] bits of A.
+
+    The return value of this function is 
+    
+        rhs O - UInt/SInt(H-L+1)
+
+    The corresponding behavior model it expresses is 
+    
+        O = I[H:L]
+
+    The attribute type of the return value is the same as the input I.
+    '''
+    CutExpression(I,H,L)
 
 
 ################################################################################################################
@@ -910,18 +1012,30 @@ class CombineExpression(ListExpression):
     def rstring(self) -> str:
         return '{%s}' % ', '.join([op.rstring for op in self.op_list])
 
-def Combine(*op_list):
+def Combine(*rhs_list):
     '''
-    The circuit expressed by Combine takes N ops (a, b, c...n) with attributes 
-    (UInt(A),UInt(B),UInt(C)...UInt(N)) as input, 
-    and concatenates N ops as output. 
-
-    Its corresponding behavior model is: o = (a,b,c...n)
+    The circuit expressed by this function takes 
+        
+        rhs A - UInt/SInt(a)
+        rhs B - UInt/SInt(b)
+        ..
+        rhs N - UInt/SInt(n)
     
-    Return of Inverse function is a rhs whose attribute is UInt/SInt(A+B+C+..+N).
+    as input to realize a circuit that splices all input signals together.
+
+    The return value of this function is 
+    
+        rhs O - UInt/SInt(a+b+..+n)
+
+    The corresponding behavior model it expresses is 
+    
+        O = {A,B,...,N}
+
     The attribute type of the return value is the same as the input.
+    
+    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
-    return CombineExpression(*op_list)
+    return CombineExpression(*rhs_list)
 
 
 ################################################################################################################
@@ -970,15 +1084,20 @@ class InverseExpression(OneOpBitExpressionTest):
 
 def Inverse(I):
     '''
-    The circuit expressed by Inverse takes a rhs I 
-    with the attribute UInt(x) as input and returns a rhs O 
-    with the same attribute UInt(x) as the output. 
-
-    This circuit will reverse I bit by bit. 
-
-    Its corresponding behavior model is: O = ~I.
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(x)
     
-    Return of Inverse function is a rhs whose attribute is UInt/SInt(x).
+    as input to realize an inverter used to inverse each bit of I.
+
+    The return value of this function is 
+    
+        rhs O - UInt/SInt(x)
+
+    The corresponding behavior model it expresses is 
+    
+        O = ~ I
+
     The attribute type of the return value is the same as the input.
     '''
     return InverseExpression(I)
@@ -996,12 +1115,20 @@ class NotExpression(OneOpU1Expression):
 
 def Not(I):
     '''
-    The circuit expressed by Not takes a rhs I as input,
-    and outputs a value O whose attribute is UInt(1). 
-
-    Its corresponding behavior model is: if (I==0) o=1, else o=0. 
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(x)
     
-    Return of Not function is a rhs whose attribute is UInt(1).
+    as input to realize a comparator used to confirm whether I is not equal to 0.
+
+    The return value of this function is 
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if (I==0) O = 1'b1
+        else      O = 1'b0
     '''
     return NotExpression(I)
 
@@ -1016,8 +1143,23 @@ class SelfOrExpression(OneOpU1Expression):
     def op_str(self):
         return '|'
 
-def SelfOr(op):
-    return SelfOrExpression(op)
+def SelfOr(I):
+    '''
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(x)
+    
+    as input to realize a circuit that or all bits of the input signal.
+
+    The return value of this function is 
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        O = | I
+    '''
+    return SelfOrExpression(I)
 
 
 class SelfAndExpression(OneOpU1Expression):
@@ -1030,8 +1172,23 @@ class SelfAndExpression(OneOpU1Expression):
     def op_str(self):
         return '&'
 
-def SelfAnd(op):
-    return SelfAndExpression(op)
+def SelfAnd(I):
+    '''
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(x)
+    
+    as input to realize a circuit that and all bits of the input signal.
+
+    The return value of this function is 
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        O = & I
+    '''
+    return SelfAndExpression(I)
 
 
 class SelfXorExpression(OneOpU1Expression):
@@ -1045,6 +1202,21 @@ class SelfXorExpression(OneOpU1Expression):
         return '^'
 
 def SelfXor(op):
+    '''
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(x)
+    
+    as input to realize a circuit that xor all bits of the input signal.
+
+    The return value of this function is 
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        O = ^ I
+    '''
     return SelfXorExpression(op)
 
 
@@ -1058,8 +1230,23 @@ class SelfXnorExpression(OneOpU1Expression):
     def op_str(self):
         return '^~'
 
-def SelfXnor(op):
-    return SelfXnorExpression(op)
+def SelfXnor(I):
+    '''
+    The circuit expressed by this function takes 
+        
+        rhs I - UInt/SInt(x)
+    
+    as input to realize a circuit that xnor all bits of the input signal.
+
+    The return value of this function is 
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        O = ^~ I
+    '''
+    return SelfXnorExpression(I)
 
 ################################################################################################################
 #
@@ -1127,20 +1314,20 @@ class AddExpression(TwoSameOpExpression):
 
 def Add(A,B):
     '''
-    The circuit expressed by Add takes 
+    The circuit expressed by this function takes 
         
-        rhs A -- UInt/SInt(a)
-        rhs B -- UInt/SInt(b)
+        rhs A - UInt/SInt(a)
+        rhs B - UInt/SInt(b)
     
     as input to realize an adder that adds A and B. 
 
     The return value of this function is 
     
-        rhs O -- UInt/SInt(max(a,b)+1).
+        rhs O - UInt/SInt(max(a,b)+1)
 
     The corresponding behavior model it expresses is 
     
-        O = A + B. 
+        O = A + B
 
     The attribute type of the return value is the same as the input.
     
@@ -1165,20 +1352,20 @@ class SubExpression(TwoSameOpExpression):
 
 def Sub(A,B):
     '''
-    The circuit expressed by Add takes 
+    The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(a)
-        rhs B -- UInt/SInt(b)
+        rhs A - UInt/SInt(a)
+        rhs B - UInt/SInt(b)
 
     as input to realize a subtractor that subtracts A and B. 
 
     The return value of this function is
     
-        rhs O -- UInt/SInt(max(a,b)+1).
+        rhs O - UInt/SInt(max(a,b)+1)
     
     The corresponding behavior model it expresses is 
     
-        O = A - B. 
+        O = A - B
 
     The attribute type of the return value is the same as the input.
 
@@ -1205,18 +1392,18 @@ def Mul(A,B):
     '''
     The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(a)
-        rhs B -- UInt/SInt(b)
+        rhs A - UInt/SInt(a)
+        rhs B - UInt/SInt(b)
 
     as input to realize a multiplier that multiplies A and B. 
     
     The return value of this function is
     
-        rhs O -- UInt/SInt(a+b).
+        rhs O - UInt/SInt(a+b)
 
     The corresponding behavior model it expresses is
     
-        O = A * B. 
+        O = A * B
         
     The attribute type of the return value is the same as the input.
 
@@ -1245,18 +1432,18 @@ def BitOr(lhs,rhs):
     ''' 
     The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(x)
-        rhs B -- UInt/SInt(x)
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
     as input to realize a circuit that "or" A and B bit by bit.
 
     The return value of this function is
     
-        rhs O -- UInt/SInt(x).
+        rhs O - UInt/SInt(x)
 
     The corresponding behavior model it expresses is 
     
-        O = A | B. 
+        O = A | B
 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
@@ -1277,18 +1464,18 @@ def BitAnd(lhs,rhs):
     ''' 
     The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(x)
-        rhs B -- UInt/SInt(x)
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
     as input to realize a circuit that "and" A and B bit by bit.
 
     The return value of this function is
     
-        rhs O -- UInt/SInt(x).
+        rhs O - UInt/SInt(x)
 
     The corresponding behavior model it expresses is 
     
-        O = A & B. 
+        O = A & B
 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
@@ -1309,18 +1496,18 @@ def BitXor(lhs,rhs):
     ''' 
     The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(x)
-        rhs B -- UInt/SInt(x)
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
     as input to realize a circuit that "xor" A and B bit by bit.
 
     The return value of this function is
     
-        rhs O -- UInt/SInt(x).
+        rhs O - UInt/SInt(x)
 
     The corresponding behavior model it expresses is 
     
-        O = A ^ B. 
+        O = A ^ B
 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
@@ -1342,18 +1529,18 @@ def BitXnor(A,B):
     ''' 
     The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(x)
-        rhs B -- UInt/SInt(x)
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
     as input to realize a circuit that "xnor" A and B bit by bit.
 
     The return value of this function is
     
-        rhs O -- UInt/SInt(x).
+        rhs O - UInt/SInt(x)
 
     The corresponding behavior model it expresses is 
     
-        O = A ^~ B. 
+        O = A ^~ B
 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
@@ -1380,19 +1567,19 @@ def Equal(A,B):
     ''' 
     The circuit expressed by this function takes 
     
-        rhs A -- UInt/SInt(x)
-        rhs B -- UInt/SInt(x)
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
     as input to realize a comparator to compare whether A and B are equal.
 
     The return value of this function is
     
-        rhs O -- UInt(1)
+        rhs O - UInt(1)
 
     The corresponding behavior model it expresses is 
     
-        if(A==B) O = 1'b1;
-        else     O = 1'b0;
+        if(A==B) O = 1'b1
+        else     O = 1'b0
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
@@ -1409,12 +1596,27 @@ class NotEqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '!='
 
-def NotEqual(lhs,rhs):
+def NotEqual(A,B):
     ''' 
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
+    as input to realize a comparator to compare whether A and B are not equal.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if(A!=B) O = 1'b1
+        else     O = 1'b0
+ 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
-    return NotEqualExpression(lhs,rhs)
+    return NotEqualExpression(A,B)
 
 
 class LessEqualExpression(TwoSameOpU1Expression):
@@ -1427,12 +1629,27 @@ class LessEqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '<='
 
-def LessEqual(lhs,rhs):
+def LessEqual(A,B):
     ''' 
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
+    as input to realize a comparator to compare whether A is less equal than B.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if(A<=B) O = 1'b1
+        else     O = 1'b0
+ 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
-    return LessEqualExpression(lhs,rhs)
+    return LessEqualExpression(A,B)
 
 
 class GreaterEqualExpression(TwoSameOpU1Expression):
@@ -1447,7 +1664,22 @@ class GreaterEqualExpression(TwoSameOpU1Expression):
 
 def GreaterEqual(lhs,rhs):
     ''' 
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
+    as input to realize a comparator to compare whether A is greater equal than B.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if(A>=B) O = 1'b1
+        else     O = 1'b0
+ 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
     return GreaterEqualExpression(lhs,rhs)
@@ -1464,6 +1696,25 @@ class LessExpression(TwoSameOpU1Expression):
         return '<'
 
 def Less(opL,opR):
+    '''
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
+
+    as input to realize a comparator to compare whether A is less than B.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if(A<B) O = 1'b1
+        else    O = 1'b0
+ 
+    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
+    '''
     return LessExpression(opL,opR)
 
 
@@ -1479,7 +1730,22 @@ class GreaterExpression(TwoSameOpU1Expression):
 
 def Greater(opL,opR):
     ''' 
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
+    as input to realize a comparator to compare whether A is greater than B.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if(A>B) O = 1'b1
+        else    O = 1'b0
+ 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
     return GreaterExpression(opL,opR)
@@ -1498,7 +1764,22 @@ class AndExpression(TwoSameOpU1Expression):
 
 def And(opL,opR):
     ''' 
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
+    as input to realize a comparator to compare whether both A and B not equal to 0.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if((A!=0) && (B!=0)) O = 1'b1
+        else                 O = 1'b0
+ 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
     return AndExpression(opL,opR)
@@ -1516,168 +1797,22 @@ class OrExpression(TwoSameOpU1Expression):
 
 def Or(opL,opR):
     ''' 
+    The circuit expressed by this function takes 
+    
+        rhs A - UInt/SInt(x)
+        rhs B - UInt/SInt(x)
 
+    as input to realize a comparator to compare whether A or B not equal to 0.
+
+    The return value of this function is
+    
+        rhs O - UInt(1)
+
+    The corresponding behavior model it expresses is 
+    
+        if((A!=0) || (B!=0)) O = 1'b1
+        else                 O = 1'b0
+ 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
     return OrExpression(opL,opR)
-
-
-
-
-#==============================================================================================================================================
-        #str_list = ["if(%s)" % condition.rstring ]
-        #str_list.append("if(%s)"%(if_pair[0].rstring))
-           # str_list[0] += " begin"
-           # str_list += action.bstring(lstring,assign_method)
-           # str_list += ["end"]
-            #str_list[0] += " %s %s %s;"%(lstring,assign_method,action.rstring)
-        #if isinstance(action,AlwaysCombExpression):
-        #    str_list =  ["if(%s) begin" % condition.rstring]  +\
-        #                action.bstring(lstring,assign_method) +\
-        #                ["end"]
-        #else:
-            #str_list = ["if(%s) %s %s %s;" % (condition.rstring,lstring,assign_method,action.rstring)]
-            #str_list = ["if(%s) %s;" %(condition.rstring,action.bstring(lstring,assign_method))]
-
-            #if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
-            #if_block = self.get_string(lstring,assign_method,condition,action)
-
-    # def get_string(self,lstring,assign_method,condition,action):
-    #     str_list = action.bstring(lstring,assign_method)
-    #     str_list[0] = "if(%s) %s" % (condition.rstring,str_list[0])
-    #     return  str_list
-            # if isinstance(self._otherwise_action,AlwaysCombExpression):
-            #     str_list += ["else begin"]
-            #     str_list += self._otherwise_action.bstring(lstring,assign_method)
-            #     str_list += ["end"]
-            # else:
-            #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._otherwise_action.rstring))
-        #print(str_list)
-
-
-# class ConstExpression(Expression):
-# 
-#     def __init__(self,const,width):
-#         super(ConstExpression,self).__init__()
-#         self.const = const
-#         self.width = width
-# 
-#     @property
-#     def attribute(self) -> int:
-#         return self.width
-# 
-#     @property
-#     def string(self) -> str:
-#         return str(self.const)
-# 
-# def Const(const,width):
-#     return ConstExpression(const,width)
-
-# class WhenOperate(Enum):
-#     when                = 1
-#     then                = 2
-#     otherwise           = 3
-# 
-# class WhenState(Enum):
-#     # when_only           = 1
-#     then_only           = 1
-#     when_or_otherwise   = 2
-#     close               = 3
-# 
-# 
-#     self.__push_condition(val)
-# 
-#     self._state = WhenState.then_only
-# 
-#     def state_change(self,operate):
-#         if not isinstance(self._state,WhenState)  : raise Exception('Internal error')
-#         if not isinstance(operate,WhenOperate)      : raise Exception('Internal error.')
-# 
-#         # def when_only_state_change(operate):
-#         #     #when状态机的第一次跳转在构建函数中完成，任何错误都是内部错误
-#         #     if operate == WhenOperate.when      : return WhenState.then_only
-#         #     if operate == WhenOperate.then      : raise  Exception('Internal error.')
-#         #     if operate == WhenOperate.otherwise : raise  Exception('Internal error.')
-# 
-#         def then_only_state_change(operate):
-#             if operate == WhenOperate.when      : 
-#                 raise  ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "when".')
-#             if operate == WhenOperate.then      : return WhenState.when_or_otherwise
-#             if operate == WhenOperate.otherwise : 
-#                 raise  ErrWhenExpOperateWrong('A "when" has been added to the when expression.At this time, you can only use "then" complete the "when-then" pairing,but get a "otherwise".')
-# 
-#         def when_or_otherwise_state_change(operate):
-#             if operate == WhenOperate.when      : return WhenState.then_only
-#             if operate == WhenOperate.then      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
-#             if operate == WhenOperate.otherwise : return WhenState.close
-# 
-#         def close_state_change(operate):
-#             raise ErrWhenExpOperateWrong('This when expression has "otherwise" and closed,no longer accepts new "when-then" pairing.')
-# 
-#         state_change_lut = {
-#             #WhenState.when_only         :when_only_state_change         ,
-#             WhenState.then_only         :then_only_state_change         ,
-#             WhenState.when_or_otherwise :when_or_otherwise_state_change ,
-#             WhenState.close             :close_state_change             }
-#         self._state = state_change_lut[self._state](operate)
-
-#    def __push_condition(self,val: Value):
-#        pass
-#    
-#    def __push_action(self,val: Value,tail=False):
-#        pass
-
-            #str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
-            #str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
-        # def get_string(if_pair):
-        #     str_list = []
-        #     str_list.append("if(%s)"%(if_pair[0].rstring))
-        #     if isinstance(if_pair[1],IfExpression):
-        #         str_list[0] += " begin"
-        #         str_list += if_pair[1].bstring(lstring,assign_method)
-        #     else:
-        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
-        #     return  str_list
-        # str_list = []
-        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
-        #     if_block = get_string(if_pair)
-        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
-        #     str_list += if_block
-        # if self._closed:
-        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
-        # return list(map(lambda x:"    "+x,str_list))
-            #str_list.append('%s : %s %s %s;' % (k.rstring,lstring,assign_method,v.rstring))
-            #str_list.append('default: %s %s %s;' % (lstring,assign_method,self.__default.rstring))
-        # def get_string(if_pair):
-        #     str_list = []
-        #     str_list.append("if(%s)"%(if_pair[0].rstring))
-        #     if isinstance(if_pair[1],IfExpression):
-        #         str_list[0] += " begin"
-        #         str_list += if_pair[1].bstring(lstring,assign_method)
-        #     else:
-        #         str_list[0] += " %s %s %s;"%(lstring,assign_method,if_pair[1].rstring)
-        #     return  str_list
-        # str_list = []
-        # for index,if_pair in enumerate(zip(self._condition_list,self._action_list[0:len(self._condition_list)])):
-        #     if_block = get_string(if_pair)
-        #     if_block[0] = "else "+if_block[0] if index!=0 else if_block[0]
-        #     str_list += if_block
-        # if self._closed:
-        #     str_list.append("else %s %s %s;"%(lstring,assign_method,self._action_list[-1].rstring))
-        # return list(map(lambda x:"    "+x,str_list))
-            #return ['always @(%s) begin' %(" or ".join(sensitivity_list))] + \
-            #        self._rvalue.bstring(self.lstring,"<=") + \
-            #        ['end']
-
-            #sensitivity_list = ["%s %s" % ("negedge" if self._clk_active_neg else "posedge",self._aclk.rstring)]
-            #return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring)]
-
-    #def __iadd__(self,rvalue):
-    #    super().__iadd__(rvalue)
-        #if self._rst:
-        #    rst_signal = Not(self._rst) if self._rst_active_low else self._rst
-        #    super().__iadd__(When(rst_signal).then(Bits(self.width,0)).otherwise(rvalue))
-        #else:
-    #    return self
-
-    
