@@ -1,1 +1,3 @@
 # uhdl
+
+[Wiki](../../wiki)
