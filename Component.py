@@ -6,6 +6,7 @@ from .Root          import Root
 from .Variable      import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
 from .              import FileProcess
 
+from .CustConfig    import ComponentConfig
 
 class Component(Root):
 
@@ -13,6 +14,7 @@ class Component(Root):
         super().__init__()
         #super(Component,self).__init__()
         self.set_father_type(Component)
+        self.CFG         = ComponentConfig()
         self.__vfile     = None
         self.output_path = './%s' % self.module_name
 
@@ -36,6 +38,17 @@ class Component(Root):
     def get_circuit_list(self,iteration=False,has_self=True) -> list:
         return self.get_component_list(iteration,has_self) + self.get_io_list(iteration,has_self)
 
+    @property
+    def inter_sig_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,))]
+
+    @property
+    def input_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Input)]
+
+    @property
+    def output_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Output)]
 
     @property
     def param_list(self) -> list:
@@ -47,7 +60,11 @@ class Component(Root):
 
     @property
     def wire_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,))]
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Wire)]
+
+    @property
+    def reg_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Reg)]
 
     @property
     def io_list(self) -> list:
@@ -99,23 +116,22 @@ class Component(Root):
         str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');')
 
         # module wire define
-        str_list += ['','\t//Wire define for this module.']
-        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.wire_list]),';',';')
+        #str_list += ['','\t//Wire define for this module.']
+        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.inter_sig_list]),';',';')
 
-
-        str_list += ['','\t//Wire define for sub module.']
+        #str_list += ['','\t//Wire define for sub module.']
         str_list += self.__eol_append(self.__gen_aligned_signal_def(reduce(concat,[i.verilog_outer_def_as_list for i in self.component_list],[])),';',';')
 
         # combine logic assignment
-        str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
+        #str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
         str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in self.lvalue_list if i.verilog_assignment],[]),'')
 
         sub_io_list = reduce(concat,[i.outer_lvalue_list for i in self.component_list],[])
-        str_list += ['','\t//Wire this module connect to sub module.']
+        #str_list += ['','\t//Wire this module connect to sub module.']
         str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in sub_io_list if i.verilog_assignment],[]),'')
 
         # component inst
-        str_list += ['','\t//module inst.']
+        #str_list += ['','\t//module inst.']
         str_list += self.__eol_append(reduce(concat,[i.verilog_inst for i in self.component_list],[]),'')
 
         str_list += ['','endmodule']
@@ -162,6 +178,22 @@ class Component(Root):
             return result
         else:
             return []
+
+    def compile(self):
+        self.run_undriven_check()
+
+        pass
+
+    def run_undriven_check(self):
+        undriven_check_list = self.wire_list + self.reg_list + self.output_list
+
+        for i in undriven_check_list:
+            if i.rvalue == None:
+                raise Exception('%s is undriven' % i.name)
+
+
+    def run_struct_check(self):
+        pass
 
 def isComponent(obj):
     return isinstance(obj,Component)

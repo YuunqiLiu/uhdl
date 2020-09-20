@@ -14,6 +14,11 @@ class Variable(Root):
 
     def __init__(self):
         super().__init__()
+        self._rvalue = None
+
+    @property
+    def rvalue(self):
+        return self._rvalue
 
     @property
     def name_until_component(self):
