@@ -169,7 +169,40 @@ class WireSig(SingleVar):
 
 
 class Reg(SingleVar):
+    '''
+    Reg is used to define a register in Component in UHDL. 
 
+        UInt/SInt T          - type template
+        rhs       C          - UInt(1)
+        rhs       R          - UInt(1) (default=None)
+        bool      asyncrst   - True for aysnc reset,False for sync reset. (default=True)
+        bool      rstactive  - True for low active,False for high acitve. (default=False)
+        bool      clkactive  - True for negedge trigger,False for posedge trigger. (default=False)
+
+    Reg needs a UHDL constant as a template to declare its type. 
+    Its type will be consistent with the constants they use as templates.
+
+    Reg needs a signal as its clock.
+
+    Reg needs a signal as its reset.
+
+    Reg also requires 3 Boolean variables to determine the effective level of reset, reset mode, and clock trigger edge.
+
+    A typical example is
+
+            Reg(UInt(32),clk,rst)
+
+    This example describes a register whose clock is clk, reset is rst, and the type is an unsigned 32-bit integer.
+    And this register is triggered on the rising edge of the clock, using low level asynchronous reset.
+
+    Another example is
+
+            Reg(SInt(16),clk,rst,False,True,True)
+
+    This example describes a register whose clock is clk, reset is rst, and the type is an signed 16-bit integer.
+    And this register is triggered on the falling edge of the clock, using high level synchronous reset.
+
+    '''
     def __init__(self,template,clk:SingleVar,rst:SingleVar=None,async_rst:bool=True,rst_active_low:bool=True,clk_active_neg:bool=False):
         super().__init__(template=template)
         # input value check
@@ -224,7 +257,19 @@ class Reg(SingleVar):
 
 
 class Wire(WireSig):
+    '''
+    Wire is used to declare an internal signal wire in Component in UHDL.
 
+    Wire needs a UHDL constant as a template to declare its type. 
+    Its type will be consistent with the constants they use as templates.
+
+    A typical example is
+
+            Wire(UInt(32))
+
+    The type of Wire in this example will be consistent with UInt(32), 
+    that is, it is a 32-bit unsigned integer.
+    '''
     #=============================================================================================
     # RTL gen 
     #=============================================================================================
@@ -280,7 +325,19 @@ class IOSig(WireSig):
 
 
 class Input(IOSig):
+    '''
+    Input is used to declare an input port for Component in UHDL.
 
+    Input needs a UHDL constant as a template to declare its type. 
+    Its type will be consistent with the constants they use as templates.
+
+    A typical example is
+
+            Input(UInt(32))
+
+    The type of Input in this example will be consistent with UInt(32), 
+    that is, it is a 32-bit unsigned integer.
+    '''
     @property
     def is_lvalue(self):
         pass
@@ -302,7 +359,19 @@ class Input(IOSig):
 
 
 class Output(IOSig):
+    '''
+    Output is used to declare an output port for Component in UHDL.
 
+    Output needs a UHDL constant as a template to declare its type. 
+    Its type will be consistent with the constants they use as templates.
+
+    A typical example is
+
+            Output(UInt(32))
+
+    The type of Output in this example will be consistent with UInt(32), 
+    that is, it is a 32-bit unsigned integer.
+    '''
     @property
     def is_lvalue(self):
         pass
@@ -416,12 +485,65 @@ class Bits(Constant):
 
 
 class UInt(Bits):
+    '''
+    UInt is a constant type in UHDL.It is an unsigned integer.There are two ways to initialize UInt, the first required parameter is:
+    
+        int W - 0<W
+        int V - 0<=V<(2^W-1)   (default value is 0)
+    
+    A typical example is
 
+        UInt(4,5)
+
+    It stands for
+        
+        4'b0101
+
+    The second required parameter is:
+
+        string S - S must be a valid verilog value expression
+
+    A typical example is
+
+        UInt("4'b0101")
+
+    It stands for
+
+        4'b0101
+
+    '''
     def __str__(self):
         return "UInt(%s,%s) with py ID %s" % (self.width,self.value,id(self))
 
 class SInt(Bits):
+    '''
+    SInt is a constant type in UHDL.It is a signed integer.There are two ways to initialize SInt, the first required parameter is:
+    
+        int W - 0<W
+        int V - (-2^(W-1))<V<(2^(W-1)-1)   (default value is 0)
+    
+    A typical example is
 
+        SInt(4,-3)
+
+    It stands for
+        
+        4'b1101
+
+    The second required parameter is:
+
+        string S - S must be a valid verilog value expression
+
+    A typical example is
+
+        SInt("4'b1101")
+
+    It stands for
+
+        4'b1101
+
+    '''
+    #SInt的数值计算需要重新定义一下，Bits的只是对应了UInt
     def __str__(self):
         return "SInt(%s,%s) with py ID %s" % (self.width,self.value,id(self))
 
@@ -629,8 +751,46 @@ class CaseExpression(AlwaysCombExpression):
         str_list.append('endcase')
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
 
-def Case(select,case_pair,default):
-    return CaseExpression(select,case_pair,default)
+
+def Case(select,casepair,default):
+    """
+    Case is used to construct a parallel selection circuit,and the input of this function is
+
+        rhs select    - UInt/SInt(k)
+        rhs casepair  - list[(UInt/SInt(k),UInt/SInt(v)),...,(UInt/SInt(k),UInt/SInt(v))]
+        rhs default   - UInt/SInt(v)
+
+    select is the selection signal.
+
+    casepair is a lookup table organized in the form of a list.Each item in this list is a tuple.
+    This tuple is used to express a mapping relationship. 
+    When sel is equal to the first value in the tuple, the output value of the circuit is the second value of the tuple.
+
+    default is the default output value of the circuit. 
+    When sel does not match any item in the lookup table, the circuit will output this value.
+    
+    The return value of this function is 
+    
+        rhs O - UInt/SInt(v)
+
+    A typical example is:
+
+        O += Case(sel,[(UInt(2,0),Ares),(UInt(2,1),Bres)],DFTres)
+
+    The corresponding behavior of this selection circuit example it expresses is 
+
+        case(sel)
+        2'b0:       O = Ares
+        2'b1:       O = Bres
+        default:    O = DFTres
+        endcase
+
+    select and the first value of tuple in casepair list must have the same attributes, that is, all UInt(k) or SInt(k).
+
+    default and the second value of tuple in casepair list mus have the sam attributss, that is, all UInt(v) or SInt(v).
+    
+    """
+    return CaseExpression(select,casepair,default)
 
 
 class WhenExpression(AlwaysCombExpression):
@@ -656,7 +816,7 @@ class WhenExpression(AlwaysCombExpression):
         
         A typical example is:
 
-            when(A).then(Ares).when(B).then(Bres).otherwise(DFTres)
+            O += when(A).then(Ares).when(B).then(Bres).otherwise(DFTres)
 
         The corresponding behavior of this selection circuit example it expresses is 
 
