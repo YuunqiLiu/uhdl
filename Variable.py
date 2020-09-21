@@ -547,13 +547,6 @@ class SInt(Bits):
     def __str__(self):
         return "SInt(%s,%s) with py ID %s" % (self.width,self.value,id(self))
 
-
-
-
-
-
-
-
 class Parameter(SingleVar):
 
     @property
