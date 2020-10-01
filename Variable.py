@@ -28,14 +28,14 @@ class Variable(Root):
     def name_before_component(self):
         return self.name_before_not(Variable)
             
-    def __gt__(self,other):
-        if not isinstance(other,Variable):  raise ErrVarCmpWrong('%s should compare with a Variable,but get a %s.' % (GetClsNameFromObj(self),GetClsNameFromObj(other)))
-        if self.name == other.name:         raise ErrVarCmpWrong('Two Variable with the same name "%s" cannot be compared.' % (self.name))
-        if self.name > other.name:          return True
-        else:                               return False
-
-    def __lt__(self,other):
-        return not self.__gt__(other)
+    # def __gt__(self,other):
+    #     if not isinstance(other,Variable):  raise ErrVarCmpWrong('%s should compare with a Variable,but get a %s.' % (GetClsNameFromObj(self),GetClsNameFromObj(other)))
+    #     if self.name == other.name:         raise ErrVarCmpWrong('Two Variable with the same name "%s" cannot be compared.' % (self.name))
+    #     if self.name > other.name:          return True
+    #     else:                               return False
+# # 
+    # def __lt__(self,other):
+    #     return not self.__gt__(other)
 
     @property
     def attribute(self):
@@ -87,6 +87,45 @@ class Value(ValueRoot):
 
     def __mul__(self,rhs):
         return MulExpression(self,rhs)
+
+    def __and__(self,rhs):
+        return BitAndExpression(self,rhs)
+
+    def __or__(self,rhs):
+        return BitOrExpression(self,rhs)
+
+    def __xor__(self,rhs):
+        return BitXorExpression(self,rhs)
+
+    def __invert__(self):
+        return InverseExpression(self)
+
+    def __lshift__(self,rhs):
+        return LeftShift(self,rhs)
+
+    def __rshift__(self,rhs):
+        return RightShift(self,rhs)
+
+   # def __lt__(self,rhs):
+   #     return Less(self,rhs)
+# 
+   # def __le__(self,rhs):
+   #     return LessEqual(self,rhs)
+# 
+   # def __gt__(self,rhs):
+   #     return Greater(self,rhs)
+# 
+   # def __ge__(self,rhs):
+   #     return GreaterEqual(self,rhs)
+# 
+    # def __eq__(self,rhs):
+    #     return Equal(self,rhs)
+# 
+    # def __ne__(self,rhs):
+    #     return NotEqual(self,rhs)
+
+
+
 
     @property
     def is_lvalue(self) -> bool:
@@ -1434,6 +1473,39 @@ class TwoSameOpExpression(TwoOpExpression):
     def __init__(self,opL,opR):
         super().__init__(opL,opR)
         if opL.attribute != opR.attribute: raise ErrAttrMismatch('Can not "%s" Values with different attributes.' % self.op_name,opL.attribute,opR.attribute)
+
+
+class LeftShift(TwoOpExpression):
+    
+    @property
+    def attribute(self):
+        return self.opL.attribute
+
+    @property
+    def op_name(self):
+        return 'LeftShift(<<)'
+
+    @property
+    def op_str(self):
+        return '<<'
+
+
+class RightShift(TwoOpExpression):
+
+    @property
+    def attribute(self):
+        return self.opL.attribute
+
+    @property
+    def op_name(self):
+        return 'RightShift(>>)'
+
+    @property
+    def op_str(self):
+        return '>>'
+
+
+
 
 
 class TwoSameOpU1Expression(TwoSameOpExpression):
