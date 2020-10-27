@@ -28,9 +28,11 @@ class Mux_Nto1(Component):
 
         #常用逻辑定义为函数       
         def always_low(input_signal):
+            self.pre_inv_add  = Wire(UInt(vld_comb_width+1))
 
             input_inv = Inverse(input_signal)
-            return BitAnd(Add(input_inv,UInt(vld_comb_width,1))[vld_comb_width-1:0],input_signal)
+            self.pre_inv_add  += Add(input_inv,UInt(vld_comb_width,1))
+            return BitAnd(self.pre_inv_add[vld_comb_width-1:0],input_signal)
         
         #根据参数选择生成不同逻辑
         def priority_select(select):
@@ -40,13 +42,15 @@ class Mux_Nto1(Component):
             # 1 -> round robin
             elif select == 1:
                 self.pre_high     = Wire(UInt(vld_comb_width))
+                self.pre_add      = Wire(UInt(vld_comb_width+1))
                 self.pre_vld      = Wire(UInt(vld_comb_width)) 
                 self.pre_high_vld = Wire(UInt(vld_comb_width))
                 self.pre_low_vld  = Wire(UInt(vld_comb_width))
                 self.pre_priority = Reg(UInt(vld_comb_width,0),self.clk,self.rst_n)
 
                 pre_priority_inv  = Inverse(self.pre_priority)
-                self.pre_high     += BitOr(Add(pre_priority_inv,UInt(vld_comb_width,1))[vld_comb_width-1:0],self.pre_priority)
+                self.pre_add      += Add(pre_priority_inv,UInt(vld_comb_width,1))
+                self.pre_high     += BitOr(self.pre_add[vld_comb_width-1:0],self.pre_priority)
                 self.pre_high_vld += BitAnd(self.pre_high,self.vld_src)
                 self.pre_low_vld  += BitAnd(Inverse(self.pre_high),self.vld_src)
 

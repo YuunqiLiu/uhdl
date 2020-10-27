@@ -18,10 +18,12 @@ module Mux_Nto1 (
 	input            rdy_dst );
 	reg  [3:0] priority    ;
 	wire [3:0] pre_high    ;
+	wire [4:0] pre_add     ;
 	wire [3:0] pre_vld     ;
 	wire [3:0] pre_high_vld;
 	wire [3:0] pre_low_vld ;
 	reg  [3:0] pre_priority;
+	wire [4:0] pre_inv_add ;
 	assign rdy_src0 = (priority[0:0] && rdy_dst);
 	
 	assign rdy_src1 = (priority[1:1] && rdy_dst);
@@ -43,11 +45,13 @@ module Mux_Nto1 (
 	end
 	
 	always @(*) begin
-	    if((|pre_high_vld)) priority = (((~pre_high_vld) + 4'b1)[3:0] & pre_high_vld);
-	    else priority = (((~pre_high_vld) + 4'b1)[3:0] & pre_high_vld);
+	    if((|pre_high_vld)) priority = (pre_inv_add[3:0] & pre_high_vld);
+	    else priority = (pre_inv_add[3:0] & pre_high_vld);
 	end
 	
-	assign pre_high = (((~pre_priority) + 4'b1)[3:0] | pre_priority);
+	assign pre_high = (pre_add[3:0] | pre_priority);
+	
+	assign pre_add = ((~pre_priority) + 4'b1);
 	
 	assign pre_high_vld = (pre_high & {vld_src0, vld_src1, vld_src2, vld_src3});
 	
@@ -57,6 +61,8 @@ module Mux_Nto1 (
 	    if(~rst_n) pre_priority <= 4'b0;
 	    else pre_priority <= {priority[2:0], priority[3:3]};
 	end
+	
+	assign pre_inv_add = ((~pre_high_vld) + 4'b1);
 	
 
 endmodule
