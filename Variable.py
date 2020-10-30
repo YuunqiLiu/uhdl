@@ -51,6 +51,36 @@ class Variable(Root):
         if self.attribute != rvalue.attribute:  raise ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
         object.__setattr__(self,'_rvalue',rvalue)
         object.__setattr__(rvalue,'_des_lvalue',self)
+        
+        self_module = self.father
+        if isinstance(rvalue,CutExpression):
+            rvalue_module = rvalue.op.father
+        elif isinstance(rvalue,Expression):
+            rvalue_module = self_module
+        else:
+            rvalue_module = rvalue.father
+        # visible and direction check
+        if self_module is rvalue_module:
+            if not isinstance(self,(Reg,Wire,Output,Inout)):
+                raise ErrUHDLStr("rvalue(%s) is not a instance of Reg or Wire or Output."%(rvalue))
+            pass
+        elif self_module.father is rvalue_module:
+            if not isinstance(self,(Input,Inout)):
+                raise ErrUHDLStr("lvalue(%s) is not an output port of submodule.."%(self))
+        elif self_module is rvalue_module.father:
+            if not isinstance(self,(Reg,Wire,Output,Inout)):
+                raise ErrUHDLStr("lvalue(%s) is not a instance of Reg or Wire or Output."%(self))
+            if not isinstance(rvalue,Output):
+                raise ErrUHDLStr("rvalue(%s) is not an output port of submodule."%(rvalue))
+        elif self_module.father is rvalue_module.father:
+            if not isinstance(self,Input):
+                raise ErrUHDLStr("lvalue(%s) is not a instance of Input."%(self))
+            if not isinstance(rvalue,Output):
+                raise ErrUHDLStr("rvalue(%s) is not an a instance of Output."%(rvalue))
+        else:
+            raise ErrUHDL("can't connect two signal cross multi layers")
+
+
         return self
     #raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
 
