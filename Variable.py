@@ -74,7 +74,12 @@ class Value(ValueRoot):
         return (self._rvalue and isinstance(self._rvalue,AlwaysCombExpression)) or isinstance(self,Reg)
 
     def __getitem__(self,s:slice):
-        return CutExpression(self,s.start,s.stop)
+        if isinstance(s,slice):
+            return CutExpression(self,s.start,s.stop)
+        elif isinstance(s,int):
+            return CutExpression(self,s,s)
+        else:
+            return None
 
     def Cut(self,hbound:int,lbound:int):
         return CutExpression(self,hbound,lbound)
