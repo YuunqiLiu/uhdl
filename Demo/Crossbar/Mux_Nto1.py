@@ -1,4 +1,7 @@
-from uhdl            import *
+# pylint: disable =unused-wildcard-import
+from ...core import *
+# pylint: enable  =unused-wildcard-import
+
 class Mux_Nto1(Component):
     
     def __init__(self,src_num,dat_width,priority_sel):

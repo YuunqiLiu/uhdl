@@ -1,4 +1,7 @@
-from uhdl            import *
+# pylint: disable =unused-wildcard-import
+from ...core import *
+# pylint: enable  =unused-wildcard-import
+
 import math
 
 class Mux_1toM(Component):

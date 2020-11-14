@@ -1,9 +1,13 @@
-from uhdl            import *
-import math
-import Mux_1toM
-import Mux_Nto1
+# pylint: disable =unused-wildcard-import
+from ...core import *
+# pylint: enable  =unused-wildcard-import
 
-class Crossbar_NtoM(Component):
+import math
+
+from . import Mux_1toM
+from . import Mux_Nto1
+
+class Crossbar(Component):
     
     def __init__(self,src_num,dst_num,dat_width,priority_sel):
         super().__init__()
@@ -50,7 +54,9 @@ class Crossbar_NtoM(Component):
                 Mux_Nto1_lst[i].clk += self.clk
                 Mux_Nto1_lst[i].rst_n += self.rst_n
         
+
+
 #实例化Top模块
-inst_Crossbar_NtoM = Crossbar_NtoM(4,2,4,1) # src number, dst number, data width, priority select :0->always low 1->RR
+#inst_Crossbar_NtoM = Crossbar(4,2,4,1) # src number, dst number, data width, priority select :0->always low 1->RR
 #生成verilog
-inst_Crossbar_NtoM.generate_verilog(True)
+#inst_Crossbar_NtoM.generate_verilog(True)
