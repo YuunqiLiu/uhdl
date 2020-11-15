@@ -1,12 +1,66 @@
-import os
-from operator       import concat
-from functools      import reduce
+import os,inspect
+from operator           import concat
+from functools          import reduce
+from collections.abc    import Iterable
 
-from .Root          import Root
-from .Variable      import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
-from .              import FileProcess
+from .Root              import Root
+from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
+from .                  import FileProcess
 
-from .CustConfig    import ComponentConfig
+from .CustConfig        import ComponentConfig
+
+
+UHDL_GLOBAL_PARAM_DICT = {}
+
+class PARAM_CONTAINER(object):
+
+    def _caculate_name(self):
+        self.UHDL_MODU_NAME_POST_FIX = self.__caculate_iterable_kv(self.__dict__)
+        self.UHDL_MODU_NAME_POST_FIX = self.UHDL_MODU_NAME_POST_FIX[2:-2]
+
+    def __caculate_iterable_kv(self,iterable_param):
+        res = 'S'
+        for k,v in iterable_param.items():
+            if    isinstance(v,(int,float,bool,str,)):
+                res = res + '_%s_%s' %(k,v)
+            elif  isinstance(v,(dict,)):
+                res = res + '_%s_%s' %(k,self.__caculate_iterable_kv(v))
+            elif  isinstance(v,Iterable):
+                res = res + '_%s_%s' %(k,self.__caculate_iterable_varg(v))
+            else:
+                ID = id(v)
+                if ID in UHDL_GLOBAL_PARAM_DICT:
+                    seq = UHDL_GLOBAL_PARAM_DICT[ID]
+                    UHDL_GLOBAL_PARAM_DICT[ID] = seq + 1
+                else:
+                    seq = 0
+                    UHDL_GLOBAL_PARAM_DICT[ID] = 0
+                res = res + '_%s_%s%s' %(k,type(v).__name__,str(seq))
+        res = res + '_E'
+        return res
+
+    def __caculate_iterable_varg(self,iterable_param):
+        res = 'S'
+        for item in iterable_param:
+            if    isinstance(item,(int,float,bool,str,)):
+                res = res + '_' + str(item)
+            elif  isinstance(item,(dict,)):
+                res = res + '_%s' % self.__caculate_iterable_kv(item)
+            elif  isinstance(item,Iterable): 
+                res = res + '_%s' % self.__caculate_iterable_varg(item)
+            else:
+                ID = id(item)
+                if ID in UHDL_GLOBAL_PARAM_DICT:
+                    seq = UHDL_GLOBAL_PARAM_DICT[ID]
+                    UHDL_GLOBAL_PARAM_DICT[ID] = seq + 1
+                else:
+                    seq = 0
+                    UHDL_GLOBAL_PARAM_DICT[ID] = 0
+                res = res + '_' + type(item) + str(seq)
+        res = res + '_E'
+        return res
+
+
 
 class Component(Root):
 
@@ -16,11 +70,17 @@ class Component(Root):
         self.set_father_type(Component)
         self.CFG         = ComponentConfig()
         self.__vfile     = None
+        self._PARAM      = PARAM_CONTAINER()
+        self.__subclass_init_param_get()
         self.output_path = './%s' % self.module_name
 
     @property
+    def PARAM(self):
+        return self._PARAM
+
+    @property
     def module_name(self):
-        return type(self).__name__
+        return type(self).__name__+'_'+self.PARAM.UHDL_MODU_NAME_POST_FIX
 
     @property
     def vfile(self):
@@ -194,6 +254,47 @@ class Component(Root):
 
     def run_struct_check(self):
         pass
+
+
+
+    def __subclass_init_param_get(self):
+        # Get locals
+        trace_num = self.__class__.__mro__.index(Component)
+        frame = inspect.currentframe()
+        for i in range(trace_num+1):
+            frame = frame.f_back
+        local = frame.f_locals
+
+        # Get Var name
+        argspec = inspect.getfullargspec(self.__init__)
+
+        # Set Param
+        args = argspec.args
+        args.remove('self')
+
+        for arg in args:
+            setattr(self._PARAM,arg,local[arg])
+
+        for arg in argspec.kwonlyargs:
+            setattr(self._PARAM,arg,local[arg])
+
+        if argspec.varargs != None:
+            setattr(self._PARAM,argspec.varargs,local[argspec.varargs])
+
+        if argspec.varkw != None:
+            setattr(self._PARAM,argspec.varkw,local[argspec.varkw])
+
+        self._PARAM._caculate_name()
+
+
+
+
+
+
+
+
+
+
 
 def isComponent(obj):
     return isinstance(obj,Component)
