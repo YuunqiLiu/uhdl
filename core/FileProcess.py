@@ -1,5 +1,7 @@
 import os,shutil
 
+from .ExtensibleFileObject import ExtensibleFileObject
+
 def file_list_dedup(file_list):
     new_list=list(set(file_list))
     new_list.sort(key=file_list.index)
@@ -27,8 +29,14 @@ def create_file(path,text):
     if os.path.exists(path):
         os.remove(path)
 
-    with open(path,'w') as fp:
-        fp.write('\n'.join(text))
+
+    fo = ExtensibleFileObject(keyword='UHDL')
+    fo.write('\n'.join(text))
+    fo.write_version('1.0.1')
+    fo.save(path=path)
+
+    #with open(path,'w') as fp:
+    #    fp.write('\n'.join(text))
 
     #fp.close()
     #fp = open(path,'w')
