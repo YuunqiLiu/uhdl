@@ -75,7 +75,7 @@ class Root(object):
     #     return '_'.join(args_without_none)
 
     def full_name(self):
-        return '' if self.father is None else join_name(self.father.full_name,self.name)
+        return '' if self.father is None else join_name(self.father.full_name(), self.name)
         
         # if self.father is None:
         #     return ''

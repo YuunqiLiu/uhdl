@@ -77,8 +77,8 @@ class Variable(Root):
                 raise ErrUHDLStr("lvalue(%s) is not a instance of Input."%(self))
             if not isinstance(rvalue,Output):
                 raise ErrUHDLStr("rvalue(%s) is not an a instance of Output."%(rvalue))
-        else:
-            raise ErrUHDL("can't connect two signal cross multi layers")
+        #else:
+        #    raise ErrUHDL("can't connect two signal cross multi layers")
 
 
         return self
@@ -431,6 +431,9 @@ class Input(IOSig):
     def reverse(self):
         return Output(self.attribute)
 
+    def template(self):
+        return Input(self.attribute)
+
 
 class Output(IOSig):
     '''
@@ -465,6 +468,8 @@ class Output(IOSig):
     def reverse(self):
         return Input(self.attribute)
 
+    def template(self):
+        return Output(self.attribute)
 
 class Inout(IOSig):
 
@@ -474,6 +479,10 @@ class Inout(IOSig):
 
     def reverse(self):
         return Inout(self.attribute)
+
+    def template(self):
+        return Inout(self.attribute)
+
 
 
 class Constant(WireSig):
@@ -1083,7 +1092,36 @@ def Cut(I,H,L):
 
     The attribute type of the return value is the same as the input I.
     '''
-    CutExpression(I,H,L)
+    return CutExpression(I,H,L)
+
+
+
+
+class FanoutExpression(Expression):
+
+    def __init__(self, op:Value, fanout:int):
+        super().__init__()
+        self._op = op
+        self._fanout = fanout
+
+    @property
+    def attribute(self):
+        return type(self._op.attribute)(self._op.attribute.width * self._fanout)
+
+    @property
+    def string(self) -> str:
+        return '(%s{%s})' % (self._fanout,self._op.string)
+
+    @property
+    def rstring(self) -> str:
+        return self.string
+
+
+
+def Fanout(A,F):
+
+    return FanoutExpression(A, F)
+
 
 
 ################################################################################################################
@@ -1104,12 +1142,12 @@ class ListExpression(Expression):
     @property
     def string(self) -> str:
         tmp_op_str = ' %s '%self.op_str
-        return '(%s)' %  tmp_op_str.join([self.string for op in self.op_list])
+        return '(%s)' %  tmp_op_str.join([op.string for op in self.op_list])
     
     @property
     def rstring(self) -> str:
         tmp_op_str = ' %s '%self.op_str
-        return '(%s)' %  tmp_op_str.join([self.string for op in self.op_list])
+        return '(%s)' %  tmp_op_str.join([op.string for op in self.op_list])
 
 
 class MultiListExpression(ListExpression):
@@ -1302,6 +1340,9 @@ class OneOpBitExpressionTest(OneOpExpression):
     @property
     def attribute(self):
         return self._op.attribute
+
+
+
 
 
 class InverseExpression(OneOpBitExpressionTest):

@@ -11,7 +11,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable',
             'SelfXnor','SelfXor','SelfAnd','SelfOr','Inverse','Not',
             'Combine','BitXnorList','BitXorList','BitOrList','BitAndList','OrList','AndList',
 
-            'Cut','Case','when','When','EmptyWhen',
+            'Cut','Case','when','When','EmptyWhen','Fanout',
             'Circuit','get_circuit','set_circuit',
             'when']
 
@@ -25,7 +25,7 @@ from .Variable      import BitXnor,BitXor,BitAnd,BitOr
 from .Variable      import Add,Sub,Mul
 from .Variable      import SelfXnor,SelfXor,SelfAnd,SelfOr,Inverse,Not
 from .Variable      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,OrList,AndList
-from .Variable      import Case,Cut,When,EmptyWhen
+from .Variable      import Case,Cut,When,EmptyWhen,Fanout
 
 
 
