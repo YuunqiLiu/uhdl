@@ -1,5 +1,5 @@
 
-__all__ = [ 'assign','smart_assign','LCA','linkable',
+__all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'Assign','SmartAssign','Linkable',
             'join_name',
             'Component',
@@ -15,7 +15,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable',
             'Circuit','get_circuit','set_circuit',
             'when']
 
-from .Function      import Assign,SmartAssign,LCA,Linkable
+from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack
 from .BasicFunction import join_name
 from .Component     import Component
 
@@ -41,3 +41,5 @@ linkable     = Linkable
 
 
 from .Exception import *
+
+

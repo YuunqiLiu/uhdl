@@ -29,7 +29,7 @@ class DWrap(Component):
             self.expose_io(mst.get_io('out'))
 
 
-        for src,dst in self.network.G.edges():
+        for src, dst in self.network.G.edges():
             src_dst_index = src.get_dst_index(dst)
             dst_src_index = dst.get_src_index(src)
 

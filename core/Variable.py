@@ -37,6 +37,9 @@ class Variable(Root):
     # def __lt__(self,other):
     #     return not self.__gt__(other)
 
+    #def __str__(self):
+    #    return "343"
+
     @property
     def attribute(self):
         raise NotImplementedError
@@ -94,6 +97,9 @@ class Value(ValueRoot):
         super().__init__()
         self._rvalue     = None
         self._des_lvalue = None
+
+    def __str__(self):
+        return "%s %s" % (super().__str__(),self.attribute)
 
 
     def check_rvalue(self,op:ValueRoot):

@@ -33,3 +33,23 @@ def Linkable(op1,op2):
     else:
         return False
 
+
+
+
+def Unpack(rhs,*lhs_list):
+    lhs_width_sum = sum([x.attribute.width for x in lhs_list])
+    rhs_width = rhs.attribute.width
+
+    if rhs_width != lhs_width_sum:
+        print('RHS:%s' % rhs)
+        print('LHS list with width sum:%s' % lhs_width_sum)
+        for lhs in lhs_list:
+            print('    %s' % lhs)
+        raise Exception('lhs list width sum not equal rhs.')
+
+    ptr = 0
+    for lhs in reversed(lhs_list):
+        width = lhs.attribute.width
+        lhs += rhs[ptr+width-1:ptr]
+        ptr = ptr+width
+        print(lhs.attribute.width)

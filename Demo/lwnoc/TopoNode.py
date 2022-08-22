@@ -17,10 +17,22 @@ class Node(object):
     id_width = 8
 
     def __init__(self) -> None:
-        self.global_id_list = []
+        self.global_master_id_list = []
+        self.global_slave_id_list = []
         self.layer = 0
         self.dst_list = []
         self.src_list = []
+        self.network = None
+
+
+    @property
+    def master_id_width(self):
+        return self.network.master_id_width
+
+    @property
+    def slave_id_width(self):
+        return self.network.slave_id_width
+
 
     def add_dst(self, dst):
         if len(self.dst_list) > self.dst_num_limit:
@@ -40,6 +52,11 @@ class Node(object):
         return self.dst_list.index(dst)
 
 
+    def report(self):
+        print('Node %s(%s):' % (self, type(self)))
+        print('    master_id_list : %s' % self.global_master_id_list)
+        print('    slave_id_list  : %s' % self.global_slave_id_list)
+
 
 #########################################################
 #
@@ -47,15 +64,23 @@ class Node(object):
 class Slave(Node):
 
     color = 'blue'
-    slave_id = 0
+    cls_slave_id_cnt = 0
     dst_num_limit = 1
     src_num_limit = 0
 
     def __init__(self) -> None:
         super().__init__()
-        self.inst_id = self.slave_id
-        Slave.slave_id += 1
+        self.slave_id = Slave.cls_slave_id_cnt
+        Slave.cls_slave_id_cnt += 1
+        self.global_slave_id_list = [self.slave_id]
+
+    # @property
+    # def global_slave_id_list(self):
+    #     return [self.slave_id]
     
+    @property
+    def inst_id(self):
+        return self.slave_id
 
     @property
     def name(self) -> str:
@@ -70,6 +95,22 @@ class Slave(Node):
     def create_vinst(self):
         self.vinst = DSlv(self)
         return self.vinst
+
+
+class SlaveAxi(Slave):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.addr_width = 32
+        self.data_width = 32
+        self.address_range_list = []
+
+
+    def create_vinst(self):
+        self.vinst = DSlvAxi(self)
+        return self.vinst
+
+
 
 #########################################################
 #
@@ -100,6 +141,17 @@ class Master(Node):
         self.vinst = DMst(self)
         return self.vinst
 
+
+
+class MasterAxi(Master):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.address_range_list = []
+
+    def create_vinst(self):
+        self.vinst = DMstAxi(self)
+        return self.vinst
 
 #########################################################
 #
