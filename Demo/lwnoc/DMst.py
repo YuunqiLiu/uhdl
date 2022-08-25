@@ -108,7 +108,7 @@ class DMstAxi(Component):
 
         self.in0_ack_vld += self.out_b_vld
         self.in0_ack_pld += Combine(self.out_b_id[master_axi_id_width-slave_id_width-1:0], self.out_b_resp)
-        self.in0_ack_mst_id = UInt(master_id_width, self.node.master_id)
+        self.in0_ack_mst_id += UInt(master_id_width, self.node.master_id)
         self.in0_ack_slv_id += self.out_b_id[master_axi_id_width-1:master_axi_id_width-slave_id_width]
         self.in0_ack_head += UInt(1, 1)
         self.in0_ack_tail += UInt(1, 1)

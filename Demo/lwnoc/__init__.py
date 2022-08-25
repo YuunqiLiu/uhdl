@@ -2,6 +2,7 @@ from .DSlv   import *
 from .DMst   import *
 from .DArb   import *
 from .DDec   import *
+from .DDecDual  import *
 from .DWrap  import *
 from .CmnArb import *
 

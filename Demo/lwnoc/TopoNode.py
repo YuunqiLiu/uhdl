@@ -3,6 +3,8 @@ from .DMst import *
 from .DSlv import *
 from .DArb import *
 from .DDec import *
+from .DDecDual import *
+from .DArbDual import *
 
 #########################################################
 #
@@ -206,6 +208,12 @@ class Arbiter(Switch):
         self.vinst = DArb(self)
         return self.vinst
 
+class ArbiterDual(Arbiter):
+
+    def create_vinst(self):
+        self.vinst = DArbDual(self)
+        return self.vinst
+
 
 #########################################################
 #
@@ -223,6 +231,7 @@ class Decoder(Switch):
         super().__init__()
         self.inst_id = self.decoder_id
         Decoder.decoder_id += 1
+        print('init a decoder')
 
     @property
     def name(self) -> str:
@@ -238,3 +247,13 @@ class Decoder(Switch):
         self.vinst = DDec(self)
         return self.vinst
 
+
+    def report(self):
+        super().report()
+        print('    dst_list: %s' % self.dst_list)
+
+class DecoderDual(Decoder):
+
+    def create_vinst(self):
+        self.vinst = DDecDual(self)
+        return self.vinst

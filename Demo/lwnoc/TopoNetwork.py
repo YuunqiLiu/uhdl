@@ -50,6 +50,7 @@ class Network(object):
             self.switch_list.append(node)
         else:
             raise Exception()
+        print('add %s to node_list' % node)
         self.node_list.append(node)
         node.network = self
         self.G.add_node(node)
