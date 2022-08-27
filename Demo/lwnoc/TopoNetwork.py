@@ -23,7 +23,9 @@ class Network(object):
 
 
         self.req_pld_width = self.data_width + int(self.data_width/8) + self.slave_axi_id_width + self.user_width + self.addr_width
+        self.r_req_pld_width = self.slave_axi_id_width + self.user_width + self.addr_width
         self.ack_pld_width = self.slave_axi_id_width + 2 + self.ack_user_width
+        self.r_ack_pld_width = self.slave_axi_id_width + 2 + self.ack_user_width + self.data_width
         
         self.slv_list = []
         self.mst_list = []
