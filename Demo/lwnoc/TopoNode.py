@@ -5,6 +5,7 @@ from .DArb import *
 from .DDec import *
 from .DDecDual import *
 from .DArbDual import *
+from .Credit import *
 
 #########################################################
 #
@@ -14,32 +15,97 @@ class Node(object):
     color = 'gray'
     dst_num_limit = 128
     src_num_limit = 128
-    src_width = 32
-    dst_width = 32
-    id_width = 8
+    #src_width = 32
+    #dst_width = 32
+    #id_width = 8
+
+    
 
     def __init__(self) -> None:
-        self.global_master_id_list = []
-        self.global_slave_id_list = []
+        self.reachable_tgt_id_list = []
+        self.reachable_src_id_list = []
         self.layer = 0
-        self.dst_list = []
+        self.tgt_list = []
         self.src_list = []
+
+        self._port_tgt_id_mapping_dict = {}
+        self._port_src_id_mapping_dict = {}
         self.network = None
+        self.data_width = 32
+
+    @property
+    def src_id_width(self):
+        return self.network.src_id_width
+
+    @property
+    def tgt_id_width(self):
+        return self.network.tgt_id_width
+
+    @property
+    def txn_id_width(self):
+        return self.network.txn_id_width
 
 
     @property
-    def master_id_width(self):
-        return self.network.master_id_width
+    def w_req_pld_width(self):
+        return self.data_width + int(self.data_width/8) + self.user_width + self.addr_width
 
     @property
-    def slave_id_width(self):
-        return self.network.slave_id_width
+    def r_req_pld_width(self):
+        return self.user_width + self.addr_width
+
+    @property
+    def w_ack_pld_width(self):
+        return 2
+
+    @property
+    def r_ack_pld_width(self):
+        return 2 + self.data_width + 1
+
+
+
+    # @property
+    # def r_req_pld_width(self):
+    #     return self.network.r_req_pld_width
+# 
+    # @property
+    # def w_req_pld_width(self):
+    #     return self.network.w_req_pld_width
+# 
+    # @property
+    # def r_ack_pld_width(self):
+    #     return self.network.r_ack_pld_width
+# 
+    # @property
+    # def w_ack_pld_width(self):
+    #     return self.network.w_ack_pld_width
+
+    @property
+    def user_width(self):
+        return self.network.user_width
+
+    @property
+    def addr_width(self):
+        return self.network.addr_width
+
+    #@property
+    #def data
+
+
+
+    # @property
+    # def master_id_width(self):
+    #     return self.network.master_id_width
+
+    # @property
+    # def slave_id_width(self):
+    #     return self.network.slave_id_width
 
 
     def add_dst(self, dst):
-        if len(self.dst_list) > self.dst_num_limit:
+        if len(self.tgt_list) > self.dst_num_limit:
             raise Exception()
-        self.dst_list.append(dst)
+        self.tgt_list.append(dst)
 
     def add_src(self, src):
         if len(self.src_list) > self.src_num_limit:
@@ -53,11 +119,30 @@ class Node(object):
     def get_dst_index(self, dst):
         return self.dst_list.index(dst)
 
+    @property
+    def name(self) -> str:
+        raise NotImplementedError()
+
 
     def report(self):
         print('Node %s(%s):' % (self, type(self)))
-        print('    master_id_list : %s' % self.global_master_id_list)
-        print('    slave_id_list  : %s' % self.global_slave_id_list)
+        print('    reacheable tgt_id_list : %s' % self.reachable_tgt_id_list)
+        print('    reacheable src_id_list : %s' % self.reachable_src_id_list)
+
+
+    def _generate_local_port_id_mapping(self):
+        self.network.logger.info('[%s] start local port id mapping generation.' % self.name)
+        self.network.logger.info('[%s] tgt id mapping:' % self.name)
+        for i, tgt in enumerate(self.tgt_list):
+            self.network.logger.info('forward port %s connect to %s, which has reachable tgt id list %s' % (i, tgt.name, tgt.reachable_tgt_id_list))
+            self._port_tgt_id_mapping_dict[tgt] = tgt.reachable_tgt_id_list
+        self.network.logger.info('[%s] tgt id mapping dict: %s' %(self.name ,self._port_tgt_id_mapping_dict))
+
+        self.network.logger.info('[%s] src id mapping:' % self.name)
+        for i, src in enumerate(self.src_list):
+            self.network.logger.info('backward port %s connect to %s, which has reachable src id list %s' % (i, src.name, src.reachable_src_id_list))
+            self._port_src_id_mapping_dict[src] = src.reachable_src_id_list
+        self.network.logger.info('[%s] src id mapping dict: %s' %(self.name ,self._port_src_id_mapping_dict))
 
 
 #########################################################
@@ -66,15 +151,16 @@ class Node(object):
 class Slave(Node):
 
     color = 'blue'
-    cls_slave_id_cnt = 0
+    cls_src_id_cnt = 0
     dst_num_limit = 1
     src_num_limit = 0
 
     def __init__(self) -> None:
         super().__init__()
-        self.slave_id = Slave.cls_slave_id_cnt
-        Slave.cls_slave_id_cnt += 1
-        self.global_slave_id_list = [self.slave_id]
+        Slave.cls_src_id_cnt += 1
+        self.src_id = Slave.cls_src_id_cnt
+        self.reachable_src_id_list = [self.src_id]
+        #self.data_width = 128
 
     # @property
     # def global_slave_id_list(self):
@@ -82,7 +168,7 @@ class Slave(Node):
     
     @property
     def inst_id(self):
-        return self.slave_id
+        return self.src_id
 
     @property
     def name(self) -> str:
@@ -101,10 +187,11 @@ class Slave(Node):
 
 class SlaveAxi(Slave):
 
-    def __init__(self) -> None:
+    def __init__(self, data_width= 32) -> None:
         super().__init__()
-        self.addr_width = 32
-        self.data_width = 32
+        #self.addr_width = 32
+        #self.data_width = 32
+        self.data_width = data_width
         self.address_range_list = []
 
 
@@ -120,14 +207,25 @@ class SlaveAxi(Slave):
 class Master(Node):
 
     color = 'red'
-    master_id = 0
+    cls_tgt_id_cnt = 0
     dst_num_limit = 0
     src_num_limit = 1
 
     def __init__(self) -> None:
         super().__init__()
-        self.inst_id = self.master_id
-        Master.master_id += 1
+        Master.cls_tgt_id_cnt += 1
+        self.tgt_id = Master.cls_tgt_id_cnt
+
+        self.reachable_tgt_id_list = [self.tgt_id]
+        #self.data_width = 128
+
+
+
+    @property
+    def inst_id(self):
+        return self.tgt_id
+
+
 
     @property
     def name(self) -> str:
@@ -167,6 +265,8 @@ class Switch(Node):
         super().__init__()
         self.inst_id = self.switch_id
         Switch.switch_id += 1
+        self.data_width = 128
+
 
     @property
     def name(self) -> str:
@@ -187,12 +287,13 @@ class Arbiter(Switch):
     arbiter_id = 0
     dst_num_limit = 1
     src_num_limit = 128
-    pld_width = 32
+    #pld_width = 32
 
     def __init__(self) -> None:
         super().__init__()
         self.inst_id = self.arbiter_id
         Arbiter.arbiter_id += 1
+
 
     @property
     def name(self) -> str:
@@ -205,7 +306,7 @@ class Arbiter(Switch):
         return self.vinst
 
     def create_vinst(self):
-        self.vinst = DArb(self)
+        self.vinst = DArb2(self,32)
         return self.vinst
 
 class ArbiterDual(Arbiter):
@@ -244,7 +345,7 @@ class Decoder(Switch):
         return self.vinst
 
     def create_vinst(self):
-        self.vinst = DDec(self)
+        self.vinst = DDec2(self, 32)
         return self.vinst
 
 
@@ -257,3 +358,41 @@ class DecoderDual(Decoder):
     def create_vinst(self):
         self.vinst = DDecDual(self)
         return self.vinst
+
+
+
+#########################################################
+#
+#########################################################
+
+class Adapter(Node):
+
+
+    adapter_id = 0
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inst_id = self.adapter_id
+        Adapter.adapter_id += 1
+
+        self.data_width = 128
+
+    @property
+    def name(self) -> str:
+        return 'Adapt%s' % self.inst_id
+
+    def __str__(self) -> str:
+        return 'Adapt%s' % self.inst_id
+
+    def get_vinst(self):
+        return self.vinst
+
+    # def create_vinst(self):
+    #     self.vinst = DDec(self)
+    #     return self.vinst
+
+  #class Handshake2Credit(Adapter):
+
+      #def create_vinst(self):
+          #self.vinst = DHdsk2Cdt()(self)
+          #return self.vinst

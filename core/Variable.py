@@ -7,6 +7,7 @@ from copy       import copy
 from .Root      import Root
 import string
 
+
 from .Exception     import *
 from .InternalTool  import *
 
@@ -86,6 +87,70 @@ class Variable(Root):
 
         return self
     #raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
+
+    #@property
+    #def name(self) -> str:
+    #    from .Component import Component
+    #    return self.name_until_not(Component)
+
+class Bundle(Root):
+
+
+    def __init__(self):
+        super().__init__()
+        self._rvalue = None
+        self._var_list = []
+
+    @property
+    def rvalue(self):
+        return self._rvalue
+
+    @property
+    def name_until_component(self):
+        return self.name_until_not(Bundle)
+
+    @property
+    def name_before_component(self):
+        return self.name_before_not(Bundle)
+
+    @property
+    def attribute(self):
+        raise NotImplementedError
+
+    def __setattr__(self, name, value):
+        if isinstance(value,(Bundle,Variable)):
+            self._var_list.append(value)
+        super().__setattr__(name, value)
+
+    def _setattr_hook(self):
+        from .Component import Component
+        component_father = self.father_until(Component)
+        for value in self._var_list:
+            setattr(component_father, value.name_before(Component), value)
+
+    def as_list(self, exclude=None):
+        exclude_list = [] if exclude is None else exclude
+        res_list = []
+
+
+        exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
+        #print(exclude_list)
+        #print( self._var_list)
+        for var in self._var_list:
+            #print('var', var.name)
+            if var.name not in exclude_list:
+                res_list.append(var)
+        return res_list
+
+
+    #@property
+    #def name(self) -> str:
+    #    from .Component import Component
+    #    return self.name_until_not(Component)
+
+    
+
+
 
 
 class ValueRoot():
@@ -1160,7 +1225,8 @@ class MultiListExpression(ListExpression):
 
     def __init__(self, *op_list):
         super().__init__(*op_list)
-        if len(op_list) < 2:    raise ErrListExpNeedMultiOp('',op_list)
+        # 1 param still work.
+        #if len(op_list) < 2:    raise ErrListExpNeedMultiOp('',op_list)
 
     @property
     def attribute(self):

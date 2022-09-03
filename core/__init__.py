@@ -11,13 +11,13 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'SelfXnor','SelfXor','SelfAnd','SelfOr','Inverse','Not',
             'Combine','BitXnorList','BitXorList','BitOrList','BitAndList','OrList','AndList',
 
-            'Cut','Case','when','When','EmptyWhen','Fanout',
+            'Cut','Case','when','When','EmptyWhen','Fanout','BitMask',
             'Circuit','get_circuit','set_circuit',
-            'when']
+            'when','Bundle']
 
-from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack
-from .BasicFunction import join_name
 from .Component     import Component
+from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask
+from .BasicFunction import join_name
 
 from .Variable      import Input,Output,Inout,UInt,SInt,IOGroup,Parameter,Wire,Reg
 from .Variable      import And,Or,Greater,Less,GreaterEqual,LessEqual,NotEqual,Equal
@@ -26,6 +26,7 @@ from .Variable      import Add,Sub,Mul
 from .Variable      import SelfXnor,SelfXor,SelfAnd,SelfOr,Inverse,Not
 from .Variable      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,OrList,AndList
 from .Variable      import Case,Cut,When,EmptyWhen,Fanout
+from .Variable      import Bundle
 
 
 

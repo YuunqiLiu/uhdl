@@ -3,6 +3,7 @@ from ...core import *
 # pylint: enable  =unused-wildcard-import
 
 from .CmnArb import CmnAgeMtx
+from .BasciHdsk import BasicHdsk
 
 class DArb(Component):
 
@@ -17,8 +18,8 @@ class DArb(Component):
 
 
         #pld_width        = node.network.pld_width
-        master_id_width  = node.master_id_width
-        slave_id_width   = node.slave_id_width
+        master_id_width  = node.tgt_id_width
+        slave_id_width   = node.src_id_width
 
         # Create Input
         self.clk = Input(UInt(1))
@@ -134,3 +135,125 @@ class DArb(Component):
                 # self.bit_sel_list[i] += self.vld_list[i]
 #             else:
                 # self.bit_sel_list[i] += And(self.vld_list[i], Not(self.bit_sel_list[i-1]))
+
+
+class DArb2(Component):
+
+    def __init__(self, node, pld_width, id_type='mst'):
+        super().__init__()
+        self.node = node
+
+        if id_type == 'mst':    used_list = self.node.dst_list
+        else:                   used_list = self.node.src_list
+
+        num = len(used_list)
+
+        bundle_template = BasicHdsk(node.src_id_width, node.tgt_id_width, node.txn_id_width, pld_width)
+
+        # Create IO
+        self.clk = Input(UInt(1))
+        self.rst_n = Input(UInt(1))
+        self.in_list = [self.create('in%s' % i, bundle_template.copy_reverse()) for i in range(num)]
+        self.out = bundle_template.copy()
+
+        # Arbiter
+        self.msg_update_en = Wire(UInt(num))
+        self.msg_update_en += Combine(*[AndList(var_in.vld, var_in.rdy, var_in.head) for var_in in self.in_list])
+
+        self.arb_msg = CmnAgeMtx(num)
+        self.arb_msg.update_en += self.msg_update_en
+
+
+
+
+
+        self.arb_unlock = Wire(UInt(1))
+        self.arb_unlock += AndList(self.out.vld, self.out.rdy, self.out.tail)
+        self.arb_lock = Wire(UInt(1))
+        self.arb_lock += AndList(self.out.vld, self.out.rdy, self.out.head)
+
+        self.arb_lock_reg = Reg(UInt(1), self.clk, self.rst_n)
+        self.arb_lock_reg += when(self.arb_lock).then(UInt(1, 1)).when(self.arb_unlock).then(UInt(1, 0))
+
+        #for i in range(num):
+        #self.msg_update_en_list.append(AndList(self.get('in%s_vld' % i), self.get('in%s_rdy' % i), self.get('in%s_head' % i)))
+        #self.msg_update_en_list = 
+
+
+
+        self.bit_sel_list = []
+        for i in range(num):
+            age_bit_masked_list = []
+            for j in range(num):
+                age_bit_masked_list.append(And(self.arb_msg.get('age_bits_row_%s' % i)[j], self.get('in%s_vld' % j)))
+            bit_sel = self.create('bit_sel_%s' % i, Wire(UInt(1)))
+
+            if len(age_bit_masked_list) > 1:    bit_sel += OrList(*age_bit_masked_list)
+            else:                               bit_sel += age_bit_masked_list[0]
+            self.bit_sel_list.append(bit_sel)
+
+
+
+        self.bit_sel_reg_list = []
+        for i in range(num):
+            bit_set_reg = self.create('bit_set_reg_%s' % i, Reg(UInt(1), self.clk, self.rst_n))
+            bit_set_reg += when(self.arb_lock).then(self.bit_sel_list[i])
+            self.bit_sel_reg_list.append(bit_set_reg)
+
+        self.bit_sel_locked_list = []
+        for i in range(num):
+            bit_set_locked = self.create('bit_set_locked_%s' % i, Wire(UInt(1))) 
+            bit_set_locked += when(self.arb_lock_reg).then(self.bit_sel_reg_list[i]).otherwise(self.bit_sel_list[i])
+            self.bit_sel_locked_list.append(bit_set_locked)
+
+
+
+        in_list_exclude_rdy = [var_in.as_list(exclude=['rdy']) for var_in in self.in_list]
+
+        out_exclude_rdy = self.out.as_list(exclude=['rdy'])
+
+
+
+
+
+        # data mux
+        for i, out_slice in enumerate(out_exclude_rdy):
+            in_slice_list_masked = [BitMask(in_exclude_rdy[i], self.bit_sel_locked_list[in_idx]) for in_idx, in_exclude_rdy in enumerate(in_list_exclude_rdy)]
+            out_slice += BitOrList(*in_slice_list_masked)
+
+        for i, var_in in enumerate(self.in_list):
+            var_in.rdy += And(self.bit_sel_locked_list[i], self.out.rdy)
+
+
+        #   # Output payload merge
+        #   vld_masked_list     = []
+        #   pld_masked_list     = []
+        #   mst_id_masked_list  = []
+        #   slv_id_masked_list  = []
+        #   head_masked_list    = []
+        #   tail_masked_list    = []
+        #   for i in range(num):
+            #   vld_masked_list.append(And(self.vld_list[i], self.bit_sel_locked_list[i]))
+            #   head_masked_list.append(And(self.head_list[i], self.bit_sel_locked_list[i]))
+            #   tail_masked_list.append(And(self.tail_list[i], self.bit_sel_locked_list[i]))
+            #   pld_masked_list.append(BitAnd(self.pld_list[i], Fanout(self.bit_sel_locked_list[i], pld_width)))
+            #   mst_id_masked_list.append(BitAnd(self.mst_id_list[i], Fanout(self.bit_sel_locked_list[i], master_id_width)))
+            #   slv_id_masked_list.append(BitAnd(self.slv_id_list[i], Fanout(self.bit_sel_locked_list[i], slave_id_width)))
+
+            #   self.rdy_list[i] += And(self.bit_sel_locked_list[i], self.out0_rdy)
+
+
+        #   if num>1:
+            #   self.out0_vld    += BitOrList(*vld_masked_list)
+            #   self.out0_head   += BitOrList(*head_masked_list)
+            #   self.out0_tail   += BitOrList(*tail_masked_list)
+            #   self.out0_pld    += BitOrList(*pld_masked_list)
+            #   self.out0_mst_id += BitOrList(*mst_id_masked_list)
+            #   self.out0_slv_id += BitOrList(*slv_id_masked_list)
+        #   else:
+            #   self.out0_vld    += vld_masked_list[0]
+            #   self.out0_head   += head_masked_list[0]
+            #   self.out0_tail   += tail_masked_list[0]
+            #   self.out0_pld    += pld_masked_list[0]
+            #   self.out0_mst_id += mst_id_masked_list[0]
+            #   self.out0_slv_id += slv_id_masked_list[0]

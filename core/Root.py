@@ -38,9 +38,13 @@ class Root(object):
         if isinstance(value,Root):
             value.set_name(name)
             value.set_father(self)
+            value._setattr_hook()
         object.__setattr__(self,name,value)
             #print(name,'  ',value)
             #print(value.name)
+
+    def _setattr_hook(self):
+        pass
 
     #=============================================================================================
     # father get

@@ -1,7 +1,7 @@
 # pylint: disable =unused-wildcard-import
 from ...core import *
 # pylint: enable  =unused-wildcard-import
-
+from .BasciHdsk import BasicHdsk
 
 class DDec(Component):
 
@@ -15,8 +15,8 @@ class DDec(Component):
         num = len(used_list)
 
         #pld_width        = node.network.pld_width
-        master_id_width  = node.master_id_width
-        slave_id_width   = node.slave_id_width
+        master_id_width  = node.tgt_id_width
+        slave_id_width   = node.src_id_width
 
         # Create Output
         self.vld_list    = [self.create('out%s_vld'     % i, Output(UInt(1)))               for i in range(num)]
@@ -73,6 +73,72 @@ class DDec(Component):
 
 
 
+
+
+
+class DDec2(Component):
+
+    def __init__(self, node, pld_width, id_type='mst'):
+        super().__init__()
+        self.node = node
+
+        if id_type == 'mst':    used_list = self.node.dst_list
+        else:                   used_list = self.node.src_list
+
+        num = len(used_list)
+
+        #pld_width        = node.network.pld_width
+        tgt_id_width  = node.tgt_id_width
+        src_id_width   = node.src_id_width
+
+        bundle_template = BasicHdsk(node.src_id_width, node.tgt_id_width, node.txn_id_width, pld_width)
+
+        self.out_list   = [self.create('out%s' % i, bundle_template.copy()) for i in range(num)]
+        self.din = bundle_template.copy_reverse()
+
+        # bin2onehot
+        self.rdy_masked_list = []
+        for i, dst in enumerate(used_list):
+            id_hit_list = []
+            for gid in dst.global_master_id_list:
+                id_hit = self.create("id_hit_p%s_id%s" % (i,gid), Wire(UInt(1)))
+
+                if id_type == 'mst':    id_hit += Equal(self.din.tgt_id, UInt(tgt_id_width, gid))
+                else:                   id_hit += Equal(self.din.src_id, UInt(src_id_width, gid))
+
+                id_hit_list.append(id_hit)
+
+            sel_bit = self.create("sel_bit%s" % i, Wire(UInt(1)))
+            sel_bit += BitOrList(*id_hit_list)
+
+            self.rdy_masked_list.append(And(sel_bit, self.out_list[i].rdy))
+            
+            vld = self.out_list[i].vld
+            vld += And(sel_bit, self.din.vld)
+
+
+        # good
+        rdy = self.din.rdy
+        rdy += OrList(*self.rdy_masked_list)
+
+        # bad
+        self.din.rdy += OrList(*self.rdy_masked_list)
+
+
+        out_exclude_vld_rdy = [var.as_list(exclude=['rdy', 'vld']) for var in self.out_list]
+        in_exlucde_vld_rdy = self.din.as_list(exclude=['rdy', 'vld'])
+
+        for out_bundle in out_exclude_vld_rdy:
+            for i, out_slice in enumerate(out_bundle):
+                out_slice += in_exlucde_vld_rdy[i]
+
+        
+
+            # self.head_list[i]   += self.in0_head
+            # self.tail_list[i]   += self.in0_tail
+            # self.pld_list[i]    += self.in0_pld
+            # self.mst_id_list[i] += self.in0_mst_id
+            # self.slv_id_list[i] += self.in0_slv_id
 
 
         #for dst in self.node.dst_list:

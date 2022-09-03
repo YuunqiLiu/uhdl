@@ -1,6 +1,6 @@
 
 #from .Value import Value
-from .Variable import Input,Output,Value
+from .Variable import *
 from functools import reduce
 from .Root      import Root
 
@@ -53,3 +53,7 @@ def Unpack(rhs,*lhs_list):
         lhs += rhs[ptr+width-1:ptr]
         ptr = ptr+width
         print(lhs.attribute.width)
+
+
+def BitMask(vector, mask):
+    return BitAnd(vector, Fanout(mask, vector.attribute.width))
