@@ -3,22 +3,152 @@
 from .Variable import *
 from functools import reduce
 from .Root      import Root
+from .Component import *
 
 
 
-def Assign(opl:Value,opr:Value):
+
+def _smart_assign_core(op1, op2, outer=False):
+    op1_component = op1.father_until(Component)
+    op2_component = op2.father_until(Component)
+
+    if (not isinstance(op1, (Input, Output))) or (not isinstance(op2, (Input, Output))):
+        raise ErrUHDLStr("smart assign only used for IO connection, at least one of op1 %s and op2 %s should be Input or Output." % (op1, op2))
+
+    if op1_component.father is op2_component:
+        # op1 in low level
+        #    ----------------------
+        #    |                    |
+        #    |    ---------       |
+        #    |    |       |       |
+        #    |    |  (op1)-  (op2)|
+        #    |    |       |       |
+        #    |    ---------       |
+        #    |                    |
+        #    ----------------------
+        #
+        #   case1:
+        #       op1 is Input, op1 should be lhs.
+        #   case2:
+        #       op1 is Output, op1 should be rhs.
+        #
+        if isinstance(op1, Input):
+            op1 += op2
+        elif isinstance(op1, Output):
+            op2 += op1
+        else:
+            raise ErrUHDLStr("op1 %s's father Component is in op2 %s's father Component, so op1 should be Input or Output." % (op1, op2))
+
+    elif op2_component.father is op1_component:
+        # op2 in low level
+        #    ----------------------
+        #    |                    |
+        #    |    ---------       |
+        #    |    |       |       |
+        #    |    |  (op2)-  (op1)|
+        #    |    |       |       |
+        #    |    ---------       |
+        #    |                    |
+        #    ----------------------
+        #
+        #   case1:
+        #       op2 is Input, op2 should be lhs.
+        #   case2:
+        #       op2 is Output, op2 should be rhs.
+        #
+        if isinstance(op2, Input):
+            op2 += op1
+        elif isinstance(op2, Output):
+            op1 += op2
+        else:
+            raise ErrUHDLStr("op2 %s's father Component is in op1 %s's father Component, so op2 should be Input or Output." % (op2, op1))
+
+    elif op1_component.father is op2_component.father:
+        # same level connection.
+        #    ------------------   ------------------
+        #    |                |   |                |
+        #    |           (op1)-   -(op2)           |
+        #    |                |   |                |
+        #    ------------------   ------------------
+        if isinstance(op1, Input) and isinstance(op2, Output):
+            op1 += op2
+        elif isinstance(op2, Input) and isinstance(op1, Output):
+            op2 += op1
+        else:
+            raise ErrUHDLStr("op1 %s's father Component and op2 %s's father Component are in same Component, so op1 and op2 should have different direction." % (op1, op2))
+
+    elif op1_component is op2_component:
+        if outer:
+            # inter connection.
+            #    -------------------
+            #    |                 |
+            #    -(op1)-------(op2)-
+            #    |                 |
+            #    -------------------
+            if isinstance(op1, Input) and isinstance(op2, Output):
+                op2 += op1
+            elif isinstance(op2, Input) and isinstance(op1, Output):
+                op1 += op2
+            else:
+                raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
+        else:
+            # outer connection.
+            #    -------------------
+            #    |                 |
+            #  ---(op1)-------(op2)---
+            #  | |                 | |
+            #  | ------------------- |
+            #  |                     |
+            #  -----------------------
+            if isinstance(op1, Input) and isinstance(op2, Output):
+                op1 += op2
+            elif isinstance(op2, Input) and isinstance(op1, Output):
+                op2 += op1
+            else:
+                raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
+    else:
+        # illegal hier.
+        raise ErrUHDLStr("The hier where op1 %s and op2 %s are located cannot be legally connected." % (op1, op2))
+
+
+
+
+def Assign(opl:Value, opr:Value):
     tmp = opl
     tmp += opr
 
-def SmartAssign(op1:Value,op2:Value,outer=False):
-    if isinstance(op1,Input):
-        if hasattr(op2,'father') and op1.father is op2.father and outer: Assign(op1,op2)
-        else:                                                            Assign(op2,op1)
-    elif isinstance(op2,Input):
-        if hasattr(op1,'father') and op1.father is op2.father and outer: Assign(op2,op1)
-        else:                                                            Assign(op1,op2)
-    else:
-        raise Exception()
+def SmartAssign(op1, op2, outer=False):
+
+    if isinstance(op1, Bundle) and isinstance(op2, Bundle):
+        op1_list = op1.as_list()
+        op2_list = op2.as_list()
+
+        for opl, opr in zip(op1_list, op2_list):
+            SmartAssign(opl, opr, outer)
+
+    elif isinstance(op1, list) and isinstance(op2, list):
+
+        for opl, opr in zip(op1, op2):
+            SmartAssign(opl, opr, outer)
+
+    elif isinstance(op1, Variable) and isinstance(op2, Variable):
+        _smart_assign_core(op1, op2, outer)
+
+
+
+
+    # if not hasattr(op1, 'father'): # father until ?
+    #     raise Exception('%s doesn\'t in a module.')
+
+
+    # if isinstance(op1,Input):
+    #     if hasattr(op2,'father') and op1.father is op2.father and outer: Assign(op1,op2)
+    #     else:                                                            Assign(op2,op1)
+    # elif isinstance(op2,Input):
+    #     if hasattr(op1,'father') and op1.father is op2.father and outer: Assign(op2,op1)
+    #     else:                                                            Assign(op1,op2)
+    # else:
+    #     raise Exception()
 
 def LCA(*node_list):
     tree_list = [x.ancestors() for x in node_list]
@@ -52,7 +182,7 @@ def Unpack(rhs,*lhs_list):
         width = lhs.attribute.width
         lhs += rhs[ptr+width-1:ptr]
         ptr = ptr+width
-        print(lhs.attribute.width)
+        #print(lhs.attribute.width)
 
 
 def BitMask(vector, mask):

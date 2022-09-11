@@ -15,11 +15,7 @@ class Node(object):
     color = 'gray'
     dst_num_limit = 128
     src_num_limit = 128
-    #src_width = 32
-    #dst_width = 32
-    #id_width = 8
-
-    
+    vinst_class = Exception
 
     def __init__(self) -> None:
         self.reachable_tgt_id_list = []
@@ -27,11 +23,17 @@ class Node(object):
         self.layer = 0
         self.tgt_list = []
         self.src_list = []
-
         self._port_tgt_id_mapping_dict = {}
         self._port_src_id_mapping_dict = {}
         self.network = None
-        self.data_width = 32
+
+
+    def get_vinst(self):
+        return self.vinst
+
+    def create_vinst(self):
+        self.vinst = self.vinst_class(self)
+        return self.vinst
 
     @property
     def src_id_width(self):
@@ -45,41 +47,6 @@ class Node(object):
     def txn_id_width(self):
         return self.network.txn_id_width
 
-
-    @property
-    def w_req_pld_width(self):
-        return self.data_width + int(self.data_width/8) + self.user_width + self.addr_width
-
-    @property
-    def r_req_pld_width(self):
-        return self.user_width + self.addr_width
-
-    @property
-    def w_ack_pld_width(self):
-        return 2
-
-    @property
-    def r_ack_pld_width(self):
-        return 2 + self.data_width + 1
-
-
-
-    # @property
-    # def r_req_pld_width(self):
-    #     return self.network.r_req_pld_width
-# 
-    # @property
-    # def w_req_pld_width(self):
-    #     return self.network.w_req_pld_width
-# 
-    # @property
-    # def r_ack_pld_width(self):
-    #     return self.network.r_ack_pld_width
-# 
-    # @property
-    # def w_ack_pld_width(self):
-    #     return self.network.w_ack_pld_width
-
     @property
     def user_width(self):
         return self.network.user_width
@@ -87,19 +54,6 @@ class Node(object):
     @property
     def addr_width(self):
         return self.network.addr_width
-
-    #@property
-    #def data
-
-
-
-    # @property
-    # def master_id_width(self):
-    #     return self.network.master_id_width
-
-    # @property
-    # def slave_id_width(self):
-    #     return self.network.slave_id_width
 
 
     def add_dst(self, dst):
@@ -116,8 +70,8 @@ class Node(object):
     def get_src_index(self, src):
         return self.src_list.index(src)
 
-    def get_dst_index(self, dst):
-        return self.dst_list.index(dst)
+    def get_tgt_index(self, dst):
+        return self.tgt_list.index(dst)
 
     @property
     def name(self) -> str:
@@ -154,6 +108,7 @@ class Slave(Node):
     cls_src_id_cnt = 0
     dst_num_limit = 1
     src_num_limit = 0
+    vinst_class = DSlv
 
     def __init__(self) -> None:
         super().__init__()
@@ -177,28 +132,34 @@ class Slave(Node):
     def __str__(self) -> str:
         return 'S%s' % self.inst_id
 
-    def get_vinst(self):
-        return self.vinst
 
-    def create_vinst(self):
-        self.vinst = DSlv(self)
-        return self.vinst
 
 
 class SlaveAxi(Slave):
 
+    vinst_class = DSlvAxi
+
     def __init__(self, data_width= 32) -> None:
         super().__init__()
-        #self.addr_width = 32
-        #self.data_width = 32
         self.data_width = data_width
         self.address_range_list = []
 
 
-    def create_vinst(self):
-        self.vinst = DSlvAxi(self)
-        return self.vinst
+    @property
+    def w_req_pld_width(self):
+        return self.data_width + int(self.data_width/8) + self.user_width + self.addr_width
 
+    @property
+    def r_req_pld_width(self):
+        return self.user_width + self.addr_width
+
+    @property
+    def w_ack_pld_width(self):
+        return 2
+
+    @property
+    def r_ack_pld_width(self):
+        return 2 + self.data_width + 1
 
 
 #########################################################
@@ -210,6 +171,8 @@ class Master(Node):
     cls_tgt_id_cnt = 0
     dst_num_limit = 0
     src_num_limit = 1
+
+    vinst_class = DMst
 
     def __init__(self) -> None:
         super().__init__()
@@ -234,24 +197,34 @@ class Master(Node):
     def __str__(self) -> str:
         return 'M%s' % self.inst_id
 
-    def get_vinst(self):
-        return self.vinst
-
-    def create_vinst(self):
-        self.vinst = DMst(self)
-        return self.vinst
 
 
 
 class MasterAxi(Master):
 
-    def __init__(self) -> None:
+    vinst_class = DMstAxi
+
+    def __init__(self, data_width= 32) -> None:
         super().__init__()
+        self.data_width = data_width
         self.address_range_list = []
 
-    def create_vinst(self):
-        self.vinst = DMstAxi(self)
-        return self.vinst
+    @property
+    def w_req_pld_width(self):
+        return self.data_width + int(self.data_width/8) + self.user_width + self.addr_width
+
+    @property
+    def r_req_pld_width(self):
+        return self.user_width + self.addr_width
+
+    @property
+    def w_ack_pld_width(self):
+        return 2
+
+    @property
+    def r_ack_pld_width(self):
+        return 2 + self.data_width + 1
+
 
 #########################################################
 #
@@ -261,11 +234,15 @@ class Switch(Node):
     color = 'green'
     switch_id = 0
 
-    def __init__(self) -> None:
+    def __init__(self, w_req_pld_width, r_req_pld_width, w_ack_pld_width, r_ack_pld_width) -> None:
         super().__init__()
         self.inst_id = self.switch_id
         Switch.switch_id += 1
-        self.data_width = 128
+        self.w_req_pld_width = w_req_pld_width
+        self.r_req_pld_width = r_req_pld_width
+        self.w_ack_pld_width = w_ack_pld_width
+        self.r_ack_pld_width = r_ack_pld_width
+
 
 
     @property
@@ -275,8 +252,6 @@ class Switch(Node):
     def __str__(self) -> str:
         return 'D%s' % self.inst_id
 
-    def get_vinst(self):
-        raise NotImplementedError()
 
 #########################################################
 #
@@ -287,13 +262,11 @@ class Arbiter(Switch):
     arbiter_id = 0
     dst_num_limit = 1
     src_num_limit = 128
-    #pld_width = 32
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, w_req_pld_width, r_req_pld_width, w_ack_pld_width, r_ack_pld_width) -> None:
+        super().__init__(w_req_pld_width, r_req_pld_width, w_ack_pld_width, r_ack_pld_width)
         self.inst_id = self.arbiter_id
         Arbiter.arbiter_id += 1
-
 
     @property
     def name(self) -> str:
@@ -306,7 +279,7 @@ class Arbiter(Switch):
         return self.vinst
 
     def create_vinst(self):
-        self.vinst = DArb2(self,32)
+        self.vinst = DArb(self,32)
         return self.vinst
 
 class ArbiterDual(Arbiter):
@@ -328,11 +301,10 @@ class Decoder(Switch):
     pld_width = 32
     id_width = 8
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, w_req_pld_width, r_req_pld_width, w_ack_pld_width, r_ack_pld_width) -> None:
+        super().__init__(w_req_pld_width, r_req_pld_width, w_ack_pld_width, r_ack_pld_width)
         self.inst_id = self.decoder_id
         Decoder.decoder_id += 1
-        print('init a decoder')
 
     @property
     def name(self) -> str:
@@ -341,11 +313,8 @@ class Decoder(Switch):
     def __str__(self) -> str:
         return 'D%s' % self.inst_id
 
-    def get_vinst(self):
-        return self.vinst
-
     def create_vinst(self):
-        self.vinst = DDec2(self, 32)
+        self.vinst = DDec(self, 32)
         return self.vinst
 
 
@@ -374,7 +343,6 @@ class Adapter(Node):
         super().__init__()
         self.inst_id = self.adapter_id
         Adapter.adapter_id += 1
-
         self.data_width = 128
 
     @property
@@ -384,8 +352,8 @@ class Adapter(Node):
     def __str__(self) -> str:
         return 'Adapt%s' % self.inst_id
 
-    def get_vinst(self):
-        return self.vinst
+
+
 
     # def create_vinst(self):
     #     self.vinst = DDec(self)
@@ -396,3 +364,68 @@ class Adapter(Node):
       #def create_vinst(self):
           #self.vinst = DHdsk2Cdt()(self)
           #return self.vinst
+
+
+
+              # def get_vinst(self):
+    #     return self.vinst
+
+    # def create_vinst(self):
+    #     self.vinst = DSlv(self)
+    #     return self.vinst
+
+    # def create_vinst(self):
+    #     self.vinst = DSlvAxi(self)
+    #     return self.vinst
+
+    # def get_vinst(self):
+    #     return self.vinst
+
+    # def create_vinst(self):
+    #     self.vinst = DMst(self)
+    #     return self.vinst
+
+    # def create_vinst(self):
+    #     self.vinst = DMstAxi(self)
+    #     return self.vinst
+
+
+    
+
+
+    # @property
+    # def r_req_pld_width(self):
+    #     return self.network.r_req_pld_width
+# 
+    # @property
+    # def w_req_pld_width(self):
+    #     return self.network.w_req_pld_width
+# 
+    # @property
+    # def r_ack_pld_width(self):
+    #     return self.network.r_ack_pld_width
+# 
+    # @property
+    # def w_ack_pld_width(self):
+    #     return self.network.w_ack_pld_width
+
+
+
+    
+
+
+    # @property
+    # def r_req_pld_width(self):
+    #     return self.network.r_req_pld_width
+# 
+    # @property
+    # def w_req_pld_width(self):
+    #     return self.network.w_req_pld_width
+# 
+    # @property
+    # def r_ack_pld_width(self):
+    #     return self.network.r_ack_pld_width
+# 
+    # @property
+    # def w_ack_pld_width(self):
+    #     return self.network.w_ack_pld_width

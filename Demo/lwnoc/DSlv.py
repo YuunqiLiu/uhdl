@@ -43,49 +43,49 @@ class DSlvAxi(Component):
         self.wait_aw_reg += when(AndList(self.in0.w_vld, self.in0.w_rdy, self.in0.w_last)).then(UInt(1, 1)).\
                             when(And(self.in0.aw_vld, self.in0.aw_rdy)).then(UInt(1, 0))
 
-        self.out0_w_req.pld     += Combine(self.in0.aw_addr, self.in0.aw_user, self.in0.w_strb, self.in0.w_data)
-        self.out0_w_req.vld     += when(self.wait_aw_reg).then(And(self.in0.aw_vld, self.in0.w_vld)).otherwise(self.in0.w_vld)
-        self.out0_w_req.head    += And(self.in0.aw_vld, self.in0.aw_rdy)
-        self.out0_w_req.tail    += self.in0.w_last
-        self.out0_w_req.tgt_id  += self.addr_tgt_id_mapping(self.in0.aw_addr)
-        self.out0_w_req.txn_id  += self.in0.aw_id
-        self.out0_w_req.src_id  += UInt(node.src_id_width, self.node.src_id)
+        Assign(self.out0_w_req.pld     ,Combine(self.in0.aw_addr, self.in0.aw_user, self.in0.w_strb, self.in0.w_data))
+        Assign(self.out0_w_req.vld     ,when(self.wait_aw_reg).then(And(self.in0.aw_vld, self.in0.w_vld)).otherwise(self.in0.w_vld))
+        Assign(self.out0_w_req.head    ,And(self.in0.aw_vld, self.in0.aw_rdy))
+        Assign(self.out0_w_req.tail    ,self.in0.w_last)
+        Assign(self.out0_w_req.tgt_id  ,self.addr_tgt_id_mapping(self.in0.aw_addr))
+        Assign(self.out0_w_req.txn_id  ,self.in0.aw_id)
+        Assign(self.out0_w_req.src_id  ,UInt(node.src_id_width, self.node.src_id))
 
-        self.in0.aw_rdy += AndList(self.out0_w_req.vld, self.out0_w_req.rdy, self.wait_aw_reg)
-        self.in0.w_rdy  += AndList(self.out0_w_req.vld, self.out0_w_req.rdy)
+        Assign(self.in0.aw_rdy ,AndList(self.out0_w_req.vld, self.out0_w_req.rdy, self.wait_aw_reg))
+        Assign(self.in0.w_rdy  ,AndList(self.out0_w_req.vld, self.out0_w_req.rdy))
 
 
         ################################################################
         # Write Ack Channel
         ################################################################
 
-        self.out0_w_ack.rdy += self.in0.b_rdy
-        self.in0.b_vld      += self.out0_w_ack.vld
-        self.in0.b_id       += self.out0_w_ack.txn_id
-        self.in0.b_resp     += self.out0_w_ack.pld[1:0]
+        Assign(self.out0_w_ack.rdy ,self.in0.b_rdy)
+        Assign(self.in0.b_vld      ,self.out0_w_ack.vld)
+        Assign(self.in0.b_id       ,self.out0_w_ack.txn_id)
+        Assign(self.in0.b_resp     ,self.out0_w_ack.pld[1:0])
 
 
         ################################################################
         # Read Req Channel
         ################################################################
 
-        self.out0_r_req.vld     += self.in0.ar_vld
-        self.in0.ar_rdy         += self.out0_r_req.rdy
-        self.out0_r_req.head    += UInt(1, 1)
-        self.out0_r_req.tail    += UInt(1, 1)
-        self.out0_r_req.pld     += Combine(self.in0.ar_addr, self.in0.ar_user)
-        self.out0_r_req.src_id  += UInt(node.src_id_width, self.node.src_id)
-        self.out0_r_req.txn_id  += self.in0.ar_id
-        self.out0_r_req.tgt_id  += self.addr_tgt_id_mapping(self.in0.ar_addr)
+        Assign(self.out0_r_req.vld     ,self.in0.ar_vld)
+        Assign(self.in0.ar_rdy         ,self.out0_r_req.rdy)
+        Assign(self.out0_r_req.head    ,UInt(1, 1))
+        Assign(self.out0_r_req.tail    ,UInt(1, 1))
+        Assign(self.out0_r_req.pld     ,Combine(self.in0.ar_addr, self.in0.ar_user))
+        Assign(self.out0_r_req.src_id  ,UInt(node.src_id_width, self.node.src_id))
+        Assign(self.out0_r_req.txn_id  ,self.in0.ar_id)
+        Assign(self.out0_r_req.tgt_id  ,self.addr_tgt_id_mapping(self.in0.ar_addr))
 
 
         ################################################################
         # Ack Channel
         ################################################################
 
-        self.in0.r_vld      += self.out0_r_ack.vld
-        self.out0_r_ack.rdy += self.in0.r_rdy
-        self.in0.r_id       += self.out0_r_ack.txn_id
+        Assign(self.in0.r_vld      ,self.out0_r_ack.vld)
+        Assign(self.out0_r_ack.rdy ,self.in0.r_rdy)
+        Assign(self.in0.r_id       ,self.out0_r_ack.txn_id)
 
         Unpack(self.out0_r_ack.pld, self.in0.r_resp, self.in0.r_data, self.in0.r_last)
 
@@ -93,31 +93,31 @@ class DSlvAxi(Component):
 
 
 
-# class DSlv(Component):
+class DSlv(Component):
 
-    # def __init__(self, node):
-        # super().__init__()
-        # self.node = node
+    def __init__(self, node):
+        super().__init__()
+        self.node = node
 
-        # self.in0_vld = Input(UInt(1))
-        # self.in0_rdy = Output(UInt(1))
-        # self.in0_head = Input(UInt(1))
-        # self.in0_tail = Input(UInt(1))
-        # self.in0_pld = Input(UInt(self.node.src_width))
-        # self.in0_mst_id = Input(UInt(self.node.master_id_width))
+        self.in0_vld = Input(UInt(1))
+        self.in0_rdy = Output(UInt(1))
+        self.in0_head = Input(UInt(1))
+        self.in0_tail = Input(UInt(1))
+        self.in0_pld = Input(UInt(self.node.src_width))
+        self.in0_mst_id = Input(UInt(self.node.master_id_width))
 
-        # self.out0_req_vld = Output(UInt(1))
-        # self.out0_req_rdy = Input(UInt(1))
-        # self.out0_req_head = Output(UInt(1))
-        # self.out0_req_tail = Output(UInt(1))
-        # self.out0_req_pld = Output(UInt(self.node.dst_width))
-        # self.out0_req_mst_id = Output(UInt(self.node.master_id_width))
-        # self.out0_req_slv_id = Output(UInt(self.node.slave_id_width))
+        self.out0_req_vld = Output(UInt(1))
+        self.out0_req_rdy = Input(UInt(1))
+        self.out0_req_head = Output(UInt(1))
+        self.out0_req_tail = Output(UInt(1))
+        self.out0_req_pld = Output(UInt(self.node.dst_width))
+        self.out0_req_mst_id = Output(UInt(self.node.master_id_width))
+        self.out0_req_slv_id = Output(UInt(self.node.slave_id_width))
 
-        # self.out0_req_vld += self.in0_vld
-        # self.in0_rdy += self.out0_req_rdy
-        # self.out0_req_pld += self.in0_pld
-        # self.out0_req_mst_id += self.in0_mst_id
+        self.out0_req_vld += self.in0_vld
+        self.in0_rdy += self.out0_req_rdy
+        self.out0_req_pld += self.in0_pld
+        self.out0_req_mst_id += self.in0_mst_id
 
 
 

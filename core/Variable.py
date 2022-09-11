@@ -1,15 +1,37 @@
-import math,re
+import math, re, string
+
 from enum       import Enum
 from functools  import reduce
 from operator   import concat
 from copy       import copy
 
 from .Root      import Root
-import string
-
+from .          import Component
 
 from .Exception     import *
 from .InternalTool  import *
+
+
+#   Root
+#       Variable
+#       Bundle
+#   ValueRoot
+#       Value
+#           Expression
+#       Value, Variable
+#           SingleVar
+#               WireSig
+#                   IOSig
+#                       Input
+#                       Output
+#                       Inout
+#                   Wire
+#                   Constant
+#                       Bits
+#                           UInt
+#                           SInt
+#               Reg
+
 
 class Variable(Root):
 
@@ -23,11 +45,11 @@ class Variable(Root):
 
     @property
     def name_until_component(self):
-        return self.name_until_not(Variable)
+        return self.name_until(Component.Component)
 
     @property
     def name_before_component(self):
-        return self.name_before_not(Variable)
+        return self.name_before(Component.Component)
             
     # def __gt__(self,other):
     #     if not isinstance(other,Variable):  raise ErrVarCmpWrong('%s should compare with a Variable,but get a %s.' % (GetClsNameFromObj(self),GetClsNameFromObj(other)))
@@ -55,43 +77,78 @@ class Variable(Root):
         if self.attribute != rvalue.attribute:  raise ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
         object.__setattr__(self,'_rvalue',rvalue)
         object.__setattr__(rvalue,'_des_lvalue',self)
-        
-        self_module = self.father
-        if isinstance(rvalue,CutExpression):
-            rvalue_module = rvalue.op.father
-        elif isinstance(rvalue,Expression):
-            rvalue_module = self_module
+
+        self_module = self.father_until(Component.Component)
+        if isinstance(rvalue, CutExpression):
+            rvalue_module = rvalue.op.father_until(Component.Component)
+        elif isinstance(rvalue, (Expression, Constant)):
+            rvalue_module = None
         else:
-            rvalue_module = rvalue.father
-        # visible and direction check
-        if self_module is rvalue_module:
-            if not isinstance(self,(Reg,Wire,Output,Inout)):
-                raise ErrUHDLStr("rvalue(%s) is not a instance of Reg or Wire or Output."%(rvalue))
+            rvalue_module = rvalue.father_until(Component.Component)
+
+        if isinstance(rvalue, (Expression, Constant)):
+            # rvalue is constant, lvalue can be all signal.
             pass
-        elif self_module.father is rvalue_module:
-            if not isinstance(self,(Input,Inout)):
-                raise ErrUHDLStr("lvalue(%s) is not an output port of submodule.."%(self))
-        elif self_module is rvalue_module.father:
-            if not isinstance(self,(Reg,Wire,Output,Inout)):
-                raise ErrUHDLStr("lvalue(%s) is not a instance of Reg or Wire or Output."%(self))
-            if not isinstance(rvalue,Output):
-                raise ErrUHDLStr("rvalue(%s) is not an output port of submodule."%(rvalue))
-        elif self_module.father is rvalue_module.father:
-            if not isinstance(self,Input):
-                raise ErrUHDLStr("lvalue(%s) is not a instance of Input."%(self))
-            if not isinstance(rvalue,Output):
-                raise ErrUHDLStr("rvalue(%s) is not an a instance of Output."%(rvalue))
-        #else:
-        #    raise ErrUHDL("can't connect two signal cross multi layers")
-
-
+        elif rvalue_module is not None:
+            if self_module is rvalue_module:
+                # internal connection.
+                #    -------------------
+                #    |                 |
+                #    |  (lhs)  (rhs)   |
+                #    |                 |
+                #    -------------------
+                if isinstance(self, Input):
+                    raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self, rvalue, self_module))
+            elif self_module.father is rvalue_module.father:
+                # same level connection.
+                #    ------------------   ------------------
+                #    |                |   |                |
+                #    |          (lhs)<-   <-(rhs)          |
+                #    |                |   |                |
+                #    ------------------   ------------------
+                if not isinstance(self, Input):
+                    raise ErrUHDLStr("lhs %s's father Component and rhs %s's father Component are in same Component, so lhs should be Input." % (self, rvalue))
+            elif self_module.father is rvalue_module:
+                # lhs in low level
+                #    ----------------------
+                #    |                    |
+                #    |    ---------       |
+                #    |    |       |       |
+                #    |    | (lhs)<-  (rhs)|
+                #    |    |       |       |
+                #    |    ---------       |
+                #    |                    |
+                #    ----------------------
+                if not isinstance(self, Input):
+                    raise ErrUHDLStr("lhs %s's father Component is in rhs %s's father Component, so lhs should be Input." % (self, rvalue))
+            elif self_module is rvalue_module.father:
+                # rhs in low level
+                #    ----------------------
+                #    |                    |
+                #    |    ---------       |
+                #    |    |       |       |
+                #    |    | (rhs)->  (lhs)|
+                #    |    |       |       |
+                #    |    ---------       |
+                #    |                    |
+                #    ----------------------
+                if not isinstance(rvalue, Output):
+                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so rhs should be Output." % (self, rvalue))
+                if isinstance(self, Input):
+                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so lhs should not be Input." % (self, rvalue))
+            else:
+                # illegal hier.
+                raise ErrUHDLStr("The hier where lhs %s and rhs %s are located cannot be legally connected." % (self, rvalue))
+        else:
+            # rvalue is a unregsitered signal.
+            raise ErrUHDLStr("rhs %s does not have a legal component father, it may not be registered into a component." % rvalue)
         return self
-    #raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
 
-    #@property
-    #def name(self) -> str:
-    #    from .Component import Component
-    #    return self.name_until_not(Component)
+
+
+
+
+
 
 class Bundle(Root):
 
@@ -118,15 +175,44 @@ class Bundle(Root):
         raise NotImplementedError
 
     def __setattr__(self, name, value):
-        if isinstance(value,(Bundle,Variable)):
+        if isinstance(value, (Bundle, Variable)):
             self._var_list.append(value)
         super().__setattr__(name, value)
 
     def _setattr_hook(self):
-        from .Component import Component
-        component_father = self.father_until(Component)
+        component_father = self.father_until(Component.Component)
+        #print(self)
+        #print(self.father)
+        #print(component_father)
         for value in self._var_list:
-            setattr(component_father, value.name_before(Component), value)
+            setattr(component_father, value.name_before(Component.Component), value)
+
+    @property
+    def io_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)]
+
+
+
+    def reverse(self):
+        reverse = Bundle()
+        for i in self.io_list:
+            setattr(reverse, i.name.lstrip('%s_'%self.name), i.reverse())
+        return reverse
+
+
+
+    # def exclude(self,*exclude_list):
+
+
+    #     res_list = []
+    #     exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
+    #     for var in self._var_list:
+    #         if var.name not in exclude_list:
+    #             res_list.append(var)
+    #     return res_list
+
+
+
 
     def as_list(self, exclude=None):
         exclude_list = [] if exclude is None else exclude
@@ -143,14 +229,23 @@ class Bundle(Root):
         return res_list
 
 
+    def connect(self, other):
+        pass
+
+
     #@property
     #def name(self) -> str:
     #    from .Component import Component
     #    return self.name_until_not(Component)
 
+    def exclude(self, *args):
+        result = copy(self)
+        for a in args:
+            delattr(result, a)
+        return result
+
+
     
-
-
 
 
 class ValueRoot():
@@ -281,16 +376,22 @@ class Value(ValueRoot):
 
 
 
-class SingleVar(Variable,Value):
+
+
+
+
+
+class SingleVar(Variable, Value):
 
     def __init__(self,template):
         super().__init__()
         if not isinstance(template,Constant): raise ErrAttrTypeWrong(self,template)
-        self.__template = template
+        object.__setattr__(self, '_template', template)
+        #self.__template = template
 
     @property
     def width(self):
-        return self.__template.width
+        return self._template.width
 
     @property
     def string(self):
@@ -306,7 +407,9 @@ class SingleVar(Variable,Value):
 
     @property
     def attribute(self):
-        return self.__template
+        return self._template
+
+
 
 
 class WireSig(SingleVar):
@@ -401,6 +504,10 @@ class Reg(SingleVar):
         return ['reg','[%s:0]'%((self.attribute.width-1)),self.name_before_component]
 
 
+
+
+
+
 class Wire(WireSig):
     '''
     Wire is used to declare an internal signal wire in Component in UHDL.
@@ -436,6 +543,8 @@ class Wire(WireSig):
         return [def_keyword,'[%s:0]'%(self.attribute.width-1),self.name_before_component]
 
 
+
+
 class IOSig(WireSig):
 
     @property
@@ -467,6 +576,9 @@ class IOSig(WireSig):
         return [self._iosig_type_prefix,
                 '' if self.attribute.width==1 else '[%s:0]' %(self.attribute.width-1),
                 self.name_before_component]
+
+
+
 
 
 class Input(IOSig):
@@ -506,6 +618,10 @@ class Input(IOSig):
         return Input(self.attribute)
 
 
+
+
+
+
 class Output(IOSig):
     '''
     Output is used to declare an output port for Component in UHDL.
@@ -542,6 +658,9 @@ class Output(IOSig):
     def template(self):
         return Output(self.attribute)
 
+
+
+
 class Inout(IOSig):
 
     @property
@@ -563,6 +682,9 @@ class Constant(WireSig):
     #     self.__value = num
 
     pass
+
+
+
 
 
 class Bits(Constant):
@@ -638,6 +760,10 @@ class Bits(Constant):
         return "Bits(%s,%s) with py ID %s" % (self.width,self.value,id(self))
 
 
+
+
+
+
 class UInt(Bits):
     '''
     UInt is a constant type in UHDL.It is an unsigned integer.There are two ways to initialize UInt, the first required parameter is:
@@ -668,6 +794,8 @@ class UInt(Bits):
     '''
     def __str__(self):
         return "UInt(%s,%s) with py ID %s" % (self.width,self.value,id(self))
+
+
 
 class SInt(Bits):
     '''
@@ -818,6 +946,9 @@ class IOGroup(GroupVar):
         for i in self.io_list:
             setattr(reverse,i.name,i.reverse())
         return reverse
+
+
+
 
 
 
@@ -2194,3 +2325,99 @@ def Or(opL,opR):
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
     return OrExpression(opL,opR)
+
+
+
+
+
+    #     if op1_component.father is op2_component or op2_component.father is op1_component: 
+    #         # input  <= input  or
+    #         # output <= output
+
+
+
+    #         if op1.father_until(Component).father is op2.father:
+    #             son_op = op1
+    #             father_op = op2
+    #         else:
+    #             son_op = op2
+    #             father_op = op1
+
+    #         if isinstance(son_op, Input) and isinstance(father_op, Input):
+    #             son_op += father_op
+    #         elif isinstance(son_op, Output) and isinstance(father_op, Output):
+    #             father_op += son_op
+    #         else:
+    #             raise Exception()
+
+    #     elif op1.father_until(Component).father is op2.father_unril(Component).father or (outer and op1.father_until(Component) is op2.father_unril(Component)): 
+    #         # input <= output
+    #         if isinstance(op1, Input) and isinstance(op2, Output):
+    #             op1 += op2
+    #         elif isinstance(op1, Output) and isinstance(op2, Input):
+    #             op2 += op1
+    #         else:
+    #             raise Exception()
+
+
+    #     elif (not outer) and op1.father_until(Component) is op2.father_unril(Component):  
+    #         # output <= input
+    #         if isinstance(op1, Input) and isinstance(op2, Output):
+    #             op2 += op1
+    #         elif isinstance(op1, Output) and isinstance(op2, Input):
+    #             op1 += op2
+    #         else:
+    #             raise Exception()
+
+    #     else:
+    #         raise Exception('op1 %s and op2 %s can not connect.' % (op1, op2))
+
+
+
+
+
+
+
+        #internal
+        #same_lvl
+        #high_lvl
+        #constant
+        #self_module = self.father_until(Component.Component)
+        #ravlue_module = rvalue.father_until(Component.Component)
+        # self_module = self.father_until(Component.Component)
+        # if isinstance(rvalue,CutExpression):
+        #     rvalue_module = rvalue.op.father_until(Component.Component)
+        # elif isinstance(rvalue,Expression):
+        #     rvalue_module = self_module
+        # else:
+        #     rvalue_module = rvalue.father_until(Component.Component)
+        # # visible and direction check
+        # if self_module is rvalue_module:
+        #     if not isinstance(self,(Reg,Wire,Output,Inout)):
+        #         raise ErrUHDLStr("rvalue(%s) is not a instance of Reg or Wire or Output."%(rvalue))
+        #     pass
+        # elif self_module.father is rvalue_module:
+        #     if not isinstance(self,(Input,Inout)):
+        #         raise ErrUHDLStr("lvalue(%s) is not an output port of submodule.."%(self))
+        # elif self_module is rvalue_module.father:
+        #     if not isinstance(self,(Reg,Wire,Output,Inout)):
+        #         raise ErrUHDLStr("lvalue(%s) is not a instance of Reg or Wire or Output."%(self))
+        #     if not isinstance(rvalue,Output):
+        #         raise ErrUHDLStr("rvalue(%s) is not an output port of submodule."%(rvalue))
+        # elif self_module.father is rvalue_module.father:
+        #     if not isinstance(self,Input):
+        #         raise ErrUHDLStr("lvalue(%s) is not a instance of Input."%(self))
+        #     if not isinstance(rvalue,Output):
+        #         raise ErrUHDLStr("rvalue(%s) is not an a instance of Output."%(rvalue))
+        # return self
+
+
+
+        #else:
+        #    raise ErrUHDL("can't connect two signal cross multi layers")
+    #raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
+
+    #@property
+    #def name(self) -> str:
+    #    from .Component import Component
+    #    return self.name_until_not(Component)

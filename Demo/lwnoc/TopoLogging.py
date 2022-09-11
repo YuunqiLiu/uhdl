@@ -1,4 +1,4 @@
-import logging
+import logging, os
 
 
 
@@ -7,7 +7,12 @@ def init_logger(name):
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 
-    fh = logging.FileHandler("%s.topology.log" % name)
+    fpath = "%s.topology.log" % name
+
+    if os.path.exists(fpath):
+        os.remove(fpath)
+
+    fh = logging.FileHandler(fpath)
     fh.setLevel(logging.DEBUG)
 
     ch = logging.StreamHandler()

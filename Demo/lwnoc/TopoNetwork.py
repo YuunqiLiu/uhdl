@@ -39,22 +39,6 @@ class Network(object):
 
 
 
-    @property
-    def w_req_pld_width(self):
-        return self.data_width + int(self.data_width/8) + self.user_width + self.addr_width
-
-    @property
-    def r_req_pld_width(self):
-        return self.user_width + self.addr_width
-
-    @property
-    def w_ack_pld_width(self):
-        return 2
-
-    @property
-    def r_ack_pld_width(self):
-        return 2 + self.data_width + 1
-
 
     @property
     def _global_id_address_range_map_dict(self):
@@ -111,10 +95,6 @@ class Network(object):
 
             self.logger.info('%s src id list after update: %s' % (src.name, src.reachable_src_id_list))
 
-            # update slave id list to network global list
-           # self._src_id_list += dst.reachable_src_id_list
-           # self._src_id_list = list(set(self._src_id_list))
-
         #max_useful_slave_id_width = len(format(max(self._global_master_id_list), "b"))
         self.logger.info('src id propagation finish.')
 
@@ -148,7 +128,6 @@ class Network(object):
             if src.layer == 0 or src.layer > dst.layer -1:
                 src.layer = dst.layer - 1
 
-
         self.logger.info('tgt id propagation finish.')
 
 
@@ -165,31 +144,7 @@ class Network(object):
             node._generate_local_port_id_mapping()
 
 
-    def _collect_init_global_master_id_list(self):
-        for tgt in self.tgt_list:
-            for tgt_global_id in tgt.global_master_id_list:
-                if tgt_global_id in self._global_master_id_list:
-                    raise Exception()
-                self._global_master_id_list.append(tgt_global_id)
 
-
-    def _collect_global_address_range_dict(self):
-        for tgt in self.tgt_list:
-            #if isinstance(tgt, MasterAxi):
-            #    raise Exception()
-            for tgt_addr_range in tgt.address_range_list:
-                if tgt_addr_range in self._global_address_range_dict.keys():
-                    raise Exception()
-                self._global_address_range_dict[tgt_addr_range] = tgt
-
-
-    def _map_address_range_to_global_id(self):
-        max_id = max(self._global_master_id_list+[0])
-        max_id_count = max_id + 1
-        for addr_range, tgt in self._global_address_range_dict.items():
-            self._global_address_range_id_map_dict[addr_range] = max_id_count
-            tgt.global_master_id_list.append(max_id_count)
-            max_id_count += 1
 
 
     def _report(self):
@@ -224,6 +179,26 @@ class Network(object):
 
     def __str__(self):
         return self.name
+
+
+
+
+    # @property
+    # def w_req_pld_width(self):
+    #     return self.data_width + int(self.data_width/8) + self.user_width + self.addr_width
+
+    # @property
+    # def r_req_pld_width(self):
+    #     return self.user_width + self.addr_width
+
+    # @property
+    # def w_ack_pld_width(self):
+    #     return 2
+
+    # @property
+    # def r_ack_pld_width(self):
+    #     return 2 + self.data_width + 1
+
 
 
 if __name__ == "__main__":
@@ -311,3 +286,30 @@ if __name__ == "__main__":
 
         #for node in self.G.nodes():
         #    node.id_width = max_id_width
+
+
+#     def _collect_init_global_master_id_list(self):
+#         for tgt in self.tgt_list:
+#             for tgt_global_id in tgt.global_master_id_list:
+#                 if tgt_global_id in self._global_master_id_list:
+#                     raise Exception()
+#                 self._global_master_id_list.append(tgt_global_id)
+
+
+#     def _collect_global_address_range_dict(self):
+#         for tgt in self.tgt_list:
+#             #if isinstance(tgt, MasterAxi):
+#             #    raise Exception()
+#             for tgt_addr_range in tgt.address_range_list:
+#                 if tgt_addr_range in self._global_address_range_dict.keys():
+#                     raise Exception()
+#                 self._global_address_range_dict[tgt_addr_range] = tgt
+
+
+#     def _map_address_range_to_global_id(self):
+#         max_id = max(self._global_master_id_list+[0])
+#         max_id_count = max_id + 1
+#         for addr_range, tgt in self._global_address_range_dict.items():
+#             self._global_address_range_id_map_dict[addr_range] = max_id_count
+#             tgt.global_master_id_list.append(max_id_count)
+#             max_id_count += 1

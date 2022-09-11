@@ -34,12 +34,12 @@ class Root(object):
     
 
 
-    def __setattr__(self,name,value):
-        if isinstance(value,Root):
+    def __setattr__(self, name, value):
+        if isinstance(value, Root):
             value.set_name(name)
             value.set_father(self)
             value._setattr_hook()
-        object.__setattr__(self,name,value)
+        object.__setattr__(self, name, value)
             #print(name,'  ',value)
             #print(value.name)
 
@@ -50,8 +50,22 @@ class Root(object):
     # father get
     #=============================================================================================
 
-    def father_until(self,T):
-        return self if isinstance(self,T) or self.father is None else self.father.father_until(T)
+    def father_until(self, T):
+        #return self if isinstance(self,T) or self.father is None else self.father.father_until(T)
+        #print(self,'    ',self.father)
+        
+        if isinstance(self, T):
+            return self
+        elif self.father is None:
+            return None
+        else:
+            return self.father.father_until(T)
+
+        
+        #if self.father is None:
+        #    return None
+        #else:
+        #    return self if isinstance(self, T) else self.father.father_until(T)
 
         #if isinstance(self,T) or self.father is None:
         #    return self
@@ -60,8 +74,8 @@ class Root(object):
         #else:
         #    return self.father.father_until(T)
 
-    def father_until_not(self,T):
-        return self if not isinstance(self,T) or self.father is None else self.father.father_until_not(T)    
+    def father_until_not(self, T):
+        return self if not isinstance(self, T) else self.father.father_until_not(T)    
 
         # if not isinstance(self,T):
         #     return self
@@ -187,6 +201,10 @@ class Root(object):
             #    raise Exception()
             #elif before not in full_ancestors:
             #    raise Exception()
+
+    def __str__(self):
+        #print(self.father)
+        return "%s %s %s" % (self.full_name(), super().__str__(), self.attribute)
 
 
 
