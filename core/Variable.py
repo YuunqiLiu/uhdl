@@ -38,6 +38,7 @@ class Variable(Root):
     def __init__(self):
         super().__init__()
         self._rvalue = None
+        self._des_lvalue = None
 
     @property
     def rvalue(self):
@@ -75,8 +76,8 @@ class Variable(Root):
     def __iadd__(self,rvalue):
         if not isinstance(rvalue,Value):        raise ErrAssignTypeWrong(self,rvalue)
         if self.attribute != rvalue.attribute:  raise ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
-        object.__setattr__(self,'_rvalue',rvalue)
-        object.__setattr__(rvalue,'_des_lvalue',self)
+        object.__setattr__(self, '_rvalue', rvalue)
+        object.__setattr__(rvalue, '_des_lvalue', self)
 
         self_module = self.father_until(Component.Component)
         if isinstance(rvalue, CutExpression):

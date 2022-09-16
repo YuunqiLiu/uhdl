@@ -2,7 +2,7 @@
 #from abc import abstractmethod
 from .BasicFunction import join_name
 
-
+from .  import Component
 
 class Root(object):
 
@@ -32,6 +32,10 @@ class Root(object):
     def father(self):
         return self._father
     
+    @property
+    def hier(self):
+        return self.name
+
 
 
     def __setattr__(self, name, value):
@@ -46,9 +50,21 @@ class Root(object):
     def _setattr_hook(self):
         pass
 
+
+
+    @property
+    def full_hier(self):
+        if self.hier is None:
+            return "TOP"
+        else:
+            return "%s.%s" %(self.father.full_hier, self.hier) if self.father is not None else self.hier
+
     #=============================================================================================
     # father get
     #=============================================================================================
+    def father_until_component(self):
+        return self.father_until(Component.Component)
+
 
     def father_until(self, T):
         #return self if isinstance(self,T) or self.father is None else self.father.father_until(T)
@@ -204,7 +220,7 @@ class Root(object):
 
     def __str__(self):
         #print(self.father)
-        return "%s %s %s" % (self.full_name(), super().__str__(), self.attribute)
+        return "%s %s" % (self.full_name(), super().__str__())
 
 
 

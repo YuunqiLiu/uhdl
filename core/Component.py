@@ -8,6 +8,7 @@ from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
+from .Lint              import Lint
 
 
 UHDL_GLOBAL_PARAM_DICT = {}
@@ -75,6 +76,8 @@ class Component(Root):
         self._PARAM      = PARAM_CONTAINER()
         self.__subclass_init_param_get()
         self.output_path = './%s' % self.module_name
+        self._lint        = None
+
 
 
     def create(self, name, val):
@@ -234,7 +237,64 @@ class Component(Root):
             self.create_all_vfile(self.output_path)
         else:
             self.create_this_vfile(self.output_path)
-            
+
+
+    def _generate_filelist_core(self):
+        name_list = ["%s.v" % self.module_name]
+        for component in self.component_list:
+            name_list += component._generate_filelist_core()
+        return name_list
+
+
+    def generate_filelist(self,abs_path=False,path='-'):
+        path = self.output_path if path == '-' else path
+
+        file_list = self._generate_filelist_core()
+        file_list.reverse()
+
+        # remove duplicates
+        new_file_list = list(set(file_list))
+        new_file_list.sort(key=file_list.index)
+
+        FileProcess.create_file( path = os.path.join(path,'filelist.f'),
+                                 text = new_file_list)
+    
+
+#################################################################################
+# Lint
+#################################################################################
+    
+    @property
+    def lint(self):
+        if self._lint is None:
+            self._lint = Lint(self.module_name)
+        return self._lint
+
+    def _run_lint_single_lvl(self, lint, is_top=False):
+        lint.info('Start to check module %s.' % self.module_name)
+        if not is_top:
+            for lvalue in self.input_list:
+                #print(self.module_name, lvalue,'####', lvalue.rvalue)
+                if lvalue.rvalue is None:
+                    lint.unconnect(lvalue)
+        
+        for lvalue in self.lvalue_list:
+            if lvalue.rvalue is None:
+                lint.unconnect(lvalue)
+
+    def _run_lint_core(self, lint, is_top=False):
+        for component in self.component_list:
+            component._run_lint_core(lint)
+        self._run_lint_single_lvl(lint, is_top=is_top)
+
+    def run_lint(self):
+        #for component in self.component_list:
+        #    component._run_lint_core(self.lint)
+        self._run_lint_core(self.lint, is_top=True)
+        
+
+
+
     def __eol_append(self,list_in,common_str,end_str=None):
         if end_str is None:
             end_str = common_str

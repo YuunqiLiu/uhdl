@@ -40,6 +40,8 @@ class DDecDual(Component):
         SmartAssign(self.warb.in_list, self.out_w_ack_list)
         SmartAssign(self.warb.out, self.in0_w_ack)
 
+        Assign(self.warb.clk, self.clk)
+        Assign(self.warb.rst_n, self.rst_n)
 
     ###############################################################################################
     # Read
@@ -55,6 +57,8 @@ class DDecDual(Component):
         SmartAssign(self.rarb.in_list, self.out_r_ack_list)
         SmartAssign(self.rarb.out, self.in0_r_ack)
 
+        Assign(self.rarb.clk, self.clk)
+        Assign(self.rarb.rst_n, self.rst_n)
 
 
 

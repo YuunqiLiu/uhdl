@@ -38,6 +38,9 @@ class DArbDual(Component):
         SmartAssign(self.out0_w_req, self.warb.out)
         SmartAssign(self.warb.in_list, self.in_w_req_list)
 
+        Assign(self.warb.clk, self.clk)
+        Assign(self.warb.rst_n, self.rst_n)
+
         # Backward Decode
         self.wdec = DDec(node, node.w_ack_pld_width, id_type='src')
         SmartAssign(self.wdec.out_list, self.in_w_ack_list)
@@ -52,6 +55,9 @@ class DArbDual(Component):
         self.rarb = DArb(node, node.r_req_pld_width, id_type='src')
         SmartAssign(self.out0_r_req, self.rarb.out)
         SmartAssign(self.rarb.in_list, self.in_r_req_list)
+
+        Assign(self.rarb.clk, self.clk)
+        Assign(self.rarb.rst_n, self.rst_n)
 
         # Backward Decode
         self.rdec = DDec(node, node.r_ack_pld_width, id_type='src')

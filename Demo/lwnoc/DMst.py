@@ -57,6 +57,7 @@ class DMstAxi(Component):
         Assign(self.out0.aw_vld    ,AndList(self.in0_w_req.rdy, self.in0_w_req.vld, self.in0_w_req.head))
         Assign(self.out0.aw_id     ,Combine(self.in0_w_req.src_id, self.in0_w_req.txn_id))
         Assign(self.out0.w_vld     ,AndList(self.in0_w_req.rdy, self.in0_w_req.vld))
+        Assign(self.out0.w_last    ,self.in0_w_req.tail)
         Unpack(self.in0_w_req.pld, self.out0.aw_addr, self.out0.aw_user, self.out0.w_strb, self.out0.w_data)
 
 
@@ -70,6 +71,7 @@ class DMstAxi(Component):
         Assign(self.in0_w_ack.pld      ,self.out0.b_resp)
         Assign(self.in0_w_ack.tgt_id   ,UInt(node.tgt_id_width, self.node.tgt_id))
         Assign(self.in0_w_ack.src_id   ,self.out0.b_id[master_axi_id_width-1:master_axi_id_width - node.src_id_width])
+        Assign(self.in0_w_ack.txn_id   ,self.out0.b_id[node.txn_id_width-1:0])
         Assign(self.in0_w_ack.head     ,UInt(1, 1))
         Assign(self.in0_w_ack.tail     ,UInt(1, 1))
         Assign(self.out0.b_rdy         ,self.in0_w_ack.rdy)
@@ -95,6 +97,7 @@ class DMstAxi(Component):
         Assign(self.in0_r_ack.pld    ,Combine(self.out0.r_resp, self.out0.r_data, self.out0.r_last))
         Assign(self.in0_r_ack.tgt_id ,UInt(node.tgt_id_width, self.node.tgt_id))
         Assign(self.in0_r_ack.src_id ,self.out0.r_id[master_axi_id_width-1:master_axi_id_width - node.src_id_width])
+        Assign(self.in0_r_ack.txn_id ,self.out0.r_id[node.txn_id_width-1:0])
 
 
 

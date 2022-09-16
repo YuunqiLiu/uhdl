@@ -30,6 +30,8 @@ class DArb(Component):
         self.arb_msg = CmnAgeMtx(num)
         self.arb_msg.update_en += self.msg_update_en
 
+        self.arb_msg.clk += self.clk
+        self.arb_msg.rst_n += self.rst_n
 
 
 

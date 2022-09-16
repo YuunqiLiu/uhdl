@@ -24,7 +24,7 @@ class Axi(Bundle):
         self.w_last  = Output(UInt(1))
         self.w_data  = Output(UInt(data_width))
         self.w_strb  = Output(UInt(strb_width))
-        self.w_user  = Output(UInt(user_width))
+        #self.w_user  = Output(UInt(user_width))
 
         self.b_vld   = Input(UInt(1))
         self.b_rdy   = Output(UInt(1))
@@ -72,7 +72,7 @@ class AxiReverse(Bundle):
         self.w_last  = Input(UInt(1))
         self.w_data  = Input(UInt(data_width))
         self.w_strb  = Input(UInt(strb_width))
-        self.w_user  = Input(UInt(user_width))
+        #self.w_user  = Input(UInt(user_width))
 
         self.b_vld   = Output(UInt(1))
         self.b_rdy   = Input(UInt(1))
