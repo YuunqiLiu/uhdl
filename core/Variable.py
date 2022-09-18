@@ -146,6 +146,25 @@ class Variable(Root):
         return self
 
 
+    @property
+    def _need_always(self):
+        return (self._rvalue and isinstance(self._rvalue, AlwaysCombExpression)) or isinstance(self, Reg)
+
+
+    @property
+    def verilog_assignment(self) -> str:
+        if not hasattr(self, '_rvalue') or self._rvalue is None:
+            return []
+        if self._need_always:
+            str_list    = self._rvalue.bstring(self.lstring,"=")
+            str_list[0] = "always @(*) %s" % str_list[0]
+            return str_list
+
+            #return ['always @(*) begin'] + \
+            #         self._rvalue.bstring(self.lstring,"=") + \
+            #        ['end']
+        else:
+            return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring) + ';']
 
 
 
@@ -263,75 +282,78 @@ class Value(ValueRoot):
         return "%s %s" % (super().__str__(),self.attribute)
 
 
-    def check_rvalue(self,op:ValueRoot):
-        if not isinstance(op,ValueRoot):    raise ErrExpInTypeWrong('',self,op)
+    def check_rvalue(self, op: ValueRoot):
+        '''This function is used to check the validity of rvalue, rvalue must be of type ValueRoot or its subclass.'''
+        if not isinstance(op, ValueRoot):
+            raise ErrExpInTypeWrong('', self, op)
 
-    @property
-    def _need_always(self):
-        return (self._rvalue and isinstance(self._rvalue,AlwaysCombExpression)) or isinstance(self,Reg)
 
-    def __getitem__(self,s:slice):
-        if isinstance(s,slice):
-            return CutExpression(self,s.start,s.stop)
-        elif isinstance(s,int):
-            return CutExpression(self,s,s)
+    def __getitem__(self, s:slice):
+        if isinstance(s, slice):
+            return CutExpression(self, s.start, s.stop)
+        elif isinstance(s, int):
+            return CutExpression(self, s, s)
         else:
+            raise Exception()
             return None
 
-    def Cut(self,hbound:int,lbound:int):
-        return CutExpression(self,hbound,lbound)
+    #def Cut(self, hbound:int, lbound:int):
+    #    return CutExpression(self, hbound, lbound)
 
-    def __add__(self,rhs):
-        return AddExpression(self,rhs)
+    def __add__(self, rhs):
+        return AddExpression(self, rhs)
 
-    def __sub__(self,rhs):
-        return SubExpression(self,rhs)
+    def __sub__(self, rhs):
+        return SubExpression(self, rhs)
 
-    def __mul__(self,rhs):
-        return MulExpression(self,rhs)
+    def __mul__(self, rhs):
+        return MulExpression(self, rhs)
 
-    def __and__(self,rhs):
-        return BitAndExpression(self,rhs)
+    def __and__(self, rhs):
+        return BitAndExpression(self, rhs)
 
-    def __or__(self,rhs):
-        return BitOrExpression(self,rhs)
+    def __or__(self, rhs):
+        return BitOrExpression(self, rhs)
 
-    def __xor__(self,rhs):
-        return BitXorExpression(self,rhs)
+    def __xor__(self, rhs):
+        return BitXorExpression(self, rhs)
 
     def __invert__(self):
         return InverseExpression(self)
 
-    def __lshift__(self,rhs):
-        return LeftShift(self,rhs)
+    def __lshift__(self, rhs):
+        return LeftShift(self, rhs)
 
-    def __rshift__(self,rhs):
-        return RightShift(self,rhs)
+    def __rshift__(self, rhs):
+        return RightShift(self, rhs)
 
-   # def __lt__(self,rhs):
-   #     return Less(self,rhs)
-# 
-   # def __le__(self,rhs):
-   #     return LessEqual(self,rhs)
-# 
-   # def __gt__(self,rhs):
-   #     return Greater(self,rhs)
-# 
-   # def __ge__(self,rhs):
-   #     return GreaterEqual(self,rhs)
-# 
+
+    # Redefining comparison-related operators can lead to logical abnormalities such as sorting
+
+    # def __lt__(self,rhs):
+    #     return Less(self,rhs)
+
+    # def __le__(self,rhs):
+    #     return LessEqual(self,rhs)
+ 
+    # def __gt__(self,rhs):
+    #     return Greater(self,rhs)
+ 
+    # def __ge__(self,rhs):
+    #     return GreaterEqual(self,rhs)
+ 
     # def __eq__(self,rhs):
     #     return Equal(self,rhs)
-# 
+ 
     # def __ne__(self,rhs):
     #     return NotEqual(self,rhs)
 
 
 
 
-    @property
-    def is_lvalue(self) -> bool:
-        return False
+    #@property
+    #def is_lvalue(self) -> bool:
+    #    return False
 
     @property
     def string(self):
@@ -352,20 +374,6 @@ class Value(ValueRoot):
     def attribute(self):
         raise NotImplementedError
 
-    @property
-    def verilog_assignment(self) -> str:
-        if not hasattr(self,'_rvalue') or self._rvalue is None:
-            return []
-        if self._need_always:
-            str_list    = self._rvalue.bstring(self.lstring,"=")
-            str_list[0] = "always @(*) %s" % str_list[0]
-            return str_list
-
-            #return ['always @(*) begin'] + \
-            #         self._rvalue.bstring(self.lstring,"=") + \
-            #        ['end']
-        else:
-            return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring) + ';']
 
     @property
     def des_connect(self):
@@ -386,7 +394,7 @@ class SingleVar(Variable, Value):
 
     def __init__(self,template):
         super().__init__()
-        if not isinstance(template,Constant): raise ErrAttrTypeWrong(self,template)
+        if not isinstance(template, Constant): raise ErrAttrTypeWrong(self, template)
         object.__setattr__(self, '_template', template)
         #self.__template = template
 
@@ -596,9 +604,9 @@ class Input(IOSig):
     The type of Input in this example will be consistent with UInt(32), 
     that is, it is a 32-bit unsigned integer.
     '''
-    @property
-    def is_lvalue(self):
-        pass
+    #@property
+    #def is_lvalue(self):
+    #    pass
 
     @property
     def lstring(self):
@@ -637,9 +645,9 @@ class Output(IOSig):
     The type of Output in this example will be consistent with UInt(32), 
     that is, it is a 32-bit unsigned integer.
     '''
-    @property
-    def is_lvalue(self):
-        pass
+    #@property
+    #def is_lvalue(self):
+    #    pass
 
     @property
     def lstring(self):
@@ -974,7 +982,7 @@ class Parameter(SingleVar):
 ################################################################################################################
 
 class AlwaysCombExpression(Expression):
-    pass
+    pass   
 
 
 class CaseExpression(AlwaysCombExpression):
