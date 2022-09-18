@@ -20,12 +20,12 @@ from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask
 from .BasicFunction import join_name
 
 from .Variable      import Input,Output,Inout,UInt,SInt,IOGroup,Parameter,Wire,Reg
-from .Variable      import And,Or,Greater,Less,GreaterEqual,LessEqual,NotEqual,Equal
-from .Variable      import BitXnor,BitXor,BitAnd,BitOr
-from .Variable      import Add,Sub,Mul
-from .Variable      import SelfXnor,SelfXor,SelfAnd,SelfOr,Inverse,Not
-from .Variable      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,OrList,AndList
-from .Variable      import Case,Cut,When,EmptyWhen,Fanout
+from .Operator      import And,Or,Greater,Less,GreaterEqual,LessEqual,NotEqual,Equal
+from .Operator      import BitXnor,BitXor,BitAnd,BitOr
+from .Operator      import Add,Sub,Mul
+from .Operator      import SelfXnor,SelfXor,SelfAnd,SelfOr,Inverse,Not
+from .Operator      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,OrList,AndList
+from .Operator      import Case,Cut,When,EmptyWhen,Fanout
 from .Variable      import Bundle
 
 

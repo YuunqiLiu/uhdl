@@ -1031,45 +1031,7 @@ class CaseExpression(AlwaysCombExpression):
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
 
 
-def Case(select,casepair,default):
-    """
-    Case is used to construct a parallel selection circuit,and the input of this function is
 
-        rhs select    - UInt/SInt(k)
-        rhs casepair  - list[(UInt/SInt(k),UInt/SInt(v)),...,(UInt/SInt(k),UInt/SInt(v))]
-        rhs default   - UInt/SInt(v)
-
-    select is the selection signal.
-
-    casepair is a lookup table organized in the form of a list.Each item in this list is a tuple.
-    This tuple is used to express a mapping relationship. 
-    When sel is equal to the first value in the tuple, the output value of the circuit is the second value of the tuple.
-
-    default is the default output value of the circuit. 
-    When sel does not match any item in the lookup table, the circuit will output this value.
-    
-    The return value of this function is 
-    
-        rhs O - UInt/SInt(v)
-
-    A typical example is:
-
-        O += Case(sel,[(UInt(2,0),Ares),(UInt(2,1),Bres)],DFTres)
-
-    The corresponding behavior of this selection circuit example it expresses is 
-
-        case(sel)
-        2'b0:       O = Ares
-        2'b1:       O = Bres
-        default:    O = DFTres
-        endcase
-
-    select and the first value of tuple in casepair list must have the same attributes, that is, all UInt(k) or SInt(k).
-
-    default and the second value of tuple in casepair list mus have the sam attributss, that is, all UInt(v) or SInt(v).
-    
-    """
-    return CaseExpression(select,casepair,default)
 
 
 class WhenExpression(AlwaysCombExpression):
@@ -1184,56 +1146,7 @@ class WhenExpression(AlwaysCombExpression):
 
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
 
-def EmptyWhen():
-    '''
-    EmptyWhen is used to construct a complex selection circuit, it has no input.
 
-    EmptyWhen is only used to construct a temporarily empty selection circuit, 
-    which is used to allow users to use "when", "then", "otherwise" methods to complete the selection circuit
-    
-    A typical example is:
-
-        ew = EmptyWhen()
-        for cond,dat in CondDatPair:
-            ew = ew.when(cond).then(dat)
-        ew.otherwise(UInt(32,0))
-        O += ew
-
-    The behavior model corresponding to this typical example is:
-
-        if(cond0)       O = dat0
-        else if(cond1)  O = dat1
-        else if(cond2)  O = dat2
-        ..
-        else if（condN) O = datN
-        else            O = 32'b0
-
-        
-    '''
-    return WhenExpression()
-
-def When(val):
-    '''
-    When is used to construct a complex selection circuit, and the input of when is 
-        
-        rhs I - UInt(1)
-        
-    The return value of when will only be calculated after the when selection circuit is completed. 
-    When the when selection circuit uses multiple "when", "then", "otherwise" completions, 
-    the attribute of its return value O will be the same as the input specified by "then" and "otherwise".
-    
-    A typical example is:
-
-        when(A).then(Ares).when(B).then(Bres).otherwise(DFTres)
-
-    The corresponding behavior of this selection circuit example it expresses is 
-
-        if(A)       O = Ares
-        else if(B)  O = Bres
-        else        O = DFTres
-    '''
-    when = WhenExpression()
-    return when.when(val)
 
 
 class CutExpression(Expression):
@@ -1275,27 +1188,6 @@ class CutExpression(Expression):
         return self.op.rstring + '[%s:%s]' % ( self.hbound, self.lbound )
 
 
-def Cut(I,H,L):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(a)
-        int H - 0 <= H < I.width
-        int L - 0 <= L <= H
-    
-    as input to realize a circuit that intercepts the [H:L] bits of A.
-
-    The return value of this function is 
-    
-        rhs O - UInt/SInt(H-L+1)
-
-    The corresponding behavior model it expresses is 
-    
-        O = I[H:L]
-
-    The attribute type of the return value is the same as the input I.
-    '''
-    return CutExpression(I,H,L)
 
 
 
@@ -1321,9 +1213,6 @@ class FanoutExpression(Expression):
 
 
 
-def Fanout(A,F):
-
-    return FanoutExpression(A, F)
 
 
 
@@ -1393,8 +1282,7 @@ class AndListExpression(MultiListExpression):
     def op_str(self):
         return '&&'
 
-def AndList(*opList):
-    return AndListExpression(*opList)
+
 
 
 class OrListExpression(MultiListExpression):
@@ -1407,8 +1295,7 @@ class OrListExpression(MultiListExpression):
     def op_str(self):
         return '||'
 
-def OrList(*opList):
-    return OrListExpression(*opList)
+
 
 
 
@@ -1422,8 +1309,7 @@ class BitAndListExpression(MultiSameListExpression):
     def op_str(self):
         return '&'
 
-def BitAndList(*opList):
-    return BitAndListExpression(*opList)
+
 
 
 class BitOrListExpression(MultiSameListExpression):
@@ -1436,8 +1322,7 @@ class BitOrListExpression(MultiSameListExpression):
     def op_str(self):
         return '|'
 
-def BitOrList(*opList):
-    return BitOrListExpression(*opList)
+
 
 
 class BitXorListExpression(MultiSameListExpression):
@@ -1450,8 +1335,7 @@ class BitXorListExpression(MultiSameListExpression):
     def op_str(self):
         return '^'
 
-def BitXorList(*opList):
-    return BitXorListExpression(*opList)
+
 
 
 class BitXnorListExpression(MultiSameListExpression):
@@ -1464,8 +1348,7 @@ class BitXnorListExpression(MultiSameListExpression):
     def op_str(self):
         return '^~'
 
-def BitXnorList(*opList):
-    return BitXnorListExpression(*opList)
+
 
 
 class CombineExpression(ListExpression):
@@ -1486,30 +1369,7 @@ class CombineExpression(ListExpression):
     def rstring(self) -> str:
         return '{%s}' % ', '.join([op.rstring for op in self.op_list])
 
-def Combine(*rhs_list):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs A - UInt/SInt(a)
-        rhs B - UInt/SInt(b)
-        ..
-        rhs N - UInt/SInt(n)
-    
-    as input to realize a circuit that splices all input signals together.
 
-    The return value of this function is 
-    
-        rhs O - UInt/SInt(a+b+..+n)
-
-    The corresponding behavior model it expresses is 
-    
-        O = {A,B,...,N}
-
-    The attribute type of the return value is the same as the input.
-    
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return CombineExpression(*rhs_list)
 
 
 ################################################################################################################
@@ -1559,25 +1419,6 @@ class InverseExpression(OneOpBitExpressionTest):
     def op_str(self):
         return '~'
 
-def Inverse(I):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(x)
-    
-    as input to realize an inverter used to inverse each bit of I.
-
-    The return value of this function is 
-    
-        rhs O - UInt/SInt(x)
-
-    The corresponding behavior model it expresses is 
-    
-        O = ~ I
-
-    The attribute type of the return value is the same as the input.
-    '''
-    return InverseExpression(I)
 
 
 class NotExpression(OneOpU1Expression):
@@ -1590,24 +1431,7 @@ class NotExpression(OneOpU1Expression):
     def op_str(self):
         return '!'
 
-def Not(I):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(x)
-    
-    as input to realize a comparator used to confirm whether I is not equal to 0.
 
-    The return value of this function is 
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if (I==0) O = 1'b1
-        else      O = 1'b0
-    '''
-    return NotExpression(I)
 
 
 class SelfOrExpression(OneOpU1Expression):
@@ -1620,23 +1444,7 @@ class SelfOrExpression(OneOpU1Expression):
     def op_str(self):
         return '|'
 
-def SelfOr(I):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(x)
-    
-    as input to realize a circuit that or all bits of the input signal.
 
-    The return value of this function is 
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        O = | I
-    '''
-    return SelfOrExpression(I)
 
 
 class SelfAndExpression(OneOpU1Expression):
@@ -1649,23 +1457,6 @@ class SelfAndExpression(OneOpU1Expression):
     def op_str(self):
         return '&'
 
-def SelfAnd(I):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(x)
-    
-    as input to realize a circuit that and all bits of the input signal.
-
-    The return value of this function is 
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        O = & I
-    '''
-    return SelfAndExpression(I)
 
 
 class SelfXorExpression(OneOpU1Expression):
@@ -1678,23 +1469,6 @@ class SelfXorExpression(OneOpU1Expression):
     def op_str(self):
         return '^'
 
-def SelfXor(op):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(x)
-    
-    as input to realize a circuit that xor all bits of the input signal.
-
-    The return value of this function is 
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        O = ^ I
-    '''
-    return SelfXorExpression(op)
 
 
 class SelfXnorExpression(OneOpU1Expression):
@@ -1707,23 +1481,7 @@ class SelfXnorExpression(OneOpU1Expression):
     def op_str(self):
         return '^~'
 
-def SelfXnor(I):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs I - UInt/SInt(x)
-    
-    as input to realize a circuit that xnor all bits of the input signal.
 
-    The return value of this function is 
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        O = ^~ I
-    '''
-    return SelfXnorExpression(I)
 
 ################################################################################################################
 #
@@ -1822,28 +1580,7 @@ class AddExpression(TwoSameOpExpression):
     def op_str(self):
         return '+'
 
-def Add(A,B):
-    '''
-    The circuit expressed by this function takes 
-        
-        rhs A - UInt/SInt(a)
-        rhs B - UInt/SInt(b)
-    
-    as input to realize an adder that adds A and B. 
 
-    The return value of this function is 
-    
-        rhs O - UInt/SInt(max(a,b)+1)
-
-    The corresponding behavior model it expresses is 
-    
-        O = A + B
-
-    The attribute type of the return value is the same as the input.
-    
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return AddExpression(A,B)
 
 
 class SubExpression(TwoSameOpExpression):
@@ -1860,28 +1597,7 @@ class SubExpression(TwoSameOpExpression):
     def op_str(self):
         return '-'
 
-def Sub(A,B):
-    '''
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(a)
-        rhs B - UInt/SInt(b)
 
-    as input to realize a subtractor that subtracts A and B. 
-
-    The return value of this function is
-    
-        rhs O - UInt/SInt(max(a,b)+1)
-    
-    The corresponding behavior model it expresses is 
-    
-        O = A - B
-
-    The attribute type of the return value is the same as the input.
-
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return SubExpression(A,B)
 
 
 class MulExpression(TwoSameOpExpression):
@@ -1898,28 +1614,6 @@ class MulExpression(TwoSameOpExpression):
     def op_str(self):
         return '*'
 
-def Mul(A,B):
-    '''
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(a)
-        rhs B - UInt/SInt(b)
-
-    as input to realize a multiplier that multiplies A and B. 
-    
-    The return value of this function is
-    
-        rhs O - UInt/SInt(a+b)
-
-    The corresponding behavior model it expresses is
-    
-        O = A * B
-        
-    The attribute type of the return value is the same as the input.
-
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return MulExpression(A,B)
 
 
 ################################################################################################################
@@ -1938,26 +1632,6 @@ class BitOrExpression(TwoSameOpBitExpression):
     def op_str(self):
         return '|'
 
-def BitOr(lhs,rhs):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a circuit that "or" A and B bit by bit.
-
-    The return value of this function is
-    
-        rhs O - UInt/SInt(x)
-
-    The corresponding behavior model it expresses is 
-    
-        O = A | B
-
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return BitOrExpression(lhs,rhs)
 
 
 class BitAndExpression(TwoSameOpBitExpression):
@@ -1970,26 +1644,6 @@ class BitAndExpression(TwoSameOpBitExpression):
     def op_str(self):
         return '&'
 
-def BitAnd(lhs,rhs):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a circuit that "and" A and B bit by bit.
-
-    The return value of this function is
-    
-        rhs O - UInt/SInt(x)
-
-    The corresponding behavior model it expresses is 
-    
-        O = A & B
-
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return BitAndExpression(lhs,rhs)
 
 
 class BitXorExpression(TwoSameOpBitExpression):
@@ -2002,27 +1656,6 @@ class BitXorExpression(TwoSameOpBitExpression):
     def op_str(self):
         return '^'
 
-def BitXor(lhs,rhs):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a circuit that "xor" A and B bit by bit.
-
-    The return value of this function is
-    
-        rhs O - UInt/SInt(x)
-
-    The corresponding behavior model it expresses is 
-    
-        O = A ^ B
-
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-
-    return BitXorExpression(lhs,rhs)
 
 
 class BitXnorExpression(TwoSameOpBitExpression):
@@ -2035,26 +1668,7 @@ class BitXnorExpression(TwoSameOpBitExpression):
     def op_str(self):
         return '^~'
 
-def BitXnor(A,B):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
 
-    as input to realize a circuit that "xnor" A and B bit by bit.
-
-    The return value of this function is
-    
-        rhs O - UInt/SInt(x)
-
-    The corresponding behavior model it expresses is 
-    
-        O = A ^~ B
-
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return BitXnorExpression(A,B)
 
 ################################################################################################################
 #
@@ -2073,27 +1687,6 @@ class EqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '=='
 
-def Equal(A,B):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A and B are equal.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if(A==B) O = 1'b1
-        else     O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return EqualExpression(A,B)
 
 
 class NotEqualExpression(TwoSameOpU1Expression):
@@ -2106,27 +1699,6 @@ class NotEqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '!='
 
-def NotEqual(A,B):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A and B are not equal.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if(A!=B) O = 1'b1
-        else     O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return NotEqualExpression(A,B)
 
 
 class LessEqualExpression(TwoSameOpU1Expression):
@@ -2139,27 +1711,6 @@ class LessEqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '<='
 
-def LessEqual(A,B):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A is less equal than B.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if(A<=B) O = 1'b1
-        else     O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return LessEqualExpression(A,B)
 
 
 class GreaterEqualExpression(TwoSameOpU1Expression):
@@ -2172,27 +1723,6 @@ class GreaterEqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '>='
 
-def GreaterEqual(lhs,rhs):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A is greater equal than B.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if(A>=B) O = 1'b1
-        else     O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return GreaterEqualExpression(lhs,rhs)
 
 
 class LessExpression(TwoSameOpU1Expression):
@@ -2205,27 +1735,6 @@ class LessExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '<'
 
-def Less(opL,opR):
-    '''
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A is less than B.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if(A<B) O = 1'b1
-        else    O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return LessExpression(opL,opR)
 
 
 class GreaterExpression(TwoSameOpU1Expression):
@@ -2238,27 +1747,6 @@ class GreaterExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '>'
 
-def Greater(opL,opR):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A is greater than B.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if(A>B) O = 1'b1
-        else    O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return GreaterExpression(opL,opR)
 
 
 class AndExpression(TwoSameOpU1Expression):
@@ -2272,28 +1760,6 @@ class AndExpression(TwoSameOpU1Expression):
         return '&&'
 
 
-def And(opL,opR):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether both A and B not equal to 0.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if((A!=0) && (B!=0)) O = 1'b1
-        else                 O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return AndExpression(opL,opR)
-
 
 class OrExpression(TwoSameOpU1Expression):
 
@@ -2304,28 +1770,6 @@ class OrExpression(TwoSameOpU1Expression):
     @property
     def op_str(self):
         return '||'
-
-def Or(opL,opR):
-    ''' 
-    The circuit expressed by this function takes 
-    
-        rhs A - UInt/SInt(x)
-        rhs B - UInt/SInt(x)
-
-    as input to realize a comparator to compare whether A or B not equal to 0.
-
-    The return value of this function is
-    
-        rhs O - UInt(1)
-
-    The corresponding behavior model it expresses is 
-    
-        if((A!=0) || (B!=0)) O = 1'b1
-        else                 O = 1'b0
- 
-    This function requires its input to have the same type of attributes, that is, all UInt or SInt.
-    '''
-    return OrExpression(opL,opR)
 
 
 

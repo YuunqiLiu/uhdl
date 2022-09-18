@@ -1,6 +1,7 @@
 
 #from .Value import Value
 from .Variable import *
+from .Operator import *
 from functools import reduce
 from .Root      import Root
 from .Component import *
