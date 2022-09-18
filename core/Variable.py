@@ -18,6 +18,10 @@ from .InternalTool  import *
 #   ValueRoot
 #       Value
 #           Expression
+#               Constant
+#                   Bits
+#                       UInt
+#                       SInt
 #       Value, Variable
 #           SingleVar
 #               WireSig
@@ -26,10 +30,6 @@ from .InternalTool  import *
 #                       Output
 #                       Inout
 #                   Wire
-#                   Constant
-#                       Bits
-#                           UInt
-#                           SInt
 #               Reg
 
 
@@ -82,13 +82,13 @@ class Variable(Root):
         self_module = self.father_until(Component.Component)
         if isinstance(rvalue, CutExpression):
             rvalue_module = rvalue.op.father_until(Component.Component)
-        elif isinstance(rvalue, (Expression, Constant)):
+        elif isinstance(rvalue, Expression):
             rvalue_module = None
         else:
             rvalue_module = rvalue.father_until(Component.Component)
 
-        if isinstance(rvalue, (Expression, Constant)):
-            # rvalue is constant, lvalue can be all signal.
+        if isinstance(rvalue, Expression):
+            # rvalue is expression, lvalue can be all signal.
             pass
         elif rvalue_module is not None:
             if self_module is rvalue_module:
@@ -676,22 +676,114 @@ class Inout(IOSig):
 
 
 
-class Constant(WireSig):
+
+
+
+class GroupVar(Variable):
+
+    def exclude(self,*str_list):
+        pass
+
+
+class IOGroup(GroupVar):
+
+    def __init__(self):
+        super().__init__()
+        #super(IOGroup,self).__init__()
+        self._rvalue = None
+
+    @property
+    def io_list(self) -> list:
+        return sorted([self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)])
+
+    # += as circuit assignment
+    def __iadd__(self,rvalue):
+        if not isinstance(rvalue,IOGroup):
+            raise ArithmeticError('A IOGroup expect assigned by a IOGroup.')
+        # elif self.attribute != rvalue.attribute:
+        #     raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
+        else:
+            for iol,ior in zip(self.io_list,rvalue.io_list):
+                #print(iol,ior)
+                #print(iol,ior)
+                #print(iol.width,ior.width)
+                if isinstance(iol,Input):
+                    ior += iol
+                else:
+                    iol += ior
+            #print('%s get rvalue %s'  %(self,rvalue))
+            object.__setattr__(self,'_rvalue',rvalue)
+            #self.__rvalue = rvalue
+        return self
+
+    def exclude(self,*args):
+        result = copy(self)
+        for a in args:
+            delattr(result,a)
+        return result
+
+    def __getitem__(self,*args):
+        result = copy(self)
+        for a in args:
+            delattr(result,a)
+        return result
+
+
+    @property
+    def verilog_assignment(self) -> str:
+        return reduce(concat,[x.verilog_assignment for x in self.io_list],[])
+
+    @property
+    def verilog_def(self):
+        return reduce(concat,[x.verilog_def for x in self.io_list],[])
     
-    # def __init__(self,template=UInt(1,0)):
-    #     self.__width = math.ceil(math.log(num,2))
-    #     self.__value = num
+    @property
+    def verilog_outer_def(self):
+        return reduce(concat,[x.verilog_outer_def for x in self.io_list],[])
 
+    @property
+    def verilog_inst(self):
+        return reduce(concat,[x.verilog_inst for x in self.io_list],[])
+
+    def reverse(self):
+        reverse = IOGroup()
+        for i in self.io_list:
+            setattr(reverse,i.name,i.reverse())
+        return reverse
+
+
+
+
+
+
+class Expression(Value):
+
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def op_str(self):
+        raise NotImplementedError()
+
+    @property
+    def op_name(self):
+        raise NotImplementedError
+
+
+################################################################################################################
+#
+#   Constant Expression
+#
+################################################################################################################
+
+class Constant(Expression):
     pass
-
-
-
 
 
 class Bits(Constant):
 
     def __init__(self,width_or_string,value=0):
-        super().__init__(self)
+        super().__init__()
         #super(Bits,self).__init__(self)
         if isinstance(width_or_string,int):
             self.__width = width_or_string
@@ -874,97 +966,6 @@ class Parameter(SingleVar):
     #    self.__attribute = value
 
 
-
-
-class GroupVar(Variable):
-
-    def exclude(self,*str_list):
-        pass
-
-
-class IOGroup(GroupVar):
-
-    def __init__(self):
-        super().__init__()
-        #super(IOGroup,self).__init__()
-        self._rvalue = None
-
-    @property
-    def io_list(self) -> list:
-        return sorted([self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)])
-
-    # += as circuit assignment
-    def __iadd__(self,rvalue):
-        if not isinstance(rvalue,IOGroup):
-            raise ArithmeticError('A IOGroup expect assigned by a IOGroup.')
-        # elif self.attribute != rvalue.attribute:
-        #     raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
-        else:
-            for iol,ior in zip(self.io_list,rvalue.io_list):
-                #print(iol,ior)
-                #print(iol,ior)
-                #print(iol.width,ior.width)
-                if isinstance(iol,Input):
-                    ior += iol
-                else:
-                    iol += ior
-            #print('%s get rvalue %s'  %(self,rvalue))
-            object.__setattr__(self,'_rvalue',rvalue)
-            #self.__rvalue = rvalue
-        return self
-
-    def exclude(self,*args):
-        result = copy(self)
-        for a in args:
-            delattr(result,a)
-        return result
-
-    def __getitem__(self,*args):
-        result = copy(self)
-        for a in args:
-            delattr(result,a)
-        return result
-
-
-    @property
-    def verilog_assignment(self) -> str:
-        return reduce(concat,[x.verilog_assignment for x in self.io_list],[])
-
-    @property
-    def verilog_def(self):
-        return reduce(concat,[x.verilog_def for x in self.io_list],[])
-    
-    @property
-    def verilog_outer_def(self):
-        return reduce(concat,[x.verilog_outer_def for x in self.io_list],[])
-
-    @property
-    def verilog_inst(self):
-        return reduce(concat,[x.verilog_inst for x in self.io_list],[])
-
-    def reverse(self):
-        reverse = IOGroup()
-        for i in self.io_list:
-            setattr(reverse,i.name,i.reverse())
-        return reverse
-
-
-
-
-
-
-class Expression(Value):
-
-    def __init__(self):
-        super().__init__()
-
-    @property
-    def op_str(self):
-        raise NotImplementedError()
-
-    @property
-    def op_name(self):
-        raise NotImplementedError
 
 ################################################################################################################
 #
