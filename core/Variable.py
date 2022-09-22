@@ -159,10 +159,6 @@ class Variable(Root):
             str_list    = self._rvalue.bstring(self.lstring,"=")
             str_list[0] = "always @(*) %s" % str_list[0]
             return str_list
-
-            #return ['always @(*) begin'] + \
-            #         self._rvalue.bstring(self.lstring,"=") + \
-            #        ['end']
         else:
             return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring) + ';']
 
@@ -355,9 +351,9 @@ class Value(ValueRoot):
     #def is_lvalue(self) -> bool:
     #    return False
 
-    @property
-    def string(self):
-        raise NotImplementedError
+    #@property
+    #def string(self):
+    #    raise NotImplementedError
 
     @property
     def lstring(self):
@@ -367,8 +363,8 @@ class Value(ValueRoot):
     def rstring(self):
         raise NotImplementedError
 
-    def bstring(self,lstring,assign_method) -> str:
-        return [" ".join([lstring,assign_method,self.rstring]) + ";"]
+    def bstring(self, lstring, assign_method) -> str:
+        return [" ".join([lstring, assign_method, self.rstring]) + ";"]
 
     @property
     def attribute(self):
@@ -402,9 +398,9 @@ class SingleVar(Variable, Value):
     def width(self):
         return self._template.width
 
-    @property
-    def string(self):
-        return self.name_before_component #self.__name
+    #@property
+    #def string(self):
+    #    return self.name_before_component #self.__name
 
     @property
     def lstring(self):
@@ -842,9 +838,9 @@ class Bits(Constant):
     def template(self):
         return self
 
-    @property
-    def string(self):
-        return '%s\'b%s' % (self.__width,bin(self.__value).replace('0b','') )           #pass
+    #@property
+    #def string(self):
+    #    return '%s\'b%s' % (self.__width,bin(self.__value).replace('0b','') )           #pass
 
     @property
     def rstring(self):
@@ -932,9 +928,9 @@ class SInt(Bits):
 
 class Parameter(SingleVar):
 
-    @property
-    def string(self):
-        return self.name
+    #@property
+    #def string(self):
+    #    return self.name
 
     @property
     def rstring(self):
@@ -1188,9 +1184,9 @@ class CutExpression(Expression):
     def attribute(self) -> int:
         return type(self.op.attribute)(self.hbound - self.lbound + 1)
 
-    @property
-    def string(self) -> str:
-        return self.op.string + '[%s:%s]' % ( self.hbound, self.lbound )
+    #@property
+    #def string(self) -> str:
+    #    return self.op.string + '[%s:%s]' % ( self.hbound, self.lbound )
     
     @property
     def rstring(self) -> str:
@@ -1212,14 +1208,13 @@ class FanoutExpression(Expression):
     def attribute(self):
         return type(self._op.attribute)(self._op.attribute.width * self._fanout)
 
-    @property
-    def string(self) -> str:
-        return '(%s{%s})' % (self._fanout,self._op.string)
+    #@property
+    #def string(self) -> str:
+    #    return '(%s{%s})' % (self._fanout,self._op.string)
 
     @property
     def rstring(self) -> str:
-        return self.string
-
+        return '({%s{%s}})' % (self._fanout,self._op.rstring)
 
 
 
@@ -1240,15 +1235,15 @@ class ListExpression(Expression):
         for op in op_list:
             self.check_rvalue(op)
 
-    @property
-    def string(self) -> str:
-        tmp_op_str = ' %s '%self.op_str
-        return '(%s)' %  tmp_op_str.join([op.string for op in self.op_list])
+    #@property
+    #def string(self) -> str:
+    #    tmp_op_str = ' %s '%self.op_str
+    #    return '(%s)' %  tmp_op_str.join([op.string for op in self.op_list])
     
     @property
     def rstring(self) -> str:
         tmp_op_str = ' %s '%self.op_str
-        return '(%s)' %  tmp_op_str.join([op.string for op in self.op_list])
+        return '(%s)' %  tmp_op_str.join([op.rstring for op in self.op_list])
 
 
 class MultiListExpression(ListExpression):
@@ -1370,9 +1365,9 @@ class CombineExpression(ListExpression):
     def attribute(self) -> int:
         return type(self.op_list[0].attribute)(sum([op.attribute.width for op in self.op_list]))
 
-    @property
-    def string(self) -> str:
-        return '{%s}' % ', '.join([op.string for op in self.op_list])
+    #@property
+    #def string(self) -> str:
+    #    return '{%s}' % ', '.join([op.string for op in self.op_list])
     
     @property
     def rstring(self) -> str:
@@ -1394,13 +1389,13 @@ class OneOpExpression(Expression):
         self._op = op
         self.check_rvalue(op)
 
-    @property
-    def string(self) -> str:
-        return '(%s%s)' % (self.op_str,self._op.string)
+    #@property
+    #def string(self) -> str:
+    #    return '(%s%s)' % (self.op_str,self._op.string)
 
     @property
     def rstring(self) -> str:
-        return '(%s%s)' % (self.op_str,self._op.string)
+        return '(%s%s)' % (self.op_str,self._op.rstring)
 
 class OneOpU1Expression(OneOpExpression):
 
@@ -1507,9 +1502,9 @@ class TwoOpExpression(Expression):
         self.opL = opL
         self.opR = opR
 
-    @property
-    def string(self) -> str:
-        return '(%s %s %s)'  % (self.opL.string ,self.op_str,self.opR.string)
+    #@property
+    #def string(self) -> str:
+    #    return '(%s %s %s)'  % (self.opL.string ,self.op_str,self.opR.string)
     
     @property
     def rstring(self) -> str:
