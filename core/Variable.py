@@ -156,11 +156,11 @@ class Variable(Root):
         if not hasattr(self, '_rvalue') or self._rvalue is None:
             return []
         if self._need_always:
-            str_list    = self._rvalue.bstring(self.lstring,"=")
+            str_list    = self._rvalue.bstring(self,"=")
             str_list[0] = "always @(*) %s" % str_list[0]
             return str_list
         else:
-            return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring) + ';']
+            return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
 
 
 
@@ -359,12 +359,12 @@ class Value(ValueRoot):
     def lstring(self):
         raise NotImplementedError
 
-    @property
-    def rstring(self):
+    #@property
+    def rstring(self, lvalue):
         raise NotImplementedError
 
-    def bstring(self, lstring, assign_method) -> str:
-        return [" ".join([lstring, assign_method, self.rstring]) + ";"]
+    def bstring(self, lvalue, assign_method) -> str:
+        return [" ".join([lvalue.lstring, assign_method, self.rstring(lvalue)]) + ";"]
 
     @property
     def attribute(self):
@@ -406,8 +406,8 @@ class SingleVar(Variable, Value):
     def lstring(self):
         return self.name_before_component #self.__name
 
-    @property
-    def rstring(self):
+    #@property
+    def rstring(self, lvalue):
         return self.name_before_component #self.__name
 
     @property
@@ -480,20 +480,20 @@ class Reg(SingleVar):
         if not hasattr(self,'_rvalue') or self._rvalue is None:
             return []
         else:
-            sensitivity_list = [("negedge" if self._clk_active_neg else "posedge") + " " + self._aclk.rstring]
+            sensitivity_list = [("negedge" if self._clk_active_neg else "posedge") + " " + self._aclk.rstring(self)]
             if self._rst and self._async_rst:
-                sensitivity_list += [("negedge" if self._rst_active_low else "posedge") + " " + self._rst.rstring]
+                sensitivity_list += [("negedge" if self._rst_active_low else "posedge") + " " + self._rst.rstring(self)]
 
             str_list = ['always @(%s) begin' %(" or ".join(sensitivity_list))]
 
             if self._rst:
-                str_list += ['    if(%s%s) %s <= %s;' % ('~' if self._rst_active_low else '',self._rst.rstring,self.lstring,self.attribute.rstring)] 
-                tmp_str_list = self._rvalue.bstring(self.lstring,'<=')
+                str_list += ['    if(%s%s) %s <= %s;' % ('~' if self._rst_active_low else '',self._rst.rstring(self), self.lstring,self.attribute.rstring(self))] 
+                tmp_str_list = self._rvalue.bstring(self,'<=')
                 tmp_str_list[0] = '    else %s' % tmp_str_list[0]
                 tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:]]
                 str_list += tmp_str_list
             else:
-                str_list = self._rvalue.bstring(self.lstring,'<=')
+                str_list = self._rvalue.bstring(self,'<=')
                 str_list[0] = '    %s' % str_list[0]
                 tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:0]]
             str_list += ['end']
@@ -608,8 +608,8 @@ class Input(IOSig):
     def lstring(self):
         return self.name_until_component #self.__name
 
-    @property
-    def rstring(self):
+    #@property
+    def rstring(self, lvalue):
         return self.name_before_component #self.__name
 
     @property
@@ -649,9 +649,13 @@ class Output(IOSig):
     def lstring(self):
         return self.name_before_component #self.__name
 
-    @property
-    def rstring(self):
-        return self.name_until_component #self.__name
+    #@property
+    def rstring(self, lvalue):
+
+        if lvalue.father_until_component() is self.father_until_component():
+            return self.name_before_component
+        else:
+            return self.name_until_component #self.__name
 
     @property
     def _iosig_type_prefix(self):
@@ -842,8 +846,8 @@ class Bits(Constant):
     #def string(self):
     #    return '%s\'b%s' % (self.__width,bin(self.__value).replace('0b','') )           #pass
 
-    @property
-    def rstring(self):
+    #@property
+    def rstring(self, lvalue):
         return '%s\'b%s' % (self.__width,bin(self.__value).replace('0b','') )           #pass
 
     @property
@@ -932,8 +936,8 @@ class Parameter(SingleVar):
     #def string(self):
     #    return self.name
 
-    @property
-    def rstring(self):
+    #@property
+    def rstring(self, lvalue):
         return self.name
 
     @property
@@ -949,7 +953,7 @@ class Parameter(SingleVar):
 
     @property
     def verilog_def(self):
-        return ['parameter %s = %s' % (self.lstring,self.attribute.rstring)]
+        return ['parameter %s = %s' % (self.lstring,self.attribute.rstring(self))]
 
 
     # @property
@@ -1017,12 +1021,12 @@ class CaseExpression(AlwaysCombExpression):
     def attribute(self):
         return self.__attr
 
-    def bstring(self,lstring,assign_method) -> str:
-        str_list = ['case(%s)' % self.__select.rstring]
+    def bstring(self, lvalue, assign_method) -> str:
+        str_list = ['case(%s)' % self.__select.rstring(lvalue)]
 
         for k,v in self.__case_pair:
             logic_block     = v.bstring(lstring,assign_method)
-            logic_block[0]  = '%s : %s' % (k.rstring,logic_block[0])
+            logic_block[0]  = '%s : %s' % (k.rstring(lvalue),logic_block[0])
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
 
@@ -1136,16 +1140,16 @@ class WhenExpression(AlwaysCombExpression):
         if self._attribute == None: raise Exception('Unprocess Error.expression used before constructed.')
         return self._attribute
 
-    def bstring(self,lstring,assign_method) -> str:
+    def bstring(self,lvalue,assign_method) -> str:
         str_list = []
         for index,(condition,action) in enumerate(zip(self._condition_list,self._action_list)):
-            if_block = action.bstring(lstring,assign_method)
-            if index==0 : if_block[0] = "if(%s) %s"      %(condition.rstring,if_block[0])
-            else        : if_block[0] = "else if(%s) %s" %(condition.rstring,if_block[0])
+            if_block = action.bstring(lvalue,assign_method)
+            if index==0 : if_block[0] = "if(%s) %s"      %(condition.rstring(lvalue),if_block[0])
+            else        : if_block[0] = "else if(%s) %s" %(condition.rstring(lvalue),if_block[0])
             str_list += if_block
 
         if self._has_otherwise:
-            if_block = self._otherwise_action.bstring(lstring,assign_method)
+            if_block = self._otherwise_action.bstring(lvalue,assign_method)
             if_block[0] = "else %s" % if_block[0]
             str_list += if_block
 
@@ -1188,9 +1192,9 @@ class CutExpression(Expression):
     #def string(self) -> str:
     #    return self.op.string + '[%s:%s]' % ( self.hbound, self.lbound )
     
-    @property
-    def rstring(self) -> str:
-        return self.op.rstring + '[%s:%s]' % ( self.hbound, self.lbound )
+    #@property
+    def rstring(self, lvalue) -> str:
+        return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
 
 
 
@@ -1212,9 +1216,9 @@ class FanoutExpression(Expression):
     #def string(self) -> str:
     #    return '(%s{%s})' % (self._fanout,self._op.string)
 
-    @property
-    def rstring(self) -> str:
-        return '({%s{%s}})' % (self._fanout,self._op.rstring)
+    #@property
+    def rstring(self, lvalue) -> str:
+        return '({%s{%s}})' % (self._fanout,self._op.rstring(lvalue))
 
 
 
@@ -1240,10 +1244,10 @@ class ListExpression(Expression):
     #    tmp_op_str = ' %s '%self.op_str
     #    return '(%s)' %  tmp_op_str.join([op.string for op in self.op_list])
     
-    @property
-    def rstring(self) -> str:
+    #@property
+    def rstring(self, lvalue) -> str:
         tmp_op_str = ' %s '%self.op_str
-        return '(%s)' %  tmp_op_str.join([op.rstring for op in self.op_list])
+        return '(%s)' %  tmp_op_str.join([op.rstring(lvalue) for op in self.op_list])
 
 
 class MultiListExpression(ListExpression):
@@ -1369,9 +1373,9 @@ class CombineExpression(ListExpression):
     #def string(self) -> str:
     #    return '{%s}' % ', '.join([op.string for op in self.op_list])
     
-    @property
-    def rstring(self) -> str:
-        return '{%s}' % ', '.join([op.rstring for op in self.op_list])
+    #@property
+    def rstring(self, lvalue) -> str:
+        return '{%s}' % ', '.join([op.rstring(lvalue) for op in self.op_list])
 
 
 
@@ -1393,9 +1397,9 @@ class OneOpExpression(Expression):
     #def string(self) -> str:
     #    return '(%s%s)' % (self.op_str,self._op.string)
 
-    @property
-    def rstring(self) -> str:
-        return '(%s%s)' % (self.op_str,self._op.rstring)
+    #@property
+    def rstring(self, lvalue) -> str:
+        return '(%s%s)' % (self.op_str,self._op.rstring(lvalue))
 
 class OneOpU1Expression(OneOpExpression):
 
@@ -1506,9 +1510,11 @@ class TwoOpExpression(Expression):
     #def string(self) -> str:
     #    return '(%s %s %s)'  % (self.opL.string ,self.op_str,self.opR.string)
     
-    @property
-    def rstring(self) -> str:
-        return '(%s %s %s)'  % (self.opL.rstring ,self.op_str,self.opR.rstring)
+    #@property
+    def rstring(self, lvalue) -> str:
+        return '(%s %s %s)'  % (self.opL.rstring(lvalue) ,self.op_str,self.opR.rstring(lvalue))
+ 
+
 
 class TwoSameOpExpression(TwoOpExpression):
 
