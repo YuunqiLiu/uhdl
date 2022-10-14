@@ -788,6 +788,34 @@ class Constant(Expression):
     pass
 
 
+class AnyConstant(Constant):
+
+    def __init__(self,any_val):
+        self._any_val = any_val
+
+    @property
+    def attribute(self):
+        return self
+
+    @property
+    def template(self):
+        return self
+
+    def rstring(self, lvalue):
+        return self._any_val
+
+    @property
+    def lstring(self):
+        raise NotImplementedError
+
+
+    def __str__(self):
+        return "AnyConstant %s" % self._any_val
+
+
+
+
+
 class Bits(Constant):
 
     def __init__(self,width_or_string,value=0):
@@ -947,9 +975,9 @@ class Parameter(SingleVar):
     @property
     def verilog_assignment(self) -> str:
         if not hasattr(self,'_rvalue') or self._rvalue is None:
-            return []
+            return ['.%s(%s)' % (self.lstring,self._template.rstring(self))]
         else:
-            return ['.%s(%s)' % (self.lstring,self._rvalue.rstring)]
+            return ['.%s(%s)' % (self.lstring,self._rvalue.rstring(self))]
 
     @property
     def verilog_def(self):

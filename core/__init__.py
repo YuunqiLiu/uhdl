@@ -2,9 +2,9 @@
 __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'Assign','SmartAssign','Linkable',
             'join_name',
-            'Component',
+            'Component','VComponent',
 
-            'Input','Output','Inout','UInt','SInt','IOGroup','Parameter','Wire','Reg',
+            'Input','Output','Inout','UInt','SInt','IOGroup','Parameter','Wire','Reg','AnyConstant',
             'And','Or','Greater','Less','GreaterEqual','LessEqual','NotEqual','Equal',
             'BitXnor','BitXor','BitAnd','BitOr',
             'Add','Sub','Mul',
@@ -16,10 +16,11 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'when','Bundle']
 
 from .Component     import Component
+from .VComponent    import VComponent
 from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask
 from .BasicFunction import join_name
 
-from .Variable      import Input,Output,Inout,UInt,SInt,IOGroup,Parameter,Wire,Reg
+from .Variable      import Input,Output,Inout,UInt,SInt,IOGroup,Parameter,Wire,Reg,AnyConstant
 from .Operator      import And,Or,Greater,Less,GreaterEqual,LessEqual,NotEqual,Equal
 from .Operator      import BitXnor,BitXor,BitAnd,BitOr
 from .Operator      import Add,Sub,Mul

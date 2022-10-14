@@ -75,10 +75,13 @@ class Component(Root):
         self.__vfile     = None
         self._PARAM      = PARAM_CONTAINER()
         self.__subclass_init_param_get()
-        self.output_path = './%s' % self.module_name
+        #self.output_path = './%s' % self.module_name
         self._lint        = None
 
 
+    @property
+    def output_path(self):
+        return './%s' % self.module_name
 
     def create(self, name, val):
         setattr(self, name, val)
@@ -123,7 +126,7 @@ class Component(Root):
 
     @property
     def param_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Parameter)]
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Parameter,))]
 
     @property
     def var_list(self) -> list:
@@ -212,7 +215,7 @@ class Component(Root):
     @property
     def verilog_inst(self):
         param_assignment_list = reduce(concat,[i.verilog_assignment for i in self.param_list],[])
-        
+
         str_list = ['%s %s %s' % (self.module_name,self.name,'#(' if param_assignment_list else '(')]
 
         if param_assignment_list:
