@@ -191,9 +191,10 @@ class Bundle(Root):
         raise NotImplementedError
 
     def __setattr__(self, name, value):
-        if isinstance(value, (Bundle, Variable)):
-            self._var_list.append(value)
-        super().__setattr__(name, value)
+        if not hasattr(self, "_var_list") or value not in self._var_list:
+            if isinstance(value, (Bundle, Variable)):
+                self._var_list.append(value)
+            super().__setattr__(name, value)
 
     def _setattr_hook(self):
         component_father = self.father_until(Component.Component)
