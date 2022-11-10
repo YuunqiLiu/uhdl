@@ -47,4 +47,9 @@ jobs:
           path: '_build'
       - name: Deploy to GitHub Pages
         id: deployment
+<<<<<<< HEAD:.github/workflows/deploy_docs.yaml
         uses: actions/deploy-pages@v1
+=======
+        uses: actions/deploy-pages@v1
+
+>>>>>>> b3422ffb78e6b625173542002dd5858a4040d29c:.github/workflows/static.yml
