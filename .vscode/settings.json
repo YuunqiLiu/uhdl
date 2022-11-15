@@ -1,5 +1,27 @@
 {
-    "restructuredtext.builtDocumentationPath": "${workspaceRoot}/_build/html",
-    "restructuredtext.confPath": "${workspaceFolder}/docs",
-    "restructuredtext.updateOnTextChanged": "false"
- }
+    "restructuredtext.updateOnTextChanged": "false",
+    "esbonio.sphinx.buildDir": "${workspaceRoot}/_build",
+    "esbonio.sphinx.confDir": "${workspaceFolder}/docs",
+    "python.testing.unittestArgs": [
+        "-v",
+        "-s",
+        "./docs/example/test",
+        "-p",
+        "test*.py"
+    ],
+    "python.testing.pytestEnabled": false,
+    "python.testing.unittestEnabled": true,
+    "python.analysis.include": [
+        "${workspaceRoot}/..",
+        "/workspace"
+    ],
+    "python.analysis.extraPaths": [
+        "${workspaceRoot/..",
+        "/workspace"
+    ],
+    "python.analysis.autoImportCompletions": true,
+    "python.autoComplete.extraPaths": [
+        "${workspaceRoot}/..",
+        "/workspace"
+    ]
+}

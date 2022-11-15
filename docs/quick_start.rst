@@ -7,6 +7,10 @@ asdfasdf
 This is a doctest block.
 
 
+
+.. literalinclude :: test.py
+    :language: python
+
 ::
 
     from uhdl import *
@@ -17,4 +21,5 @@ This is a doctest block.
 
     def my_function():
         "just a test"
+
 
