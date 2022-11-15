@@ -39,7 +39,7 @@ jobs:
           pip install sphinx sphinx_rtd_theme sphinx_automodapi
       - name: Test Doc Example
         run: |
-          python docs/example/test/test.py
+          python -m unittest docs/example/test/test.py
       - name: Sphinx Build
         run: |
           sphinx-build docs _build
