@@ -27,7 +27,7 @@ class ExampleTest(unittest.TestCase):
         for example_file in example_file_list:
             print('start to test example file: %s' % example_file)
             exec_file(example_file)
-
+            asd
 
 if __name__ == '__main__':
     
