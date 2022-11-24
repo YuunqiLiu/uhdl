@@ -1,93 +1,93 @@
 {
   "name": "$root",
   "kind": "Root",
-  "addr": 94608628030848,
+  "addr": 94070414466432,
   "members": [
     {
       "name": "",
       "kind": "CompilationUnit",
-      "addr": 94608628145120
+      "addr": 94070414580704
     },
     {
       "name": "adder",
       "kind": "Instance",
-      "addr": 94608628145712,
+      "addr": 94070414581296,
       "body": {
         "name": "adder",
         "kind": "InstanceBody",
-        "addr": 94608628145392,
+        "addr": 94070414580976,
         "members": [
           {
             "name": "din1",
             "kind": "Port",
-            "addr": 94608628145832,
+            "addr": 94070414581416,
             "type": "logic[31:0]",
             "direction": "In",
-            "internalSymbol": "94608628145960 din1"
+            "internalSymbol": "94070414581544 din1"
           },
           {
             "name": "din1",
             "kind": "Net",
-            "addr": 94608628145960,
+            "addr": 94070414581544,
             "type": "logic[31:0]",
             "netType": {
               "name": "wire",
               "kind": "NetType",
-              "addr": 94608628000496,
+              "addr": 94070414436080,
               "type": "logic"
             }
           },
           {
             "name": "din2",
             "kind": "Port",
-            "addr": 94608628146328,
+            "addr": 94070414581912,
             "type": "logic[31:0]",
             "direction": "In",
-            "internalSymbol": "94608628147920 din2"
+            "internalSymbol": "94070414583504 din2"
           },
           {
             "name": "din2",
             "kind": "Net",
-            "addr": 94608628147920,
+            "addr": 94070414583504,
             "type": "logic[31:0]",
             "netType": {
               "name": "wire",
               "kind": "NetType",
-              "addr": 94608628000496,
+              "addr": 94070414436080,
               "type": "logic"
             }
           },
           {
             "name": "dout",
             "kind": "Port",
-            "addr": 94608628148288,
+            "addr": 94070414583872,
             "type": "logic[32:0]",
             "direction": "Out",
-            "internalSymbol": "94608628148416 dout"
+            "internalSymbol": "94070414584000 dout"
           },
           {
             "name": "dout",
             "kind": "Net",
-            "addr": 94608628148416,
+            "addr": 94070414584000,
             "type": "logic[32:0]",
             "netType": {
               "name": "wire",
               "kind": "NetType",
-              "addr": 94608628000496,
+              "addr": 94070414436080,
               "type": "logic"
             }
           },
           {
             "name": "",
             "kind": "ContinuousAssign",
-            "addr": 94608628148808,
+            "addr": 94070414584392,
             "assignment": {
               "kind": "Assignment",
               "type": "logic[32:0]",
               "left": {
                 "kind": "NamedValue",
                 "type": "logic[32:0]",
-                "symbol": "94608628148416 dout"
+                "symbol": "94070414584000 dout"
               },
               "right": {
                 "kind": "BinaryOp",
@@ -99,7 +99,7 @@
                   "operand": {
                     "kind": "NamedValue",
                     "type": "logic[31:0]",
-                    "symbol": "94608628145960 din1"
+                    "symbol": "94070414581544 din1"
                   }
                 },
                 "right": {
@@ -108,7 +108,7 @@
                   "operand": {
                     "kind": "NamedValue",
                     "type": "logic[31:0]",
-                    "symbol": "94608628147920 din2"
+                    "symbol": "94070414583504 din2"
                   }
                 }
               },

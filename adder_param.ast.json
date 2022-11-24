@@ -1,26 +1,26 @@
 {
   "name": "$root",
   "kind": "Root",
-  "addr": 94567433838240,
+  "addr": 94398904938144,
   "members": [
     {
       "name": "",
       "kind": "CompilationUnit",
-      "addr": 94567433952448
+      "addr": 94398905052352
     },
     {
       "name": "adder_param",
       "kind": "Instance",
-      "addr": 94567434085328,
+      "addr": 94398905185232,
       "body": {
         "name": "adder_param",
         "kind": "InstanceBody",
-        "addr": 94567434084632,
+        "addr": 94398905184536,
         "members": [
           {
             "name": "WIDTH",
             "kind": "Parameter",
-            "addr": 94567434084808,
+            "addr": 94398905184712,
             "type": "logic signed[31:0]",
             "initializer": {
               "kind": "Conversion",
@@ -41,74 +41,74 @@
           {
             "name": "din1",
             "kind": "Port",
-            "addr": 94567434085448,
+            "addr": 94398905185352,
             "type": "logic[63:0]",
             "direction": "In",
-            "internalSymbol": "94567434085576 din1"
+            "internalSymbol": "94398905185480 din1"
           },
           {
             "name": "din1",
             "kind": "Net",
-            "addr": 94567434085576,
+            "addr": 94398905185480,
             "type": "logic[63:0]",
             "netType": {
               "name": "wire",
               "kind": "NetType",
-              "addr": 94567433807840,
+              "addr": 94398904907744,
               "type": "logic"
             }
           },
           {
             "name": "din2",
             "kind": "Port",
-            "addr": 94567434085944,
+            "addr": 94398905185848,
             "type": "logic[63:0]",
             "direction": "In",
-            "internalSymbol": "94567434087200 din2"
+            "internalSymbol": "94398905187104 din2"
           },
           {
             "name": "din2",
             "kind": "Net",
-            "addr": 94567434087200,
+            "addr": 94398905187104,
             "type": "logic[63:0]",
             "netType": {
               "name": "wire",
               "kind": "NetType",
-              "addr": 94567433807840,
+              "addr": 94398904907744,
               "type": "logic"
             }
           },
           {
             "name": "dout",
             "kind": "Port",
-            "addr": 94567434087568,
+            "addr": 94398905187472,
             "type": "logic[64:0]",
             "direction": "Out",
-            "internalSymbol": "94567434087696 dout"
+            "internalSymbol": "94398905187600 dout"
           },
           {
             "name": "dout",
             "kind": "Net",
-            "addr": 94567434087696,
+            "addr": 94398905187600,
             "type": "logic[64:0]",
             "netType": {
               "name": "wire",
               "kind": "NetType",
-              "addr": 94567433807840,
+              "addr": 94398904907744,
               "type": "logic"
             }
           },
           {
             "name": "",
             "kind": "ContinuousAssign",
-            "addr": 94567434088088,
+            "addr": 94398905187992,
             "assignment": {
               "kind": "Assignment",
               "type": "logic[64:0]",
               "left": {
                 "kind": "NamedValue",
                 "type": "logic[64:0]",
-                "symbol": "94567434087696 dout"
+                "symbol": "94398905187600 dout"
               },
               "right": {
                 "kind": "BinaryOp",
@@ -120,7 +120,7 @@
                   "operand": {
                     "kind": "NamedValue",
                     "type": "logic[63:0]",
-                    "symbol": "94567434085576 din1"
+                    "symbol": "94398905185480 din1"
                   }
                 },
                 "right": {
@@ -129,7 +129,7 @@
                   "operand": {
                     "kind": "NamedValue",
                     "type": "logic[63:0]",
-                    "symbol": "94567434087200 din2"
+                    "symbol": "94398905187104 din2"
                   }
                 }
               },
