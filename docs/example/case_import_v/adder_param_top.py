@@ -2,18 +2,16 @@ from uhdl import *
 
 class AdderParamTop(Component):
 
-    def __init__(self):
+    def __init__(self, WIDTH = 64):
         super().__init__()
      
         # IO define
-        self.din1   = Input(UInt(32))
-        self.din2   = Input(UInt(32))
-        self.dout   = Output(UInt(33))
+        self.din1   = Input(UInt(WIDTH))
+        self.din2   = Input(UInt(WIDTH))
+        self.dout   = Output(UInt(WIDTH+1))
 
         # Import adder.v and instantiate it as a component in UHDL.
-        self.u_adder = VComponent('docs/example/case_import_v/adder_param.v','adder_param')
-        self.u_adder.WIDTH = 64
-
+        self.u_adder = VComponent('docs/example/case_import_v/adder_param.v','adder_param', WIDTH=WIDTH)
 
         self.dout += self.u_adder.dout
         self.u_adder.din1 += self.din1

@@ -70,11 +70,18 @@ class VPort(object):
 class VComponent(Component):
 
 
-    def __init__(self, file, top):
+    def __init__(self, file, top , **kwargs):
         super().__init__()
         self._module_name = top
         ast_json = "%s.ast.json" % top
-        p = Popen('slang -v %s -ast-json %s --top %s' % (file, ast_json, top), shell=True)
+
+
+        
+        param_config = ''
+        for k, v in kwargs.items():
+            param_config = param_config + '-G %s=%s ' % (k,v)
+
+        p = Popen('slang -v %s -ast-json %s --top %s %s' % (file, ast_json, top, param_config), shell=True)
         p.communicate()
         self.parse_ast(ast_json, top)
 
