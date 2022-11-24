@@ -34,9 +34,12 @@ jobs:
         uses: actions/configure-pages@v2
       - name: Setup Python
         uses: actions/setup-python@v2
-      - name: Install Dependencies
+      - name: Install Sphinx
         run: |
           pip install sphinx sphinx_rtd_theme sphinx_automodapi
+      - name: Build Slang
+        run: |
+          source build_slang.sh
       - name: Test Doc Example
         run: |
           python -m unittest docs/example/test/test.py
