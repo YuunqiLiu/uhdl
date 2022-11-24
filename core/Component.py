@@ -77,11 +77,11 @@ class Component(Root):
         self.__subclass_init_param_get()
         #self.output_path = './%s' % self.module_name
         self._lint        = None
-
+        self.output_dir   = '.'
 
     @property
     def output_path(self):
-        return './%s' % self.module_name
+        return '%s/%s' % (self.output_dir, self.module_name)
 
     def create(self, name, val):
         setattr(self, name, val)

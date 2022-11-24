@@ -1,11 +1,10 @@
 from uhdl import *
 
-
 class FirstComp(Component):
 
     def __init__(self):
         super().__init__()
-        
+     
         # IO define
         self.clk    = Input(UInt(1))
         self.rst_n  = Input(UInt(1))
@@ -26,4 +25,5 @@ class FirstComp(Component):
 inst = FirstComp()
 
 # generate verilog
+inst.output_dir = 'docs/generated_verilog'
 inst.generate_verilog()

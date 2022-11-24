@@ -13,15 +13,15 @@
     "python.testing.unittestEnabled": true,
     "python.analysis.include": [
         "${workspaceRoot}/..",
-        "/workspace"
+        "/workspaces"
     ],
     "python.analysis.extraPaths": [
-        "${workspaceRoot/..",
-        "/workspace"
+        "${workspaceRoot}/..",
+        "/workspaces"
     ],
     "python.analysis.autoImportCompletions": true,
     "python.autoComplete.extraPaths": [
         "${workspaceRoot}/..",
-        "/workspace"
+        "/workspaces"
     ]
 }
