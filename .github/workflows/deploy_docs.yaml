@@ -30,27 +30,48 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+        
       - name: Setup Pages
         uses: actions/configure-pages@v2
+        
       - name: Setup Python
         uses: actions/setup-python@v2
+  
+      - name: Cache Slang
+        id: cache-slang
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-slang
+        with:
+          path: slang
+          key: ${{ runner.os }}-build-${{ env.cache-name }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+        
+      - if: ${{ steps.cache-slang.outputs.cache-hit != 'true' }}
+        name: Build Slang
+        run: |
+          source build_slang.sh
+        
       - name: Install Sphinx
         run: |
           pip install sphinx sphinx_rtd_theme sphinx_automodapi
-      - name: Build Slang
-        run: |
-          source build_slang.sh
+
       - name: Test Doc Example
         run: |
           python -m unittest docs/example_test/test.py
+          
       - name: Sphinx Build
         run: |
           sphinx-build docs _build
+          
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
           # Upload entire repository
           path: '_build'
+          
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
