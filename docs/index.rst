@@ -9,23 +9,32 @@ Welcome to UHDL's documentation!
 Introduction
 ------------
 
-UHDL(Unified Hardware Description Language)是一种硬件描述语言，用于完成包含多种电路描述形式的复杂系统的统一描述与配置。UHDL基于python，通过在python中添加电路相关的类库以实现电路描述。
+UHDL is a hardware description language that is based on a python implementation and can be treated as a python package or a set of python APIs.
 
-* 面向对象
-* 支持任何形式的参数输入(例如*.xml,*.xls)
-* 与任何形式的Verilog构建流程保持兼容(例如tcl based IP,perl based script)
-* 不受限制地使用Python原生控制结构进行参数化电路生成
-* 提供操作接口以实现基于程序控制的UHDL代码编写
+The product of UHDL is verilog.
+
+It has following features:
+
+1. Better flexibility than verilog, can support any form of input as parameters, even if it is a json or xlsx.
+
+2. Interpretive language, immediately stop at the scene of an error.
+
+3. Built-in lint, to ensure the quality of the output verilog.
+
+4. Output highly readable verilog.
+5. Unrestricted use of python's native control structures to manipulate circuit elements.
 
 
 
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
+   :caption: Contents
    :titlesonly:
    :hidden:
    
-   quick_start.rst
+   install_uhdl.rst
+   first_module.rst
+   basic_syntax.rst
    import_verilog.rst
 
 
