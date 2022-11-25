@@ -49,14 +49,15 @@ jobs:
             ${{ runner.os }}-build-
             ${{ runner.os }}-
         
+      - if: ${{ steps.cache-slang.outputs.cache-hit != 'true' }}
+        name: Build Slang
+        run: |
+          source build_slang.sh
+        
       - name: Install Sphinx
         run: |
           pip install sphinx sphinx_rtd_theme sphinx_automodapi
-          
-      - name: Build Slang
-        run: |
-          source build_slang.sh
-          
+
       - name: Test Doc Example
         run: |
           python -m unittest docs/example_test/test.py
