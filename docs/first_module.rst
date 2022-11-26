@@ -15,11 +15,11 @@ After executing the above file, the following directory will be generated in the
 
 Under the generated_verilog folder, the following files are generated.
 
-    `FirstComp_/FirstComp_.v`
+    FirstComp/FirstComp.v
 
-You can see the following generated verilog code in `FirstComp_.v`:
+You can see the following generated verilog code in FirstComp.v:
 
-.. literalinclude :: generated_verilog/FirstComp_/FirstComp_.v
+.. literalinclude :: generated_verilog/FirstComp/FirstComp.v
     :language: verilog
     :linenos:
     :lines: 33-48

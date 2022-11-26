@@ -87,7 +87,7 @@ An example of importing a Verilog file using VCompnent is as follows.
 The execution of the above file results in the following. There is no difference between referencing a Verilog file and using a normal Component for the upper-level UHDL Component.
 
 
-.. literalinclude :: generated_verilog/AdderTop_/AdderTop_.v
+.. literalinclude :: generated_verilog/AdderTop/AdderTop.v
     :language: verilog
     :linenos:
     :lines: 33-51

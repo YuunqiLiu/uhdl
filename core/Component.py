@@ -94,7 +94,7 @@ class Component(Root):
     @property
     def module_name(self):
         # This scheme attempts to unwrap any data type into a readable unique string, and form the instantiation name from this string
-        return type(self).__name__+'_'+self.PARAM.UHDL_MODU_NAME_POST_FIX
+        return (type(self).__name__+'_'+self.PARAM.UHDL_MODU_NAME_POST_FIX).rstrip('_')
 
     @property
     def vfile(self):
