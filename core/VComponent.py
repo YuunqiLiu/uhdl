@@ -39,11 +39,15 @@ class VPort(object):
         type_string = ast_dict['type']        
         width_res = re.search('\[([0-9]+)\:([0-9]+)\]',type_string)
         if width_res:
-            high = int(width_res.groups()[0])
-            low = int(width_res.groups()[1])
-            self.width = high - low + 1
+            
+            self.width = sum([(int(res[0]) - int(res[1]) + 1) for res in width_res])
+            # high = int(width_res.groups()[0])
+            # low = int(width_res.groups()[1])
+            # self.width = high - low + 1
         else:
             self.width = 1
+
+
 
         sign_res = re.search('signed',type_string)
         if sign_res:
@@ -76,12 +80,20 @@ class VComponent(Component):
         ast_json = "%s.ast.json" % top
 
 
-        
+        # Spell the parameter into the format needed by slang
         param_config = ''
         for k, v in kwargs.items():
             param_config = param_config + '-G %s=%s ' % (k,v)
 
-        p = Popen('slang -v %s -ast-json %s --top %s %s' % (file, ast_json, top, param_config), shell=True)
+        # Try slang
+        p = Popen('slang --version', shell=True)
+        p.communicate()
+        if p.returncode != 0:
+            raise Exception('Cannot call slang to import verilog.')
+
+
+        # Call slang
+        p = Popen('slang --ignore-unknown-modules -f %s -ast-json %s --top %s %s' % (file, ast_json, top, param_config), shell=True)
         p.communicate()
         self.parse_ast(ast_json, top)
 

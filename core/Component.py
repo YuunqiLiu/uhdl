@@ -216,10 +216,16 @@ class Component(Root):
     def verilog_inst(self):
         param_assignment_list = reduce(concat,[i.verilog_assignment for i in self.param_list],[])
 
-        str_list = ['%s %s %s' % (self.module_name,self.name,'#(' if param_assignment_list else '(')]
-
         if param_assignment_list:
-            str_list += self.__eol_append(param_assignment_list,',','') + [')(']
+            str_list = ['%s #(' % self.module_name]
+            str_list += self.__eol_append(param_assignment_list,',',')')
+            str_list += ['%s (' % self.name]
+        else:
+            str_list = ['%s %s (' % (self.module_name, self.name)]
+
+        #str_list = ['%s %s %s' % (self.module_name,self.name,'#(' if param_assignment_list else '(')]
+        #if param_assignment_list:
+        #    str_list += self.__eol_append(param_assignment_list,',','') + [')(']
 
         str_list += self.__eol_append(reduce(concat,[i.verilog_inst for i in self.io_list],[]),',',');')
         return str_list
