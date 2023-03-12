@@ -3,8 +3,6 @@ from ....core import *
 # pylint: enable  =unused-wildcard-import
 
 from .CmnArb import CmnAgeMtx
-
-
 from .Bundle import LwnocBundle
 
 
@@ -23,7 +21,19 @@ class DArb(Component):
 
         # Arbiter
         self.msg_update_en = Wire(UInt(channel_num))
-        self.msg_update_en += Combine(*[AndList(var_in.vld, var_in.rdy, var_in.head) for var_in in self.in_list])
+
+        self.msg_udpate_en_bit_list = []
+        for i in range(channel_num):
+            in_i = self.in_list[i] 
+            bit_i = self.set('msg_update_en_bit_%s' % i, Wire(UInt(1)))
+            Assign(bit_i, AndList(in_i.vld, in_i.rdy, in_i.head))
+            self.msg_udpate_en_bit_list.append(bit_i)
+        Assign(self.msg_update_en, Combine(*self.msg_udpate_en_bit_list))
+        
+        # RTL is hard to read 
+        # self.msg_update_en += Combine(*[self.set('mst_update_en_bit_%s' % AndList(var_in.vld, var_in.rdy, var_in.head) for var_in in self.in_list])
+
+
 
         self.arb_msg = CmnAgeMtx(channel_num)
         self.arb_msg.update_en  += self.msg_update_en
@@ -33,12 +43,13 @@ class DArb(Component):
         # Arbiter lock
         self.arb_unlock     = Wire(UInt(1))
         self.arb_unlock     += AndList(self.out0.vld, self.out0.rdy, self.out0.tail)
-
+# 
         self.arb_lock       = Wire(UInt(1))
         self.arb_lock       += AndList(self.out0.vld, self.out0.rdy, self.out0.head)
 
         self.arb_lock_reg   = Reg(UInt(1), self.clk, self.rst_n)
-        self.arb_lock_reg   += when(self.arb_lock).then(UInt(1, 1)).when(self.arb_unlock).then(UInt(1, 0))
+        self.arb_lock_reg   +=  when(self.arb_unlock).then(UInt(1, 0)).\
+                                when(self.arb_lock).then(UInt(1, 1))
 
 
 

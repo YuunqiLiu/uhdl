@@ -73,65 +73,65 @@ class Network(object):
 
 
 
-    def _src_id_propagation(self):
-        self.logger.info('src id propagation start.')
-        G_reverse = self.G.reverse(copy=False)
+    # def _src_id_propagation(self):
+    #     self.logger.info('src id propagation start.')
+    #     G_reverse = self.G.reverse(copy=False)
 
-        # get all edge's src-dst pair with BFM search.
-        edge_pair_list = []
-        for src in self.slave_list:
-            for tgt in self.master_list:
-                for path in nx.all_simple_paths(G_reverse, source=tgt, target=src):
-                    self.logger.info('Find a backward path: %s' % [x.name for x in path])
-                    for i in range(1, len(path)):
-                        edge_pair_list.append((path[i-1], path[i]))
-        
+    #     # get all edge's src-dst pair with BFM search.
+    #     edge_pair_list = []
+    #     for src in self.slave_list:
+    #         for tgt in self.master_list:
+    #             for path in nx.all_simple_paths(G_reverse, source=tgt, target=src):
+    #                 self.logger.info('Find a backward path: %s' % [x.name for x in path])
+    #                 for i in range(1, len(path)):
+    #                     edge_pair_list.append((path[i-1], path[i]))
+    #     
 
-        # foward propagate src id from edge src to dst
-        for src, dst in list(reversed(edge_pair_list)):
-            self.logger.info('%s reachable src id update from %s.' % (src.name, dst.name))
-            self.logger.info('%s src id list: %s' % (dst.name, dst.reachable_src_id_list))
-            self.logger.info('%s src id list before update: %s' % (src.name, src.reachable_src_id_list))
+    #     # foward propagate src id from edge src to dst
+    #     for src, dst in list(reversed(edge_pair_list)):
+    #         self.logger.info('%s reachable src id update from %s.' % (src.name, dst.name))
+    #         self.logger.info('%s src id list: %s' % (dst.name, dst.reachable_src_id_list))
+    #         self.logger.info('%s src id list before update: %s' % (src.name, src.reachable_src_id_list))
 
-            src.reachable_src_id_list += dst.reachable_src_id_list
-            src.reachable_src_id_list = list(set(src.reachable_src_id_list))
+    #         src.reachable_src_id_list += dst.reachable_src_id_list
+    #         src.reachable_src_id_list = list(set(src.reachable_src_id_list))
 
-            self.logger.info('%s src id list after update: %s' % (src.name, src.reachable_src_id_list))
+    #         self.logger.info('%s src id list after update: %s' % (src.name, src.reachable_src_id_list))
 
-        #max_useful_slave_id_width = len(format(max(self._global_master_id_list), "b"))
-        self.logger.info('src id propagation finish.')
+    #     #max_useful_slave_id_width = len(format(max(self._global_master_id_list), "b"))
+    #     self.logger.info('src id propagation finish.')
 
 
 
-    def _tgt_id_propagation(self):
-        self.logger.info('tgt id propagation start.')
+    # def _tgt_id_propagation(self):
+    #     self.logger.info('tgt id propagation start.')
 
-        # get all edge's src-dst pair with BFM search.
-        edge_pair_list = []
-        for tgt in self.master_list:
-            for src in self.slave_list:
-                for path in nx.all_simple_paths(self.G, source=src, target=tgt):
-                    self.logger.info('Find a forward path: %s' % [x.name for x in path])
-                    for i in range(1, len(path)):
-                        edge_pair_list.append((path[i-1], path[i]))
+    #     # get all edge's src-dst pair with BFM search.
+    #     edge_pair_list = []
+    #     for tgt in self.master_list:
+    #         for src in self.slave_list:
+    #             for path in nx.all_simple_paths(self.G, source=src, target=tgt):
+    #                 self.logger.info('Find a forward path: %s' % [x.name for x in path])
+    #                 for i in range(1, len(path)):
+    #                     edge_pair_list.append((path[i-1], path[i]))
 
-        # back propagate master id from edge dst to src
-        for src, dst in list(reversed(edge_pair_list)):
-            self.logger.info('%s reachable tgt id update from %s.' % (src.name, dst.name))
-            self.logger.info('%s tgt id list: %s' % (dst.name, dst.reachable_tgt_id_list))
-            self.logger.info('%s tgt id list before update: %s' % (src.name, src.reachable_tgt_id_list))
+    #     # back propagate master id from edge dst to src
+    #     for src, dst in list(reversed(edge_pair_list)):
+    #         self.logger.info('%s reachable tgt id update from %s.' % (src.name, dst.name))
+    #         self.logger.info('%s tgt id list: %s' % (dst.name, dst.reachable_tgt_id_list))
+    #         self.logger.info('%s tgt id list before update: %s' % (src.name, src.reachable_tgt_id_list))
 
-            src.reachable_tgt_id_list += dst.reachable_tgt_id_list
-            src.reachable_tgt_id_list = list(set(src.reachable_tgt_id_list))
+    #         src.reachable_tgt_id_list += dst.reachable_tgt_id_list
+    #         src.reachable_tgt_id_list = list(set(src.reachable_tgt_id_list))
 
-            self.logger.info('%s tgt id list after update: %s' % (src.name, src.reachable_tgt_id_list))
+    #         self.logger.info('%s tgt id list after update: %s' % (src.name, src.reachable_tgt_id_list))
 
-        # set layer for GUI plan.
-        for src, dst in list(reversed(edge_pair_list)):
-            if src.layer == 0 or src.layer > dst.layer -1:
-                src.layer = dst.layer - 1
+    #     # set layer for GUI plan.
+    #     for src, dst in list(reversed(edge_pair_list)):
+    #         if src.layer == 0 or src.layer > dst.layer -1:
+    #             src.layer = dst.layer - 1
 
-        self.logger.info('tgt id propagation finish.')
+    #     self.logger.info('tgt id propagation finish.')
 
 
     # def _generate_system_address_mapping(self):
@@ -142,9 +142,9 @@ class Network(object):
     #             self.logger.info('Find a mapping: %s -> %s' %(addr_range, tgt.tgt_id))
     #             self._sam_addrrange_tgtid_dict[addr_range] = tgt.tgt_id
 
-    def _generate_local_port_id_mapping(self):
-        for node in self.node_list:
-            node._generate_local_port_id_mapping()
+    # def _generate_local_port_id_mapping(self):
+    #     for node in self.node_list:
+    #         node._generate_local_port_id_mapping()
 
 
 

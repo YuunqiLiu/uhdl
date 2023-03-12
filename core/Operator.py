@@ -359,7 +359,7 @@ def BitOr(*opList):
 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
-    return BitXorListExpression(*opList)
+    return BitOrListExpression(*opList)
 
 BitOrList = BitOr
 
