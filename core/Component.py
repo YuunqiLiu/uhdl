@@ -78,6 +78,7 @@ class Component(Root):
         #self.output_path = './%s' % self.module_name
         self._lint        = None
         self.output_dir   = '.'
+        self._module_name_prefix = ''
 
     @property
     def output_path(self):
@@ -91,10 +92,17 @@ class Component(Root):
     def PARAM(self):
         return self._PARAM
 
+    def set_module_name_prefix(self, prefix):
+        self._module_name_prefix = prefix
+
+    @property
+    def module_name_prefix(self):
+        return self._module_name_prefix if self.father is None else self.father.module_name_prefix
+
     @property
     def module_name(self):
         # This scheme attempts to unwrap any data type into a readable unique string, and form the instantiation name from this string
-        return (type(self).__name__+'_'+self.PARAM.UHDL_MODU_NAME_POST_FIX).rstrip('_')
+        return (self.module_name_prefix + '_' + type(self).__name__+'_'+self.PARAM.UHDL_MODU_NAME_POST_FIX).rstrip('_').lstrip('_')
 
     @property
     def vfile(self):
@@ -248,24 +256,24 @@ class Component(Root):
             self.create_this_vfile(self.output_path)
 
 
-    def _generate_filelist_core(self):
-        name_list = ["%s.v" % self.module_name]
+    def _generate_filelist_core(self,prefix=''):
+        name_list = ["%s%s.v" % (prefix,self.module_name)]
         for component in self.component_list:
-            name_list += component._generate_filelist_core()
+            name_list += component._generate_filelist_core(prefix=prefix)
         return name_list
 
 
-    def generate_filelist(self,abs_path=False,path='-'):
+    def generate_filelist(self,abs_path=False,path='-',prefix='',name='filelist.f'):
         path = self.output_path if path == '-' else path
 
-        file_list = self._generate_filelist_core()
+        file_list = self._generate_filelist_core(prefix=prefix)
         file_list.reverse()
 
         # remove duplicates
         new_file_list = list(set(file_list))
         new_file_list.sort(key=file_list.index)
 
-        FileProcess.create_file( path = os.path.join(path,'filelist.f'),
+        FileProcess.create_file( path = os.path.join(path,name),
                                  text = new_file_list)
     
 
