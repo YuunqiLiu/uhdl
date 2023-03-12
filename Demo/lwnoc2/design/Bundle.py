@@ -8,14 +8,9 @@ from ....core import *
 class BundleMeta(type):
 
     def __repr__(cls):
-        return 'bundle'
+        return cls.__name__
 
-    def __str__(cls):
-        return 'bundle'
-
-class LwnocBundle(Bundle):
-
-    __metaclass__ = BundleMeta
+class LwnocBundle(Bundle,metaclass=BundleMeta):
 
     def __init__(self):
         super().__init__()
@@ -27,5 +22,3 @@ class LwnocBundle(Bundle):
         self.src_id         = Output(UInt(8))
         self.tgt_id         = Output(UInt(8))
         self.txn_id         = Output(UInt(8))
-
-print(LwnocBundle)
