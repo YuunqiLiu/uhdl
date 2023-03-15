@@ -17,7 +17,9 @@ class DMst2ch(Component):
 
         # IO Define
         self.in0        = pld_type().reverse()
-        self.out0       = Output(UInt(1))
+        self.out0       = self.in0.reverse()
+
+        SmartAssign(self.in0, self.out0)
 
         
 
