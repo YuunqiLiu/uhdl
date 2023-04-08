@@ -169,7 +169,21 @@ class Network(object):
         for node in self.G.nodes():
             self.G.nodes[node]['layer'] = node.layer
 
-        pos = nx.multipartite_layout(self.G, subset_key="layer")
+        #G = nx.complete_graph(4)
+
+
+
+        pos = nx.nx_pydot.pydot_layout(self.G)
+        pos = nx.nx_pydot.pydot_layout(self.G, prog="dot")
+        pos = nx.nx_pydot.graphviz_layout(self.G, prog="dot")
+
+        print(pos)
+
+        #pos = nx.spiral_layout(self.G)
+        #pos = nx.planar_layout(self.G)
+        
+
+        #pos = nx.multipartite_layout(self.G, subset_key="layer")
         plt.figure(figsize=(8, 8))
 
         color = [x.color for x in self.slave_list]
