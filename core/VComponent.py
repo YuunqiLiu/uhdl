@@ -37,23 +37,44 @@ class VPort(object):
         self.direction = ast_dict['direction']
         
         type_string = ast_dict['type']        
-        width_res = re.search('\[([0-9]+)\:([0-9]+)\]',type_string)
-        if width_res:
-            
-            self.width = sum([(int(res[0]) - int(res[1]) + 1) for res in width_res])
-            # high = int(width_res.groups()[0])
-            # low = int(width_res.groups()[1])
-            # self.width = high - low + 1
-        else:
-            self.width = 1
-
-
+        self.width = self.get_width(type_string)
 
         sign_res = re.search('signed',type_string)
         if sign_res:
             self.signed = True
         else:
             self.signed = False
+
+    def get_width(self, type_string):
+        struct_type = re.findall('struct packed{(.+)}\S+', type_string)
+        if struct_type:
+            return self.get_struct_width(struct_type[0])
+        else:
+            return self.get_vector_width(type_string)
+        
+    def get_struct_width(self, type_string):
+        width = 0
+        vectors = re.split(r'struct packed{[^{]*}\S+ \S+;', type_string)
+        structs = re.findall(r'struct packed{([^{]*)}\S+ \S+;', type_string)
+        for vec in vectors:
+            if vec:
+                vec_split = vec.split(';')
+                for v in vec_split:
+                    if v:
+                        width += self.get_vector_width(v)
+        for st in structs:
+            if st:
+                width += self.get_struct_width(st)
+        return width
+
+    def get_vector_width(self, type_string):
+        width_res = re.search('\[([0-9]+)\:([0-9]+)\]', type_string)
+        if width_res:
+            high = int(width_res.groups()[0])
+            low = int(width_res.groups()[1])
+            return high-low+1
+        else:
+            return 1
 
     def create_uhdl_port(self):
         if self.direction == "Out":
@@ -74,7 +95,7 @@ class VPort(object):
 class VComponent(Component):
 
 
-    def __init__(self, file, top , **kwargs):
+    def __init__(self, filelist=None, top=None, file=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
         super().__init__()
         self._module_name = top
         ast_json = "%s.ast.json" % top
@@ -86,14 +107,19 @@ class VComponent(Component):
             param_config = param_config + '-G %s=%s ' % (k,v)
 
         # Try slang
-        p = Popen('slang --version', shell=True)
+        p = Popen(f'{slang_cmd} --version', shell=True)
         p.communicate()
         if p.returncode != 0:
             raise Exception('Cannot call slang to import verilog.')
 
 
         # Call slang
-        p = Popen('slang --ignore-unknown-modules -f %s -ast-json %s --top %s %s' % (file, ast_json, top, param_config), shell=True)
+        if file is not None:
+            source = file
+        else:
+            source = f'-f {filelist}'
+        cmd = f'{slang_cmd} {slang_opts} {source} -ast-json {ast_json} -top {top} {param_config}'
+        p = Popen(cmd, shell=True)
         p.communicate()
         self.parse_ast(ast_json, top)
 
@@ -115,7 +141,7 @@ class VComponent(Component):
         port_list = []
 
         for member in top['members']:
-            if member['kind'] == 'Parameter':
+            if member['kind'] == 'Parameter' and not member['isLocal']:
                 parameter_list.append(member)
             if member['kind'] == 'Port':
                 port_list.append(member)
