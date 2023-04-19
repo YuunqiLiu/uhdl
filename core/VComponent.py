@@ -113,7 +113,6 @@ class VPort(object):
         if '=' in type_string:
             return self.get_enum_width(type_string)
         else:
-            print(type_string)
             width_res = re.search('\[([0-9]+)\:([0-9]+)\]', type_string)
             if width_res:
                 high = int(width_res.groups()[0])
