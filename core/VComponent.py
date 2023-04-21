@@ -157,8 +157,15 @@ class VComponent(Component):
             res = self.create(vparam.name, vparam.create_uhdl_param())
             #print(res)
 
+    def _run_lint_single_lvl(self, lint, is_top=False):
+        lint.info('Start to check VComponent module %s.' % self.module_name)
 
-
+        # VComponent will only check input signal.
+        # If VComp is a top module, nothing need to be checked.
+        if not is_top:
+            for lvalue in self.input_list:
+                if lvalue.rvalue is None:
+                    lint.unconnect(lvalue)
 
 
     @property
