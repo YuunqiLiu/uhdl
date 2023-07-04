@@ -45,36 +45,81 @@ class VPort(object):
         else:
             self.signed = False
 
+    def parse_type(self, type_string):
+        type_string_list = list(type_string)
+        parse_res = list()
+        item = list()
+        stack = list()
+        op_log = list()
+        start = 0
+        for i,c in enumerate(type_string):
+            if c == '{':
+                stack.append(i)
+                type_string_list[start:i+1] = ['' for i in range(i-start+1)]
+                op_log.append([i, '{'])
+                item.clear()
+                start = i+1
+            elif c == '}':
+                start = stack.pop()
+                iter_res = self.parse_type(''.join(type_string_list[start+1:i]))
+                if iter_res != '':
+                    parse_res.extend(iter_res)
+                    type_string_list[start:i+1] = ['' for i in range(i-start+1)]
+                op_log.append([i, '}'])
+                item.clear()
+                start = i+1
+            elif c == ';':
+                if not op_log or op_log[-1][1] != '}':
+                    parse_res.append(''.join(item))
+                op_log.append([i, ';'])
+                type_string_list[start:i+1] = ['' for i in range(i-start+1)]
+                item.clear()
+                start = i+1
+            else:
+                item.append(c)
+        if item and (not op_log or op_log[-1][1] != '}'):
+            parse_res.append(''.join(item))
+        return parse_res
+
     def get_width(self, type_string):
-        struct_type = re.findall('struct packed{(.+)}\S+', type_string)
-        if struct_type:
-            return self.get_struct_width(struct_type[0])
-        else:
-            return self.get_vector_width(type_string)
-        
-    def get_struct_width(self, type_string):
         width = 0
-        vectors = re.split(r'struct packed{[^{]*}\S+ \S+;', type_string)
-        structs = re.findall(r'struct packed{([^{]*)}\S+ \S+;', type_string)
-        for vec in vectors:
-            if vec:
-                vec_split = vec.split(';')
-                for v in vec_split:
-                    if v:
-                        width += self.get_vector_width(v)
-        for st in structs:
-            if st:
-                width += self.get_struct_width(st)
+        type_list = self.parse_type(type_string)
+        for t in type_list:
+            width += self.get_vector_width(t)
         return width
 
+    def get_enum_width(self, type_string):
+        width = re.search("\S+=(\d+)'[bodh]\d+[,]*", type_string)
+        return int(width.groups()[0])
+
+    # def get_struct_width(self, type_string):
+    #     width = 0
+    #     vectors = re.split(  r'struct packed{[^{]*}\S+ \S+;', type_string)
+    #     structs = re.findall(r'struct packed{([^{]*)}\S+ \S+;', type_string)
+    #     # print(vectors)
+    #     # print(structs)
+    #     for vec in vectors:
+    #         if vec:
+    #             vec_split = vec.split(';')
+    #             for v in vec_split:
+    #                 if v:
+    #                     width += self.get_vector_width(v)
+    #     for st in structs:
+    #         if st:
+    #             width += self.get_struct_width(st)
+    #     return width
+
     def get_vector_width(self, type_string):
-        width_res = re.search('\[([0-9]+)\:([0-9]+)\]', type_string)
-        if width_res:
-            high = int(width_res.groups()[0])
-            low = int(width_res.groups()[1])
-            return high-low+1
+        if '=' in type_string:
+            return self.get_enum_width(type_string)
         else:
-            return 1
+            width_res = re.search('\[([0-9]+)\:([0-9]+)\]', type_string)
+            if width_res:
+                high = int(width_res.groups()[0])
+                low = int(width_res.groups()[1])
+                return high-low+1
+            else:
+                return 1
 
     def create_uhdl_port(self):
         if self.direction == "Out":
@@ -95,10 +140,10 @@ class VPort(object):
 class VComponent(Component):
 
 
-    def __init__(self, filelist=None, top=None, file=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
+    def __init__(self, filelist=None, top=None, file=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
         super().__init__()
         self._module_name = top
-        ast_json = "%s.ast.json" % top
+        ast_json = "%s.%s.ast.json" % (top,instance)
 
 
         # Spell the parameter into the format needed by slang
