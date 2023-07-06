@@ -1,3 +1,5 @@
+from . import Config
+from .Terminal import Terminal
 
 class ErrUHDL(ArithmeticError):
     pass
@@ -41,6 +43,9 @@ class ErrAssignTypeWrong(ErrUHDL):
 
     def __str__(self):
         return '%s is expected to be connected by "Rvalue(rhs)",but is currently connected by %s.' % (self.variable.var_name,self.right_value.__class__.__name__)
+
+def raise_ErrAssignTypeWrong(self,rvalue):
+    raise ErrAssignTypeWrong(self,rvalue)
 
 
 class ErrConstInWrong(ErrUHDL):
@@ -104,6 +109,17 @@ class ErrAttrMismatch(ErrUHDL):
         string = "".join(["\n\t%s" % x for x in self.var_list])
         return "%s\nAttribute Mismatch:%s" % (self.str,string)
 
+def raise_ErrAttrMismatch(str_in,*var_list):
+    #print('asfasdfaf')
+    #print(Config.IGNORE_ERROR)
+    err = ErrAttrMismatch(str_in,*var_list)
+    if Config.IGNORE_ERROR:
+        #pass
+        Terminal.warning(err)
+    else:
+        raise ErrAttrMismatch(str_in,*var_list)
+
+
 
 class ErrCutExpSliceInvalid(ErrUHDL):
 
@@ -122,3 +138,15 @@ class ErrWhenExpOperateWrong(ErrUHDL):
 
     def __str__(self):
         return 'The When expression is incorrectly constructed,and the order of using the construction method is incorrect:\t\n%s' % self.str
+    
+
+class ErrVarNotBelongComponent(ErrUHDL):
+
+    def __init__(self,variable):
+        self.__var = variable
+    
+    def __str__(self):
+        return 'Variable used to assign should belong to a Component.'
+
+def raise_ErrVarNotBelongComponent(variable):
+    raise ErrVarNotBelongComponent(variable)

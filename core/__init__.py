@@ -13,7 +13,10 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
 
             'Cut','Case','when','When','EmptyWhen','Fanout','BitMask',
             'Circuit','get_circuit','set_circuit',
-            'when','Bundle']
+            'when','Bundle',
+            
+            
+            'Config']
 
 from .Component     import Component
 from .VComponent    import VComponent
@@ -28,6 +31,7 @@ from .Operator      import SelfXnor,SelfXor,SelfAnd,SelfOr,Inverse,Not
 from .Operator      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,OrList,AndList
 from .Operator      import Case,Cut,When,EmptyWhen,Fanout
 from .Variable      import Bundle
+from .              import Config
 
 
 

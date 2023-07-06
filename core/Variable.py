@@ -51,7 +51,12 @@ class Variable(Root):
     @property
     def name_before_component(self):
         return self.name_before(Component.Component)
-            
+    
+    def __str__(self):
+        return "%s - %s" % (self.name_before(None), self.attribute)
+        return "%s %s" % (super().__str__(),self.attribute)
+
+
     # def __gt__(self,other):
     #     if not isinstance(other,Variable):  raise ErrVarCmpWrong('%s should compare with a Variable,but get a %s.' % (GetClsNameFromObj(self),GetClsNameFromObj(other)))
     #     if self.name == other.name:         raise ErrVarCmpWrong('Two Variable with the same name "%s" cannot be compared.' % (self.name))
@@ -61,8 +66,7 @@ class Variable(Root):
     # def __lt__(self,other):
     #     return not self.__gt__(other)
 
-    #def __str__(self):
-    #    return "343"
+
 
     @property
     def attribute(self):
@@ -74,8 +78,14 @@ class Variable(Root):
 
     # += as circuit assignment
     def __iadd__(self,rvalue):
-        if not isinstance(rvalue,Value):        raise ErrAssignTypeWrong(self,rvalue)
-        if self.attribute != rvalue.attribute:  raise ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
+        # check whether variable used in Assign belongs to component.
+        # rvalue may be expression, so it's no need to check them.
+        if not isinstance(self.father, Component.Component):    
+            raise_ErrVarNotBelongComponent(self)
+        if not isinstance(rvalue,Value):                        
+            raise_ErrAssignTypeWrong(self,rvalue)
+        if self.attribute != rvalue.attribute:  
+            raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
         object.__setattr__(self, '_rvalue', rvalue)
         object.__setattr__(rvalue, '_des_lvalue', self)
 
@@ -276,7 +286,7 @@ class Value(ValueRoot):
         self._des_lvalue = None
 
     def __str__(self):
-        return "%s %s" % (super().__str__(),self.attribute)
+        return "%s - %s" % (super().__str__(),self.attribute)
 
 
     def check_rvalue(self, op: ValueRoot):

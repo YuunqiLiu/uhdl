@@ -1,5 +1,8 @@
 from copy import deepcopy
 
+IGNORE_ERROR = False
+
+
 CFG_PRI_LOW        = 0
 CFG_PRI_MID        = 1000
 CFG_PRI_HIGH       = 2000
