@@ -71,14 +71,13 @@ class Component(Root):
         super().__init__()
         #super(Component,self).__init__()
         self.set_father_type(Component)
-        self.CFG         = ComponentConfig()
-        self.__vfile     = None
-        self._PARAM      = PARAM_CONTAINER()
+        self.CFG                    = ComponentConfig()
+        self.__vfile                = None
+        self._PARAM                 = PARAM_CONTAINER()
         self.__subclass_init_param_get()
-        #self.output_path = './%s' % self.module_name
-        self._lint        = None
-        self.output_dir   = '.'
-        self._module_name_prefix = ''
+        self._lint                  = None
+        self.output_dir             = '.'
+        self._module_name_prefix    = ''
 
     @property
     def output_path(self):
@@ -127,6 +126,10 @@ class Component(Root):
     @property
     def input_list(self) -> list:
         return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Input)]
+    
+    @property
+    def inout_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Inout)]
 
     @property
     def output_list(self) -> list:
@@ -151,6 +154,11 @@ class Component(Root):
     @property
     def io_list(self) -> list:
         return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(IOSig,IOGroup))]
+    
+    @property
+    def io_list_exclude_inout(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input, Output, IOGroup))]
+
 
     @property
     def component_list(self) -> list:
@@ -162,7 +170,7 @@ class Component(Root):
 
     @property
     def outer_lvalue_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input,Inout,))] 
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input,))] 
 
     @property
     def verilog_outer_def_as_list(self):
@@ -170,8 +178,14 @@ class Component(Root):
         # check whehter an IO return "None" def.
         # This happens when a module direct connect to other io,
         # sometimes it doesn't need to create a new wire, but just direct connect to other io during inst.
-        result = [i.verilog_outer_def_as_list_io for i in self.io_list if i.verilog_outer_def_as_list_io != None]
+        result = [i.verilog_outer_def_as_list_io for i in self.io_list_exclude_inout if i.verilog_outer_def_as_list_io != None]
         return result
+    
+    @property
+    def verilog_inout_def_as_list(self):
+        result = [i.verilog_outer_def_as_list_io for i in self.inout_list if i.verilog_outer_def_as_list_io != None]
+        return result
+
 
     def __gen_aligned_signal_def(self,io_para_list):
         max_prefix_length = 0
@@ -204,6 +218,10 @@ class Component(Root):
 
         str_list += ['','\t//Wire define for sub module.']
         str_list += self.__eol_append(self.__gen_aligned_signal_def(reduce(concat,[i.verilog_outer_def_as_list for i in self.component_list],[])),';',';')
+
+        # module wire define for inout
+        str_list += ['','\t//Wire define for Inout.']
+        str_list += self.__eol_append(self.__gen_aligned_signal_def(reduce(concat,[i.verilog_inout_def_as_list for i in self.component_list],[])),';',';')
 
         # combine logic assignment
         str_list += ['','\t//Wire sub module connect to this module and inter module connect.']

@@ -5,6 +5,8 @@ from functools  import reduce
 from operator   import concat
 from copy       import copy
 
+from numpy import isin
+
 from .Root      import Root
 from .          import Component
 
@@ -23,7 +25,7 @@ def low_to_high_connection(low, high):
     return True if low.father_until_component().father == high.father_until_component() else False
 
 def same_level_connection(a, b):
-    return True if a.fahter_until_component().father == b.father_until_component().father else False
+    return True if a.father_until_component().father == b.father_until_component().father else False
 
 def same_module_connection(a, b):
     return True if a.father_until_component() == b.father_until_component() else False
@@ -121,7 +123,15 @@ class Variable(Root):
         else:
             rvalue_module = rvalue.father_until(Component.Component)
 
-        if isinstance(rvalue, Expression):
+        if isinstance(self, Inout) and isinstance(rvalue, Inout):
+            # inout connection, give up all check.
+            pass
+        elif (isinstance(self, Inout) and not isinstance(rvalue, Inout)) or\
+           (not isinstance(self, Inout) and isinstance(rvalue, Inout)):
+            # inout connect to other type, error.
+            raise Exception('error.')
+
+        elif isinstance(rvalue, Expression):
             # rvalue is expression, lvalue can be all signal.
             pass
         elif rvalue_module is not None:
@@ -584,14 +594,14 @@ class IOSig(WireSig):
     @property
     def verilog_inst(self):
         '''生成端口实例化的RTL'''
-        if self.father_until_component().father == self._rvalue.father_until_component().father:
-            return [".%s(pre_fix_%s)" %(self.name_before_component, self._rvalue.name_until_component)]
-        if self.father_until_component().father == self._rvalue.father_until_component():
-            return [".%s(%s)" %(self.name_before_component,self._rvalue.name_until_component)]
-        elif self.father_until_component().father == self._des_lvalue.father_until_component():
-            return [".%s(%s)" %(self.name_before_component,self._des_lvalue.name_until_component)]
-        else:
-            return [".%s(%s)" %(self.name_before_component,self.name_until_component)]
+        #if self.father_until_component().father == self._rvalue.father_until_component().father:
+        #    return [".%s(pre_fix_%s)" %(self.name_before_component, self._rvalue.name_until_component)]
+        #if self.father_until_component().father == self._rvalue.father_until_component():
+        #    return [".%s(%s)" %(self.name_before_component,self._rvalue.name_until_component)]
+        #elif self.father_until_component().father == self._des_lvalue.father_until_component():
+        #    return [".%s(%s)" %(self.name_before_component,self._des_lvalue.name_until_component)]
+        #else:
+        return [".%s(%s)" %(self.name_before_component,self.name_until_component)]
 
     @property
     def verilog_outer_def(self):
@@ -601,6 +611,16 @@ class IOSig(WireSig):
     @property
     def verilog_outer_def_as_list_io(self):
         # check whether a io need outer def.
+
+        if isinstance(self, Inout):
+            if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
+                return ["wire",
+                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+                simplified_connection_naming_judgment(self,self._rvalue)]
+
+            else:
+                return None
+
         if not self.single_connection:
             return ["wire",
                 '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
@@ -688,7 +708,6 @@ class Input(IOSig):
         if isinstance(self._rvalue, Variable):
             if not self._rvalue.single_connection:
                 rvalue_sig_name = self.name_until_component
-
             elif self.father_until_component().father == self._rvalue.father_until_component():
                 rvalue_sig_name = self._rvalue.name_before_component
             elif self.father_until_component().father == self._rvalue.father_until_component().father:
@@ -769,6 +788,44 @@ class Inout(IOSig):
 
 
 
+    @property
+    def verilog_inst(self):
+        #if not self.single_connection:
+        #    rvalue_sig_name = self.name_until_component
+        #rvalue_sig_name = self.name_until_component
+        #return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+    
+        if isinstance(self._rvalue, Inout):
+            if same_module_connection(self, self._rvalue):
+                num = 0
+                rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
+            elif same_level_connection(self, self._rvalue):
+                num = 1
+                rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
+            elif low_to_high_connection(self, self._rvalue) or low_to_high_connection(self._rvalue, self):
+                num = 2
+                rvalue_sig_name = self._rvalue.name_before_component
+            else:
+                raise Exception()
+
+        elif isinstance(self._des_lvalue, Inout):
+           # print(self, self._des_lvalue)
+           
+
+            if same_module_connection(self, self._des_lvalue):
+                num = 3
+                rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
+            elif same_level_connection(self, self._des_lvalue):
+                num = 4
+                rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
+            elif low_to_high_connection(self, self._des_lvalue) or low_to_high_connection(self._des_lvalue, self):
+                num = 5
+                rvalue_sig_name = self.name_before_component
+            else:
+                raise Exception()
+
+        return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+        return [".%s(%s) %s %s %s " %(self.name_before_component, rvalue_sig_name,self, self._rvalue, num)]
 
 
 
