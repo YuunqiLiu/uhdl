@@ -11,34 +11,68 @@
 //==========================================================================================================================
 
 
-//[UHDL]Key Start [md5:ee5fcb69cc4c99f677f634872689485c]
+//[UHDL]Key Start [md5:f669c94565139bb7edb397bb1151dec1]
 //Version Control Hash: 3accddf64b1dd03abeb9b0b3e5a7ba44
-//Content Hash: 45970af26816c01c06ed94de8ef9e980
+//Content Hash: 4c9d585286257e156d1799adeb2ffaad
 //Parameter Hash: d41d8cd98f00b204e9800998ecf8427e
-//[UHDL]Key End [md5:ee5fcb69cc4c99f677f634872689485c]
+//[UHDL]Key End [md5:f669c94565139bb7edb397bb1151dec1]
 
 //[UHDL]Version Control Start [md5:3accddf64b1dd03abeb9b0b3e5a7ba44]
 //[UHDL]Version Control Version:1.0.1
 //[UHDL]Version Control End [md5:3accddf64b1dd03abeb9b0b3e5a7ba44]
 
-//[UHDL]Tool Message Start [md5:686113dade826166df51fcd9b28f148e]
-//Written by UHDL in 2022-12-28 14:35:39
-//[UHDL]Tool Message End [md5:686113dade826166df51fcd9b28f148e]
+//[UHDL]Tool Message Start [md5:1565ed4f326191f5ab4d2ad3f8240cfb]
+//Written by UHDL in 2023-07-10 15:51:12
+//[UHDL]Tool Message End [md5:1565ed4f326191f5ab4d2ad3f8240cfb]
 
 //[UHDL]User Message Start [md5:d41d8cd98f00b204e9800998ecf8427e]
 
 //[UHDL]User Message End [md5:d41d8cd98f00b204e9800998ecf8427e]
 
-//[UHDL]Content Start [md5:45970af26816c01c06ed94de8ef9e980]
-module Father (
-	wire  sub_test;
-	Test #(
-		.param(1'b0))
-	sub (
-		.test(sub_test));
+//[UHDL]Content Start [md5:4c9d585286257e156d1799adeb2ffaad]
+module top (
+	input   din1 ,
+	output  dout1,
+	input   din2 ,
+	output  dout2);
+
+	//Wire define for this module.
+
+	//Wire define for sub module.
+	wire  sub1_din0             ;
+	wire  sub1_dout1            ;
+	wire  sub1_dout2            ;
+	wire  sub2_din0             ;
+	wire  sub2_TO_sub1_SIG_dout2;
+
+	//Wire sub module connect to this module and inter module connect.
+
+	//Wire this module connect to sub module.
+	assign sub1_din0 = 1'b0;
+	
+	assign sub2_din0 = (sub1_dout1 && sub1_dout2);
+	
+	assign sub2_din1 = sub1_dout1;
+	
+	assign sub2_din2 = sub1_dout2;
+	
+
+	//module inst.
+	sub_mod sub1 (
+		.din0(sub1_din0),
+		.din1(din1),
+		.dout1(sub1_dout1),
+		.din2(sub2_TO_sub1_SIG_dout2),
+		.dout2(sub1_dout2));
+	sub_mod sub2 (
+		.din0(sub2_din0),
+		.din1(sub2_din1),
+		.dout1(dout1),
+		.din2(sub2_din2),
+		.dout2(sub2_TO_sub1_SIG_dout2));
 
 endmodule
-//[UHDL]Content End [md5:45970af26816c01c06ed94de8ef9e980]
+//[UHDL]Content End [md5:4c9d585286257e156d1799adeb2ffaad]
 
 //[UHDL]Parameter Start [md5:d41d8cd98f00b204e9800998ecf8427e]
 

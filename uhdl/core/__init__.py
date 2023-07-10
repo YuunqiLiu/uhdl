@@ -16,7 +16,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'when','Bundle',
             
             
-            'Config']
+            'Config','Exception']
 
 from .Component     import Component
 from .VComponent    import VComponent
@@ -32,7 +32,7 @@ from .Operator      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,O
 from .Operator      import Case,Cut,When,EmptyWhen,Fanout
 from .Variable      import Bundle
 from .              import Config
-
+from .              import Exception
 
 
 #from .Value     import Combine

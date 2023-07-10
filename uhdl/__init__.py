@@ -1,4 +1,4 @@
 
 from .core  import *
 #from .Demo import *
-#from .      import Demo
+from .      import Demo

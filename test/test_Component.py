@@ -2,7 +2,7 @@ import os,sys
 import unittest
 
 # pylint: disable =unused-wildcard-import
-from ..core import *
+from uhdl import *
 # pylint: enable  =unused-wildcard-import
 
 class TestComponent(unittest.TestCase):

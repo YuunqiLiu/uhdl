@@ -166,10 +166,11 @@ class Component(Root):
 
     @property
     def verilog_outer_def_as_list(self):
-
-        #return reduce(concat,[i.verilog_outer_def_as_list for i in self.io_list],[])
-        result = [i.verilog_outer_def_as_list_io for i in self.io_list]
-        #print(result)
+        # merge all outer def for this module.
+        # check whehter an IO return "None" def.
+        # This happens when a module direct connect to other io,
+        # sometimes it doesn't need to create a new wire, but just direct connect to other io during inst.
+        result = [i.verilog_outer_def_as_list_io for i in self.io_list if i.verilog_outer_def_as_list_io != None]
         return result
 
     def __gen_aligned_signal_def(self,io_para_list):
@@ -198,22 +199,22 @@ class Component(Root):
         str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');')
 
         # module wire define
-        #str_list += ['','\t//Wire define for this module.']
+        str_list += ['','\t//Wire define for this module.']
         str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.inter_sig_list]),';',';')
 
-        #str_list += ['','\t//Wire define for sub module.']
+        str_list += ['','\t//Wire define for sub module.']
         str_list += self.__eol_append(self.__gen_aligned_signal_def(reduce(concat,[i.verilog_outer_def_as_list for i in self.component_list],[])),';',';')
 
         # combine logic assignment
-        #str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
+        str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
         str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in self.lvalue_list if i.verilog_assignment],[]),'')
 
         sub_io_list = reduce(concat,[i.outer_lvalue_list for i in self.component_list],[])
-        #str_list += ['','\t//Wire this module connect to sub module.']
+        str_list += ['','\t//Wire this module connect to sub module.']
         str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in sub_io_list if i.verilog_assignment],[]),'')
 
         # component inst
-        #str_list += ['','\t//module inst.']
+        str_list += ['','\t//module inst.']
         str_list += self.__eol_append(reduce(concat,[i.verilog_inst for i in self.component_list],[]),'')
 
         str_list += ['','endmodule']
@@ -240,24 +241,24 @@ class Component(Root):
 
 
 
-    def create_this_vfile(self,path):
+    def _create_this_vfile(self,path):
         FileProcess.create_file(os.path.join(path,'%s.v' % self.module_name),self.verilog_def)
 
-    def create_all_vfile(self,path):
-        self.create_this_vfile(path)
+    def _create_all_vfile(self,path):
+        self._create_this_vfile(path)
         for c in self.component_list:
-            c.create_all_vfile(path)
+            c._create_all_vfile(path)
 
     def generate_verilog(self,iteration=False):
         FileProcess.refresh_directory(self.output_path)
         if iteration:
-            self.create_all_vfile(self.output_path)
+            self._create_all_vfile(self.output_path)
         else:
-            self.create_this_vfile(self.output_path)
+            self._create_this_vfile(self.output_path)
 
 
     def _generate_filelist_core(self,prefix=''):
-        name_list = ["%s%s.v" % (prefix,self.module_name)]
+        name_list = ["%s/%s.v" % (prefix,self.module_name)]
         for component in self.component_list:
             name_list += component._generate_filelist_core(prefix=prefix)
         return name_list
@@ -266,16 +267,32 @@ class Component(Root):
     def generate_filelist(self,abs_path=False,path='-',prefix='',name='filelist.f'):
         path = self.output_path if path == '-' else path
 
-        file_list = self._generate_filelist_core(prefix=prefix)
+        self._flist_path = os.path.join(path,name)
+
+        if abs_path is True:
+            real_prefix = os.path.join(self.output_dir,self.module_name)
+        else:
+            real_prefix = os.path.join(prefix,self.module_name)
+
+        file_list = self._generate_filelist_core(prefix=real_prefix)
         file_list.reverse()
 
         # remove duplicates
         new_file_list = list(set(file_list))
         new_file_list.sort(key=file_list.index)
 
-        FileProcess.create_file( path = os.path.join(path,name),
+        FileProcess.create_file( path = self._flist_path,
                                  text = new_file_list)
     
+
+    def run_slang_compile(self):
+        cmd = 'slang -f %s' % self._flist_path
+        print('Run command: %s' % cmd)
+        slang_res = os.system(cmd)
+        if slang_res != 0:
+            raise Exception('Slang compile error.')
+
+
 
 #################################################################################
 # Lint

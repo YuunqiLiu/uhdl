@@ -2,18 +2,18 @@ import os,sys
 import unittest
 
 # pylint: disable =unused-wildcard-import
-from ..core import *
+from uhdl import *
 # pylint: enable  =unused-wildcard-import
 
-from ..core             import  ErrAttrMismatch         ,\
-                                ErrExpInTypeWrong       ,\
-                                ErrListExpNeedMultiOp   ,\
-                                ErrCutExpSliceInvalid   ,\
-                                ErrAttrTypeWrong        ,\
-                                ErrBitsValOverflow      ,\
-                                ErrBitsInvalidStr
+# from uhdl.core.Exception import ErrAttrMismatch         ,\
+#                                 ErrExpInTypeWrong       ,\
+#                                 ErrListExpNeedMultiOp   ,\
+#                                 ErrCutExpSliceInvalid   ,\
+#                                 ErrAttrTypeWrong        ,\
+#                                 ErrBitsValOverflow      ,\
+#                                 ErrBitsInvalidStr
 
-from ..core             import InternalTool as IT
+# from ..core             import InternalTool as IT
 
 class TestQuickStart(unittest.TestCase):
 
@@ -40,6 +40,7 @@ class TestQuickStart(unittest.TestCase):
                                                     #而"+="则用来完成元素之间的连接
 
         inst_adder = Adder()                        #实例化模块
+        inst_adder.output_dir = 'test_build'
         inst_adder.generate_verilog()               #生成verilog
 
     def test_basic_reg(self):
@@ -66,6 +67,7 @@ class TestQuickStart(unittest.TestCase):
                 self.out += self.out_reg                        #这句话将寄存器out_reg的输出端连接到out
 
         inst_adder = AdderReg()                         #实例化模块
+        inst_adder.output_dir = 'test_build'
         inst_adder.generate_verilog()                   #生成verilog
 
     def test_basic_when(self):
@@ -90,6 +92,7 @@ class TestQuickStart(unittest.TestCase):
                 #多个when(x).then(x).when(x).then(x).otherwise同样是支持的
 
         inst_adder = Mux()                              #实例化模块
+        inst_adder.output_dir = 'test_build'
         inst_adder.generate_verilog()                   #生成verilog
 
     def test_py_dynamic_io(self):
@@ -122,6 +125,7 @@ class TestQuickStart(unittest.TestCase):
                 self.out += sel_circuit                                     #将选择电路的输出端接到端口out上
 
         inst_dynamic_mux = DynamicMux()                                     #实例化模块
+        inst_dynamic_mux.output_dir = 'test_build'
         inst_dynamic_mux.generate_verilog()                                 #生成verilog
 
         Not,Inverse,Add

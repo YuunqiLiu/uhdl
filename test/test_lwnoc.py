@@ -2,10 +2,10 @@ import os,sys
 import unittest
 
 # pylint: disable =unused-wildcard-import
-from ..core import *
+from uhdl import *
 # pylint: enable  =unused-wildcard-import
 
-from ..Demo.lwnoc import *
+from uhdl.Demo.lwnoc import *
 
 
 class TestBasic(unittest.TestCase):

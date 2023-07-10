@@ -217,5 +217,5 @@ class VComponent(Component):
     def module_name(self):
         return self._module_name
 
-    def create_this_vfile(self, path):
+    def _create_this_vfile(self, path):
         pass

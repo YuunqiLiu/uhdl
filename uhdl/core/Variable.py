@@ -12,6 +12,22 @@ from .Exception     import *
 from .InternalTool  import *
 
 
+
+def simplified_connection_naming_judgment(lvalue_obj, rvalue_obj):
+    lvalue_comp_name = lvalue_obj.father_until_component().name
+    rvalue_comp_name = rvalue_obj.father_until_component().name
+    sig_name         = lvalue_obj.name_before_component
+    return "%s_TO_%s_SIG_%s" % (lvalue_comp_name, rvalue_comp_name, sig_name)
+
+def low_to_high_connection(low, high):
+    return True if low.father_until_component().father == high.father_until_component() else False
+
+def same_level_connection(a, b):
+    return True if a.fahter_until_component().father == b.father_until_component().father else False
+
+def same_module_connection(a, b):
+    return True if a.father_until_component() == b.father_until_component() else False
+
 #   Root
 #       Variable
 #       Bundle
@@ -38,11 +54,30 @@ class Variable(Root):
     def __init__(self):
         super().__init__()
         self._rvalue = None
-        self._des_lvalue = None
+        #self._des_lvalue = None
+
+        self._lvalue_list = []
 
     @property
     def rvalue(self):
         return self._rvalue
+
+    @property
+    def lvalue(self):
+        return self._lvalue_list[0]
+    
+    @property
+    def _des_lvalue(self):
+        return self._lvalue_list[0]
+
+    def add_lvalue(self,lvalue):
+        self._lvalue_list.append(lvalue)
+
+    @property
+    def single_connection(self):
+        return True if len(self._lvalue_list) <= 1 else False
+
+
 
     @property
     def name_until_component(self):
@@ -55,18 +90,6 @@ class Variable(Root):
     def __str__(self):
         return "%s - %s" % (self.name_before(None), self.attribute)
         return "%s %s" % (super().__str__(),self.attribute)
-
-
-    # def __gt__(self,other):
-    #     if not isinstance(other,Variable):  raise ErrVarCmpWrong('%s should compare with a Variable,but get a %s.' % (GetClsNameFromObj(self),GetClsNameFromObj(other)))
-    #     if self.name == other.name:         raise ErrVarCmpWrong('Two Variable with the same name "%s" cannot be compared.' % (self.name))
-    #     if self.name > other.name:          return True
-    #     else:                               return False
-# # 
-    # def __lt__(self,other):
-    #     return not self.__gt__(other)
-
-
 
     @property
     def attribute(self):
@@ -87,7 +110,8 @@ class Variable(Root):
         if self.attribute != rvalue.attribute:  
             raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
         object.__setattr__(self, '_rvalue', rvalue)
-        object.__setattr__(rvalue, '_des_lvalue', self)
+        #object.__setattr__(rvalue, '_des_lvalue', self)
+        rvalue.add_lvalue(self)
 
         self_module = self.father_until(Component.Component)
         if isinstance(rvalue, CutExpression):
@@ -165,6 +189,16 @@ class Variable(Root):
     def verilog_assignment(self) -> str:
         if not hasattr(self, '_rvalue') or self._rvalue is None:
             return []
+        # a tmp hack
+
+        if isinstance(self, IOSig) and isinstance(self._rvalue, IOSig):
+            if not self._rvalue.single_connection:
+                pass
+            elif isinstance(self, Output) and isinstance(self._rvalue, Input) and\
+            self.father_until_component() == self._rvalue.father_until_component():
+                pass
+            else:
+                return []
         if self._need_always:
             str_list    = self._rvalue.bstring(self,"=")
             str_list[0] = "always @(*) %s" % str_list[0]
@@ -247,10 +281,7 @@ class Bundle(Root):
 
 
         exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
-        #print(exclude_list)
-        #print( self._var_list)
         for var in self._var_list:
-            #print('var', var.name)
             if var.name not in exclude_list:
                 res_list.append(var)
         return res_list
@@ -283,13 +314,13 @@ class Value(ValueRoot):
     def __init__(self):
         super().__init__()
         self._rvalue     = None
-        self._des_lvalue = None
 
     def __str__(self):
         return "%s - %s" % (super().__str__(),self.attribute)
 
 
     def check_rvalue(self, op: ValueRoot):
+        op.add_lvalue(self)
         '''This function is used to check the validity of rvalue, rvalue must be of type ValueRoot or its subclass.'''
         if not isinstance(op, ValueRoot):
             raise ErrExpInTypeWrong('', self, op)
@@ -355,17 +386,6 @@ class Value(ValueRoot):
     # def __ne__(self,rhs):
     #     return NotEqual(self,rhs)
 
-
-
-
-    #@property
-    #def is_lvalue(self) -> bool:
-    #    return False
-
-    #@property
-    #def string(self):
-    #    raise NotImplementedError
-
     @property
     def lstring(self):
         raise NotImplementedError
@@ -391,9 +411,12 @@ class Value(ValueRoot):
         return self._rvalue
 
 
+    def father_until_component(self):
+        return None
 
 
-
+    def add_lvalue(self,dontcare):
+        pass
 
 
 
@@ -409,15 +432,10 @@ class SingleVar(Variable, Value):
     def width(self):
         return self._template.width
 
-    #@property
-    #def string(self):
-    #    return self.name_before_component #self.__name
-
     @property
     def lstring(self):
         return self.name_before_component #self.__name
 
-    #@property
     def rstring(self, lvalue):
         return self.name_before_component #self.__name
 
@@ -566,7 +584,14 @@ class IOSig(WireSig):
     @property
     def verilog_inst(self):
         '''生成端口实例化的RTL'''
-        return [".%s(%s)" %(self.name_before_component,self.name_until_component)]
+        if self.father_until_component().father == self._rvalue.father_until_component().father:
+            return [".%s(pre_fix_%s)" %(self.name_before_component, self._rvalue.name_until_component)]
+        if self.father_until_component().father == self._rvalue.father_until_component():
+            return [".%s(%s)" %(self.name_before_component,self._rvalue.name_until_component)]
+        elif self.father_until_component().father == self._des_lvalue.father_until_component():
+            return [".%s(%s)" %(self.name_before_component,self._des_lvalue.name_until_component)]
+        else:
+            return [".%s(%s)" %(self.name_before_component,self.name_until_component)]
 
     @property
     def verilog_outer_def(self):
@@ -575,7 +600,31 @@ class IOSig(WireSig):
     
     @property
     def verilog_outer_def_as_list_io(self):
-        return ["wire",
+        # check whether a io need outer def.
+        if not self.single_connection:
+            return ["wire",
+                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+                self.name_until_component]
+
+        elif isinstance(self._rvalue, Variable) and isinstance(self, Variable) :
+
+            if (self.father_until_component().father == self._rvalue.father_until_component()) or\
+               (self._rvalue.father_until_component().father == self.father_until_component()) or\
+               (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
+               (self._des_lvalue.father_until_component().father == self.father_until_component()):
+               return None
+
+            elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+                rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+
+                return ["wire",
+                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+                rvalue_sig_name]
+            else:
+                return None
+        else:
+
+            return ["wire",
                 '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
                 self.name_until_component]
 
@@ -634,6 +683,19 @@ class Input(IOSig):
         return Input(self.attribute)
 
 
+    @property
+    def verilog_inst(self):
+        if isinstance(self._rvalue, Variable):
+            if not self._rvalue.single_connection:
+                rvalue_sig_name = self.name_until_component
+
+            elif self.father_until_component().father == self._rvalue.father_until_component():
+                rvalue_sig_name = self._rvalue.name_before_component
+            elif self.father_until_component().father == self._rvalue.father_until_component().father:
+                rvalue_sig_name = simplified_connection_naming_judgment(self._rvalue, self)
+        else:
+            rvalue_sig_name = self.name_until_component
+        return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
 
 
@@ -679,6 +741,18 @@ class Output(IOSig):
         return Output(self.attribute)
 
 
+    @property
+    def verilog_inst(self):
+        if not self.single_connection:
+            rvalue_sig_name = self.name_until_component
+        elif self.father_until_component().father == self._des_lvalue.father_until_component():
+            rvalue_sig_name = self._des_lvalue.name_before_component
+        elif self.father_until_component().father == self._des_lvalue.father_until_component().father:
+            rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
+        else:
+            rvalue_sig_name = self.name_until_component
+        return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+
 
 
 class Inout(IOSig):
@@ -723,16 +797,11 @@ class IOGroup(GroupVar):
         #     raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
         else:
             for iol,ior in zip(self.io_list,rvalue.io_list):
-                #print(iol,ior)
-                #print(iol,ior)
-                #print(iol.width,ior.width)
                 if isinstance(iol,Input):
                     ior += iol
                 else:
                     iol += ior
-            #print('%s get rvalue %s'  %(self,rvalue))
             object.__setattr__(self,'_rvalue',rvalue)
-            #self.__rvalue = rvalue
         return self
 
     def exclude(self,*args):

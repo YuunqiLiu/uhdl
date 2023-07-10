@@ -2,10 +2,10 @@ import os,sys
 import unittest
 
 # pylint: disable =unused-wildcard-import
-from ..core import *
+from uhdl import *
 # pylint: enable  =unused-wildcard-import
 
-from ..core             import  ErrAttrMismatch         ,\
+from uhdl.core.Exception import  ErrAttrMismatch         ,\
                                 ErrExpInTypeWrong       ,\
                                 ErrListExpNeedMultiOp   ,\
                                 ErrCutExpSliceInvalid   ,\
@@ -13,7 +13,7 @@ from ..core             import  ErrAttrMismatch         ,\
                                 ErrBitsValOverflow      ,\
                                 ErrBitsInvalidStr
 
-from ..core             import InternalTool as IT
+from uhdl.core             import InternalTool as IT
 
 
 class TestValue(unittest.TestCase):

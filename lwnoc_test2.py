@@ -1,7 +1,5 @@
-import uhdl
 from uhdl import *
-
-
+from uhdl.Demo import *
 
 N = Network(name='config_bus_hub')
 

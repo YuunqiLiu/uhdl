@@ -1,9 +1,9 @@
 
 # pylint: disable =unused-wildcard-import
-from ..core import *
+from uhdl import *
 # pylint: enable  =unused-wildcard-import
 
-from ..core             import  ErrAttrMismatch         ,\
+from uhdl.core.Exception import ErrAttrMismatch         ,\
                                 ErrExpInTypeWrong       ,\
                                 ErrListExpNeedMultiOp   ,\
                                 ErrCutExpSliceInvalid   ,\
@@ -13,7 +13,7 @@ from ..core             import  ErrAttrMismatch         ,\
                                 ErrVarNotBelongComponent,\
                                 ErrAssignTypeWrong 
 
-from ..core             import InternalTool as IT
+from uhdl.core             import InternalTool as IT
 
 def _wait_exception(self,exp_type,op,*param):
     try                  : op(*param)
