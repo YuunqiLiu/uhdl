@@ -70,7 +70,7 @@ class Variable(Root):
     
     @property
     def _des_lvalue(self):
-        return self._lvalue_list[0]
+        return None if self._lvalue_list == [] else self._lvalue_list[0]
 
     def add_lvalue(self,lvalue):
         self._lvalue_list.append(lvalue)
@@ -612,29 +612,21 @@ class IOSig(WireSig):
     def verilog_outer_def_as_list_io(self):
         # check whether a io need outer def.
 
-        if isinstance(self, Inout):
-            if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
-                return ["wire",
-                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-                simplified_connection_naming_judgment(self,self._rvalue)]
 
-            else:
-                return None
-
+        # if this is not a point to point connection. connection opt will not be opened.
         if not self.single_connection:
-            return ["wire",
-                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-                self.name_until_component]
+            return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
+        
 
-        elif isinstance(self._rvalue, Variable) and isinstance(self, Variable) :
+        # start to check all signle connection cases.
+        # for all var to var case, connection will only define by rvalue.
+        elif isinstance(self._des_lvalue, Variable):
 
-            if (self.father_until_component().father == self._rvalue.father_until_component()) or\
-               (self._rvalue.father_until_component().father == self.father_until_component()) or\
-               (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
-               (self._des_lvalue.father_until_component().father == self.father_until_component()):
-               return None
-
-            elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+            #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
+            #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
+            #    return None
+            
+            if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
                 rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
 
                 return ["wire",
@@ -642,11 +634,23 @@ class IOSig(WireSig):
                 rvalue_sig_name]
             else:
                 return None
-        else:
 
+        # for value, no need to define any wire.
+        elif isinstance(self._rvalue, Variable):
+            return None
+        
+        # for non var-to-var connection, return normal def.
+        else:
             return ["wire",
                 '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
                 self.name_until_component]
+
+            # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+            #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+# 
+            #     return ["wire",
+            #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+            #     rvalue_sig_name]
 
     @property
     def _iosig_type_prefix(self):
@@ -716,6 +720,58 @@ class Input(IOSig):
             rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
+    @property
+    def verilog_outer_def_as_list_io(self):
+        normal_res     = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
+        simplified_res = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
+
+        # check whether an io need outer def.
+        # for input , only need to check input's rvalue.
+        if isinstance(self._rvalue, IOSig):
+            if same_level_connection(self, self._rvalue):       return simplified_res
+            elif low_to_high_connection(self, self._rvalue):    return None
+            else:                                               return normal_res
+        else:                                                   return normal_res
+
+
+
+
+        # if this is not a point to point connection. connection opt will not be opened.
+        #if not self.single_connection:
+        #    return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
+        
+
+        # start to check all signle connection cases.
+        # for all var to var case, connection will only define by rvalue.
+        # elif isinstance(self._des_lvalue, Variable):
+# 
+        #     #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
+        #     #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
+        #     #    return None
+        #     
+        #     if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+# 
+        #         return ["wire",
+        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #         rvalue_sig_name]
+        #     else:
+        #         return None
+
+        # for value, no need to define any wire.
+        #elif isinstance(self._rvalue, Variable):
+            #return None
+        
+        # for non var-to-var connection, return normal def.
+        #else:
+
+
+            # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+            #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+# 
+            #     return ["wire",
+            #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+            #     rvalue_sig_name]
 
 
 
@@ -772,7 +828,22 @@ class Output(IOSig):
             rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
+    @property
+    def verilog_outer_def_as_list_io(self):
+        normal_res     = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
+        simplified_res = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self,self._des_lvalue)]
 
+        # check whether a io need outer def.
+        # if this is not a point to point connection. connection opt will not be opened.
+        if not self.single_connection:                              return normal_res
+        # start to check all signle connection cases.
+        # for all var to var case, connection will only define by rvalue.
+        elif isinstance(self._des_lvalue, IOSig):
+            if same_level_connection(self, self._des_lvalue):       return None
+            elif low_to_high_connection(self, self._des_lvalue):    return None
+            else:                                                   return normal_res
+        # for non var-to-var connection, return normal def.
+        else:                                                       return normal_res
 
 class Inout(IOSig):
 
@@ -826,6 +897,20 @@ class Inout(IOSig):
 
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
         return [".%s(%s) %s %s %s " %(self.name_before_component, rvalue_sig_name,self, self._rvalue, num)]
+
+
+    @property
+    def verilog_outer_def_as_list_io(self):
+        # check whether a io need outer def.
+
+        if isinstance(self, Inout):
+            if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
+                return ["wire",
+                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+                simplified_connection_naming_judgment(self,self._rvalue)]
+
+            else:
+                return None
 
 
 
