@@ -4,8 +4,9 @@ from enum       import Enum
 from functools  import reduce
 from operator   import concat
 from copy       import copy
+#from turtle import update
 
-from numpy import isin
+#from numpy import isin
 
 from .Root      import Root
 from .          import Component
@@ -111,8 +112,19 @@ class Variable(Root):
             raise_ErrAssignTypeWrong(self,rvalue)
         if self.attribute != rvalue.attribute:  
             raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
+        
+        # check io first:
+        if isinstance(self, Inout) or isinstance(rvalue, Inout):
+            #if (not isinstance(self, Inout)) or (not isinstance(self._rvalue, Inout)):
+            #    raise_ErrAssignTypeWrong(self,rvalue)
+            #else:
+                # do inout connection boardcast updagte.
+            updated_list = list(set(self._inout_connect_list + rvalue._inout_connect_list))
+            for item in updated_list:
+                item._inout_connect_list = updated_list
+
+
         object.__setattr__(self, '_rvalue', rvalue)
-        #object.__setattr__(rvalue, '_des_lvalue', self)
         rvalue.add_lvalue(self)
 
         self_module = self.father_until(Component.Component)
@@ -611,47 +623,6 @@ class IOSig(WireSig):
     @property
     def verilog_outer_def_as_list_io(self):
         raise NotImplementedError()
-        # check whether a io need outer def.
-
-
-        # if this is not a point to point connection. connection opt will not be opened.
-        if not self.single_connection:
-            return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        
-
-        # start to check all signle connection cases.
-        # for all var to var case, connection will only define by rvalue.
-        elif isinstance(self._des_lvalue, Variable):
-
-            #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
-            #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
-            #    return None
-            
-            if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-                rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-
-                return ["wire",
-                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-                rvalue_sig_name]
-            else:
-                return None
-
-        # for value, no need to define any wire.
-        elif isinstance(self._rvalue, Variable):
-            return None
-        
-        # for non var-to-var connection, return normal def.
-        else:
-            return ["wire",
-                '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-                self.name_until_component]
-
-            # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-            #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-# 
-            #     return ["wire",
-            #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-            #     rvalue_sig_name]
 
     @property
     def _iosig_type_prefix(self):
@@ -738,44 +709,6 @@ class Input(IOSig):
 
 
 
-        # if this is not a point to point connection. connection opt will not be opened.
-        #if not self.single_connection:
-        #    return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        
-
-        # start to check all signle connection cases.
-        # for all var to var case, connection will only define by rvalue.
-        # elif isinstance(self._des_lvalue, Variable):
-# 
-        #     #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
-        #     #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
-        #     #    return None
-        #     
-        #     if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-# 
-        #         return ["wire",
-        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #         rvalue_sig_name]
-        #     else:
-        #         return None
-
-        # for value, no need to define any wire.
-        #elif isinstance(self._rvalue, Variable):
-            #return None
-        
-        # for non var-to-var connection, return normal def.
-        #else:
-
-
-            # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-            #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-# 
-            #     return ["wire",
-            #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-            #     rvalue_sig_name]
-
-
 
 class Output(IOSig):
     '''
@@ -832,15 +765,6 @@ class Output(IOSig):
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
     
 
-        # if not self.single_connection:# and isinstance(self._des_lvalue, IOSig):
-        #     rvalue_sig_name = self.name_until_component
-        # elif low_to_high_connection(self, self._des_lvalue): 
-        #     rvalue_sig_name = self._des_lvalue.name_before_component
-        # elif same_level_connection(self, self._des_lvalue):
-        #     rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
-        # else:
-        #     rvalue_sig_name = self.name_until_component
-        # return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
     @property
     def verilog_outer_def_as_list_io(self):
@@ -861,6 +785,11 @@ class Output(IOSig):
 
 class Inout(IOSig):
 
+
+    def __init__(self,template):
+        super().__init__(template)
+        self._inout_connect_list = [self]
+
     @property
     def _iosig_type_prefix(self):
         return 'inout'
@@ -875,56 +804,49 @@ class Inout(IOSig):
 
     @property
     def verilog_inst(self):
-        #if not self.single_connection:
-        #    rvalue_sig_name = self.name_until_component
-        #rvalue_sig_name = self.name_until_component
-        #return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
-    
-        if isinstance(self._rvalue, Inout):
-            if same_module_connection(self, self._rvalue):
-                num = 0
-                rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
-            elif same_level_connection(self, self._rvalue):
-                num = 1
-                rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
-            elif low_to_high_connection(self, self._rvalue) or low_to_high_connection(self._rvalue, self):
-                num = 2
-                rvalue_sig_name = self._rvalue.name_before_component
-            else:
-                raise Exception()
 
-        elif isinstance(self._des_lvalue, Inout):
-           # print(self, self._des_lvalue)
-           
+        min_lvl_var = self._inout_connect_list[0]
+        for var in self._inout_connect_list:
+            if var.level_until_root() < min_lvl_var.level_until_root():
+                min_lvl_var = var
+        
+        # all signal in same level.
+        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root():
+            return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_until_component)]
+        # has high level io.
+        else:
+            return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_before_component)]
 
-            if same_module_connection(self, self._des_lvalue):
-                num = 3
-                rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
-            elif same_level_connection(self, self._des_lvalue):
-                num = 4
-                rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
-            elif low_to_high_connection(self, self._des_lvalue) or low_to_high_connection(self._des_lvalue, self):
-                num = 5
-                rvalue_sig_name = self.name_before_component
-            else:
-                raise Exception()
-
-        return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
-        return [".%s(%s) %s %s %s " %(self.name_before_component, rvalue_sig_name,self, self._rvalue, num)]
 
 
     @property
     def verilog_outer_def_as_list_io(self):
         # check whether a io need outer def.
-
-        if isinstance(self, Inout):
-            if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
+        min_lvl_var = self._inout_connect_list[0]
+        for var in self._inout_connect_list:
+            if var.level_until_root() < min_lvl_var.level_until_root():
+                min_lvl_var = var
+        
+        
+        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root():
+            if not self is self._inout_connect_list[0]:
+                return None
+            else:
                 return ["wire",
                 '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-                simplified_connection_naming_judgment(self,self._rvalue)]
+                min_lvl_var.name_until_component]
+        else:
+            return None
 
-            else:
-                return None
+
+
+        # if isinstance(self, Inout):
+        #     if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
+        #         return ["wire",
+        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #         simplified_connection_naming_judgment(self,self._rvalue)]
+        #     else:
+        #         return None
 
 
 
@@ -2140,3 +2062,142 @@ class OrExpression(TwoSameOpU1Expression):
     #def name(self) -> str:
     #    from .Component import Component
     #    return self.name_until_not(Component)
+
+
+    
+
+
+        # if this is not a point to point connection. connection opt will not be opened.
+        #if not self.single_connection:
+        #    return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
+        
+
+        # start to check all signle connection cases.
+        # for all var to var case, connection will only define by rvalue.
+        # elif isinstance(self._des_lvalue, Variable):
+# 
+        #     #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
+        #     #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
+        #     #    return None
+        #     
+        #     if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+# 
+        #         return ["wire",
+        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #         rvalue_sig_name]
+        #     else:
+        #         return None
+
+        # for value, no need to define any wire.
+        #elif isinstance(self._rvalue, Variable):
+            #return None
+        
+        # for non var-to-var connection, return normal def.
+        #else:
+
+
+            # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+            #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+# 
+            #     return ["wire",
+            #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+            #     rvalue_sig_name]
+
+
+        # check whether a io need outer def.
+
+
+        # if this is not a point to point connection. connection opt will not be opened.
+        # if not self.single_connection:
+        #     return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
+        # 
+
+        # # start to check all signle connection cases.
+        # # for all var to var case, connection will only define by rvalue.
+        # elif isinstance(self._des_lvalue, Variable):
+
+        #     #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
+        #     #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
+        #     #    return None
+        #     
+        #     if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+
+        #         return ["wire",
+        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #         rvalue_sig_name]
+        #     else:
+        #         return None
+
+        # # for value, no need to define any wire.
+        # elif isinstance(self._rvalue, Variable):
+        #     return None
+        # 
+        # # for non var-to-var connection, return normal def.
+        # else:
+        #     return ["wire",
+        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #         self.name_until_component]
+
+        #     # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
+        #     #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
+# 
+        #     #     return ["wire",
+        #     #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #     #     rvalue_sig_name]
+
+
+        # if not self.single_connection:# and isinstance(self._des_lvalue, IOSig):
+        #     rvalue_sig_name = self.name_until_component
+        # elif low_to_high_connection(self, self._des_lvalue): 
+        #     rvalue_sig_name = self._des_lvalue.name_before_component
+        # elif same_level_connection(self, self._des_lvalue):
+        #     rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
+        # else:
+        #     rvalue_sig_name = self.name_until_component
+        # return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+
+
+    
+        # lvl_list = [x.level_until_root() for x in self._inout_connect_list]
+        # return [".%s(%s)" %(self.name_before_component, lvl_list)]
+        # return [".%s(%s)" %(self.name_before_component, self._inout_connect_list)]
+        # print(self._inout_connect_list)
+# 
+        # #if not self.single_connection:
+        # #    rvalue_sig_name = self.name_until_component
+        # #rvalue_sig_name = self.name_until_component
+        # #return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+    # 
+        # if isinstance(self._rvalue, Inout):
+        #     if same_module_connection(self, self._rvalue):
+        #         num = 0
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
+        #     elif same_level_connection(self, self._rvalue):
+        #         num = 1
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
+        #     elif low_to_high_connection(self, self._rvalue) or low_to_high_connection(self._rvalue, self):
+        #         num = 2
+        #         rvalue_sig_name = self._rvalue.name_before_component
+        #     else:
+        #         raise Exception()
+# 
+        # elif isinstance(self._des_lvalue, Inout):
+        #    # print(self, self._des_lvalue)
+        #    
+# 
+        #     if same_module_connection(self, self._des_lvalue):
+        #         num = 3
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
+        #     elif same_level_connection(self, self._des_lvalue):
+        #         num = 4
+        #         rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
+        #     elif low_to_high_connection(self, self._des_lvalue) or low_to_high_connection(self._des_lvalue, self):
+        #         num = 5
+        #         rvalue_sig_name = self.name_before_component
+        #     else:
+        #         raise Exception()
+# 
+        # return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+        # return [".%s(%s) %s %s %s " %(self.name_before_component, rvalue_sig_name,self, self._rvalue, num)]
