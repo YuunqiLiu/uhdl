@@ -420,6 +420,8 @@ class Component(Root):
                 io += new_io
             elif isinstance(new_io, Output):
                 new_io += io
+            elif isinstance(new_io, Inout):
+                new_io += io
             else:
                 raise Exception()
 
@@ -434,6 +436,14 @@ class Component(Root):
             if re.search(string, io.name):
                 match_io_list.append(io)
         return match_io_list
+    
+    def exclude_io(io_list, exclude_list):
+        pattern = '|'.join(exclude_list)
+        io_list_new=[]
+        for io in io_list:
+            if not re.search(pattern, io.name):
+                io_list_new.append(io)
+        return io_list_new
 
 def isComponent(obj):
     return isinstance(obj,Component)
