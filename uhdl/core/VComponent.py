@@ -1,5 +1,5 @@
 import json
-import re
+import re, os
 
 from subprocess import Popen
 from .Component import Component
@@ -176,7 +176,12 @@ class VComponent(Component):
         cmd = f'{slang_cmd} {slang_opts} {source} -ast-json {ast_json} -top {top} {param_config}'
         p = Popen(cmd, shell=True)
         p.communicate()
+
+        # Parse AST
         self.parse_ast(ast_json, top)
+
+        # delete slang output
+        os.remove(ast_json)
 
 
     def parse_ast(self, file, top_name):

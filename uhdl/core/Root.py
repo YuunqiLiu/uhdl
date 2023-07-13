@@ -36,6 +36,11 @@ class Root(object):
     def hier(self):
         return self.name
 
+    def level_until_root(self):
+        if not self._father is None:
+            return self._father.level_until_root() + 1
+        else:
+            return 0
 
 
     def __setattr__(self, name, value):
