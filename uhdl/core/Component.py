@@ -310,6 +310,12 @@ class Component(Root):
         if slang_res != 0:
             raise Exception('Slang compile error.')
 
+    def run_verilator_compile(self):
+        cmd = 'verilator --lint-only -f %s' % self._flist_path
+        print('Run command: %s' % cmd)
+        slang_res = os.system(cmd)
+        if slang_res != 0:
+            raise Exception('Verilator compile error.')
 
 
 #################################################################################
