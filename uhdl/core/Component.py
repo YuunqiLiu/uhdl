@@ -3,6 +3,8 @@ from operator           import concat
 from functools          import reduce
 from collections.abc    import Iterable
 
+from uhdl.core.Terminal import Terminal
+
 from .Root              import Root
 from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
 from .                  import FileProcess
@@ -322,33 +324,33 @@ class Component(Root):
 # Lint
 #################################################################################
     
-    @property
-    def lint(self):
-        if self._lint is None:
-            self._lint = Lint(self.module_name)
-        return self._lint
+    # @property
+    # def lint(self):
+    #     if self._lint is None:
+    #         self._lint = Lint(self.module_name)
+    #     return self._lint
 
-    def _run_lint_single_lvl(self, lint, is_top=False):
-        lint.info('Start to check module %s.' % self.module_name)
+    def _run_lint_single_lvl(self, is_top=False):
+        Terminal.lint_info('Start to check module %s.' % self.module_name)
         if not is_top:
             for lvalue in self.input_list:
                 #print(self.module_name, lvalue,'####', lvalue.rvalue)
                 if lvalue.rvalue is None:
-                    lint.unconnect(lvalue)
+                    Terminal.lint_unconnect(lvalue)
         
         for lvalue in self.lvalue_list:
             if lvalue.rvalue is None:
-                lint.unconnect(lvalue)
+                Terminal.lint_unconnect(lvalue)
 
-    def _run_lint_core(self, lint, is_top=False):
+    def _run_lint_core(self, is_top=False):
         for component in self.component_list:
-            component._run_lint_core(lint)
-        self._run_lint_single_lvl(lint, is_top=is_top)
+            component._run_lint_core()
+        self._run_lint_single_lvl(is_top=is_top)
 
     def run_lint(self):
         #for component in self.component_list:
         #    component._run_lint_core(self.lint)
-        self._run_lint_core(self.lint, is_top=True)
+        self._run_lint_core(is_top=True)
         
 
 

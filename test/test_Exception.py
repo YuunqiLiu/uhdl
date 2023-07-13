@@ -77,3 +77,5 @@ def test_ErrAttrMismatch():
     except ErrAttrMismatch      as e: pass
     except Exception            as e: raise Exception('Expect a %s.But get \n\t%s:%s' % (IT.GetClsNameFromCls(exception_type),IT.GetClsNameFromObj(e),e))
     else                            : raise Exception('Expect a %s.But not get any Exception.' % IT.GetClsNameFromCls(exception_type))
+
+    c.run_lint()

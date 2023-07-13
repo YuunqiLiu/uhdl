@@ -342,10 +342,10 @@ class Value(ValueRoot):
 
 
     def check_rvalue(self, op: ValueRoot):
-        op.add_lvalue(self)
         '''This function is used to check the validity of rvalue, rvalue must be of type ValueRoot or its subclass.'''
         if not isinstance(op, ValueRoot):
             raise ErrExpInTypeWrong('', self, op)
+        op.add_lvalue(self)
 
 
     def __getitem__(self, s:slice):

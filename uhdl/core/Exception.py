@@ -115,7 +115,7 @@ def raise_ErrAttrMismatch(str_in,*var_list):
     err = ErrAttrMismatch(str_in,*var_list)
     if Config.IGNORE_ERROR:
         #pass
-        Terminal.warning(err)
+        Terminal.error(err)
     else:
         raise ErrAttrMismatch(str_in,*var_list)
 
