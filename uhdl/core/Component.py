@@ -310,6 +310,12 @@ class Component(Root):
         if slang_res != 0:
             raise Exception('Slang compile error.')
 
+    def run_verilator_compile(self):
+        cmd = 'verilator --lint-only -f %s' % self._flist_path
+        print('Run command: %s' % cmd)
+        slang_res = os.system(cmd)
+        if slang_res != 0:
+            raise Exception('Verilator compile error.')
 
 
 #################################################################################
@@ -413,12 +419,14 @@ class Component(Root):
             sub_inst = io._father
             if self != sub_inst._father:
                 raise Exception()
-            new_io_name = 'D_%s_%s' % (sub_inst.name, io.name)
+            new_io_name = '%s_%s' % (sub_inst.name, io.name)
             new_io = self.set(new_io_name, io.template())
 
             if isinstance(new_io, Input):
                 io += new_io
             elif isinstance(new_io, Output):
+                new_io += io
+            elif isinstance(new_io, Inout):
                 new_io += io
             else:
                 raise Exception()
@@ -434,6 +442,14 @@ class Component(Root):
             if re.search(string, io.name):
                 match_io_list.append(io)
         return match_io_list
+    
+    def exclude_io(self, io_list, exclude_list):
+        pattern = '|'.join(exclude_list)
+        io_list_new=[]
+        for io in io_list:
+            if not re.search(pattern, io.name):
+                io_list_new.append(io)
+        return io_list_new
 
 def isComponent(obj):
     return isinstance(obj,Component)

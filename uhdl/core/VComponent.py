@@ -25,6 +25,11 @@ class VParameter(object):
                 return Input(SInt(self.width))
             else:
                 return Input(UInt(self.width))
+        elif self.direction == "InOut":
+            if self.signed:
+                return Inout(SInt(self.width))
+            else:
+                return Inout(UInt(self.width))
         else:
             raise Exception()
 
@@ -132,6 +137,11 @@ class VPort(object):
                 return Input(SInt(self.width))
             else:
                 return Input(UInt(self.width))
+        elif self.direction == "InOut":
+            if self.signed:
+                return Inout(SInt(self.width))
+            else:
+                return Inout(UInt(self.width))
         else:
             raise Exception()
 
