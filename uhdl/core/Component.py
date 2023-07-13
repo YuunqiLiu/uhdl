@@ -437,7 +437,7 @@ class Component(Root):
                 match_io_list.append(io)
         return match_io_list
     
-    def exclude_io(io_list, exclude_list):
+    def exclude_io(self, io_list, exclude_list):
         pattern = '|'.join(exclude_list)
         io_list_new=[]
         for io in io_list:
