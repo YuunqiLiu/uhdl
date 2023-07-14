@@ -2,15 +2,12 @@ import os, inspect, re
 from operator           import concat
 from functools          import reduce
 from collections.abc    import Iterable
-
-from uhdl.core.Terminal import Terminal
-
+from .Terminal          import Terminal
 from .Root              import Root
 from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
-from .Lint              import Lint
 
 
 UHDL_GLOBAL_PARAM_DICT = {}
