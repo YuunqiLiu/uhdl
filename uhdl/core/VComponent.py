@@ -4,6 +4,7 @@ import re, os
 from subprocess import Popen
 from .Component import Component
 from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
+from .Terminal  import Terminal
 
 class VParameter(object):
 
@@ -217,8 +218,8 @@ class VComponent(Component):
             res = self.create(vparam.name, vparam.create_uhdl_param())
             #print(res)
 
-    def _run_lint_single_lvl(self, lint, is_top=False):
-        lint.info('Start to check VComponent module %s.' % self.module_name)
+    def _run_lint_single_lvl(self, is_top=False):
+        Terminal.lint_info('Start to check VComponent module %s.' % self.module_name)
 
         # VComponent will only check input signal.
         # If VComp is a top module, nothing need to be checked.
