@@ -1,13 +1,9 @@
-import math, re, string
+import re
 
-from enum       import Enum
 from functools  import reduce
 from operator   import concat
 from copy       import copy
-#from turtle import update
-
-#from numpy import isin
-
+import string
 from .Root      import Root
 from .          import Component
 
@@ -58,7 +54,6 @@ class Variable(Root):
         super().__init__()
         self._rvalue = None
         #self._des_lvalue = None
-
         self._lvalue_list = []
 
     @property
@@ -91,8 +86,7 @@ class Variable(Root):
         return self.name_before(Component.Component)
     
     def __str__(self):
-        return "%s - %s" % (self.name_before(None), self.attribute)
-        return "%s %s" % (super().__str__(),self.attribute)
+        return "%s - %s(%s)" % (self.name_before(None), self.__class__.__name__, self.attribute)
 
     @property
     def attribute(self):
@@ -115,10 +109,6 @@ class Variable(Root):
         
         # check io first:
         if isinstance(self, Inout) or isinstance(rvalue, Inout):
-            #if (not isinstance(self, Inout)) or (not isinstance(self._rvalue, Inout)):
-            #    raise_ErrAssignTypeWrong(self,rvalue)
-            #else:
-                # do inout connection boardcast updagte.
             updated_list = list(set(self._inout_connect_list + rvalue._inout_connect_list))
             for item in updated_list:
                 item._inout_connect_list = updated_list
@@ -228,10 +218,6 @@ class Variable(Root):
         else:
             return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
 
-
-
-
-
 class Bundle(Root):
 
 
@@ -264,9 +250,6 @@ class Bundle(Root):
 
     def _setattr_hook(self):
         component_father = self.father_until(Component.Component)
-        #print(self)
-        #print(self.father)
-        #print(component_father)
         for value in self._var_list:
             setattr(component_father, value.name_before(Component.Component), value)
 
@@ -281,18 +264,6 @@ class Bundle(Root):
         for i in self.io_list:
             setattr(reverse, i.name.lstrip('%s_'%self.name), i.reverse())
         return reverse
-
-
-
-    # def exclude(self,*exclude_list):
-
-
-    #     res_list = []
-    #     exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
-    #     for var in self._var_list:
-    #         if var.name not in exclude_list:
-    #             res_list.append(var)
-    #     return res_list
 
 
 
@@ -312,21 +283,11 @@ class Bundle(Root):
     def connect(self, other):
         pass
 
-
-    #@property
-    #def name(self) -> str:
-    #    from .Component import Component
-    #    return self.name_until_not(Component)
-
     def exclude(self, *args):
         result = copy(self)
         for a in args:
             delattr(result, a)
         return result
-
-
-    
-
 
 class ValueRoot():
     pass
@@ -338,7 +299,7 @@ class Value(ValueRoot):
         self._rvalue     = None
 
     def __str__(self):
-        return "%s - %s" % (super().__str__(),self.attribute)
+        return "%s - %s" % (self.__class__.__name__,self.attribute)
 
 
     def check_rvalue(self, op: ValueRoot):
@@ -440,8 +401,6 @@ class Value(ValueRoot):
     def add_lvalue(self,dontcare):
         pass
 
-
-
 class SingleVar(Variable, Value):
 
     def __init__(self,template):
@@ -465,12 +424,8 @@ class SingleVar(Variable, Value):
     def attribute(self):
         return self._template
 
-
-
-
 class WireSig(SingleVar):
     pass
-
 
 class Reg(SingleVar):
     '''
@@ -559,11 +514,6 @@ class Reg(SingleVar):
     def verilog_def_as_list(self):
         return ['reg','[%s:0]'%((self.attribute.width-1)),self.name_before_component]
 
-
-
-
-
-
 class Wire(WireSig):
     '''
     Wire is used to declare an internal signal wire in Component in UHDL.
@@ -597,9 +547,6 @@ class Wire(WireSig):
     def verilog_def_as_list(self):
         def_keyword = 'reg' if self._need_always else 'wire'
         return [def_keyword,'[%s:0]'%(self.attribute.width-1),self.name_before_component]
-
-
-
 
 class IOSig(WireSig):
 
@@ -637,10 +584,6 @@ class IOSig(WireSig):
         return [self._iosig_type_prefix,
                 '' if self.attribute.width==1 else '[%s:0]' %(self.attribute.width-1),
                 self.name_before_component]
-
-
-
-
 
 class Input(IOSig):
     '''
@@ -705,10 +648,6 @@ class Input(IOSig):
             elif low_to_high_connection(self, self._rvalue):    return None
             else:                                               return normal_res
         else:                                                   return normal_res
-
-
-
-
 
 class Output(IOSig):
     '''
@@ -838,23 +777,10 @@ class Inout(IOSig):
         else:
             return None
 
-
-
-        # if isinstance(self, Inout):
-        #     if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
-        #         return ["wire",
-        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #         simplified_connection_naming_judgment(self,self._rvalue)]
-        #     else:
-        #         return None
-
-
-
 class GroupVar(Variable):
 
     def exclude(self,*str_list):
         pass
-
 
 class IOGroup(GroupVar):
 
@@ -917,11 +843,6 @@ class IOGroup(GroupVar):
             setattr(reverse,i.name,i.reverse())
         return reverse
 
-
-
-
-
-
 class Expression(Value):
 
     def __init__(self):
@@ -944,7 +865,6 @@ class Expression(Value):
 
 class Constant(Expression):
     pass
-
 
 class AnyConstant(Constant):
 
@@ -969,10 +889,6 @@ class AnyConstant(Constant):
 
     def __str__(self):
         return "AnyConstant %s" % self._any_val
-
-
-
-
 
 class Bits(Constant):
 
@@ -1044,12 +960,7 @@ class Bits(Constant):
         return True if type(self) == type(other) and self.width == other.width else False
 
     def __str__(self):
-        return "Bits(%s,%s) with py ID %s" % (self.width,self.value,id(self))
-
-
-
-
-
+        return "%s(%s,%s)" % (self.__class__.__name__, self.width, self.value)
 
 class UInt(Bits):
     '''
@@ -1079,10 +990,6 @@ class UInt(Bits):
         4'b0101
 
     '''
-    def __str__(self):
-        return "UInt(%s,%s) with py ID %s" % (self.width,self.value,id(self))
-
-
 
 class SInt(Bits):
     '''
@@ -1113,8 +1020,6 @@ class SInt(Bits):
 
     '''
     #SInt的数值计算需要重新定义一下，Bits的只是对应了UInt
-    def __str__(self):
-        return "SInt(%s,%s) with py ID %s" % (self.width,self.value,id(self))
 
 class Parameter(SingleVar):
 
@@ -1145,11 +1050,11 @@ class Parameter(SingleVar):
     # @property
     # def width(self):
     #     return self.__width
-# 
+
     # @property
     # def string(self):
     #     return self.name_before_component #self.__name
-# 
+ 
     # @property
     # def attribute(self):
     #     return self.__width
@@ -1159,8 +1064,6 @@ class Parameter(SingleVar):
     #def atrribute(self,value):
     #    self.__attribute = value
 
-
-
 ################################################################################################################
 #
 #   AlwaysCombExpression
@@ -1169,7 +1072,6 @@ class Parameter(SingleVar):
 
 class AlwaysCombExpression(Expression):
     pass   
-
 
 class CaseExpression(AlwaysCombExpression):
 
@@ -1224,10 +1126,6 @@ class CaseExpression(AlwaysCombExpression):
 
         str_list.append('endcase')
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
-
-
-
-
 
 class WhenExpression(AlwaysCombExpression):
     def __init__(self):
@@ -1341,9 +1239,6 @@ class WhenExpression(AlwaysCombExpression):
 
         return ["begin"] + list(map(lambda x:"    "+x,str_list)) + ["end"]
 
-
-
-
 class CutExpression(Expression):
 
     def __init__(self,op:Value,hbound:int,lbound:int):
@@ -1382,11 +1277,6 @@ class CutExpression(Expression):
     def rstring(self, lvalue) -> str:
         return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
 
-
-
-
-
-
 class FanoutExpression(Expression):
 
     def __init__(self, op:Value, fanout:int):
@@ -1406,16 +1296,11 @@ class FanoutExpression(Expression):
     def rstring(self, lvalue) -> str:
         return '({%s{%s}})' % (self._fanout,self._op.rstring(lvalue))
 
-
-
-
-
 ################################################################################################################
 #
 #   List Op Expression
 #
 ################################################################################################################
-
 
 class ListExpression(Expression):
 
@@ -1435,7 +1320,6 @@ class ListExpression(Expression):
         tmp_op_str = ' %s '%self.op_str
         return '(%s)' %  tmp_op_str.join([op.rstring(lvalue) for op in self.op_list])
 
-
 class MultiListExpression(ListExpression):
 
     def __init__(self, *op_list):
@@ -1446,7 +1330,6 @@ class MultiListExpression(ListExpression):
     @property
     def attribute(self):
         return UInt(1)
-
 
 class MultiSameListExpression(MultiListExpression):
 
@@ -1465,7 +1348,6 @@ class MultiSameListExpression(MultiListExpression):
 #       Same List Expression
 ################################################################################################################
 
-
 class AndListExpression(MultiListExpression):
 
     @property
@@ -1475,9 +1357,6 @@ class AndListExpression(MultiListExpression):
     @property
     def op_str(self):
         return '&&'
-
-
-
 
 class OrListExpression(MultiListExpression):
 
@@ -1489,10 +1368,6 @@ class OrListExpression(MultiListExpression):
     def op_str(self):
         return '||'
 
-
-
-
-
 class BitAndListExpression(MultiSameListExpression):
 
     @property
@@ -1502,9 +1377,6 @@ class BitAndListExpression(MultiSameListExpression):
     @property
     def op_str(self):
         return '&'
-
-
-
 
 class BitOrListExpression(MultiSameListExpression):
 
@@ -1516,9 +1388,6 @@ class BitOrListExpression(MultiSameListExpression):
     def op_str(self):
         return '|'
 
-
-
-
 class BitXorListExpression(MultiSameListExpression):
 
     @property
@@ -1529,9 +1398,6 @@ class BitXorListExpression(MultiSameListExpression):
     def op_str(self):
         return '^'
 
-
-
-
 class BitXnorListExpression(MultiSameListExpression):
 
     @property
@@ -1541,9 +1407,6 @@ class BitXnorListExpression(MultiSameListExpression):
     @property
     def op_str(self):
         return '^~'
-
-
-
 
 class CombineExpression(ListExpression):
 
@@ -1562,9 +1425,6 @@ class CombineExpression(ListExpression):
     #@property
     def rstring(self, lvalue) -> str:
         return '{%s}' % ', '.join([op.rstring(lvalue) for op in self.op_list])
-
-
-
 
 ################################################################################################################
 #
@@ -1599,10 +1459,6 @@ class OneOpBitExpressionTest(OneOpExpression):
     def attribute(self):
         return self._op.attribute
 
-
-
-
-
 class InverseExpression(OneOpBitExpressionTest):
 
     @property
@@ -1612,8 +1468,6 @@ class InverseExpression(OneOpBitExpressionTest):
     @property
     def op_str(self):
         return '~'
-
-
 
 class NotExpression(OneOpU1Expression):
 
@@ -1625,9 +1479,6 @@ class NotExpression(OneOpU1Expression):
     def op_str(self):
         return '!'
 
-
-
-
 class SelfOrExpression(OneOpU1Expression):
 
     @property
@@ -1637,9 +1488,6 @@ class SelfOrExpression(OneOpU1Expression):
     @property
     def op_str(self):
         return '|'
-
-
-
 
 class SelfAndExpression(OneOpU1Expression):
 
@@ -1651,8 +1499,6 @@ class SelfAndExpression(OneOpU1Expression):
     def op_str(self):
         return '&'
 
-
-
 class SelfXorExpression(OneOpU1Expression):
 
     @property
@@ -1663,8 +1509,6 @@ class SelfXorExpression(OneOpU1Expression):
     def op_str(self):
         return '^'
 
-
-
 class SelfXnorExpression(OneOpU1Expression):
 
     @property
@@ -1674,8 +1518,6 @@ class SelfXnorExpression(OneOpU1Expression):
     @property
     def op_str(self):
         return '^~'
-
-
 
 ################################################################################################################
 #
@@ -1699,15 +1541,16 @@ class TwoOpExpression(Expression):
     #@property
     def rstring(self, lvalue) -> str:
         return '(%s %s %s)'  % (self.opL.rstring(lvalue) ,self.op_str,self.opR.rstring(lvalue))
+    
+    #def __str__(self):
+    #    res = super().__str__()
+    #    return str(res + '\n' + str(self.opL) + '\n' + str(self.opR))
  
-
-
 class TwoSameOpExpression(TwoOpExpression):
 
     def __init__(self,opL,opR):
         super().__init__(opL,opR)
         if opL.attribute != opR.attribute: raise ErrAttrMismatch('Can not "%s" Values with different attributes.' % self.op_name,opL.attribute,opR.attribute)
-
 
 class LeftShift(TwoOpExpression):
     
@@ -1723,7 +1566,6 @@ class LeftShift(TwoOpExpression):
     def op_str(self):
         return '<<'
 
-
 class RightShift(TwoOpExpression):
 
     @property
@@ -1738,16 +1580,11 @@ class RightShift(TwoOpExpression):
     def op_str(self):
         return '>>'
 
-
-
-
-
 class TwoSameOpU1Expression(TwoSameOpExpression):
 
     @property
     def attribute(self):
         return UInt(1)
-
 
 class TwoSameOpBitExpression(TwoSameOpExpression):
 
@@ -1776,9 +1613,6 @@ class AddExpression(TwoSameOpExpression):
     def op_str(self):
         return '+'
 
-
-
-
 class SubExpression(TwoSameOpExpression):
 
     @property
@@ -1793,9 +1627,6 @@ class SubExpression(TwoSameOpExpression):
     def op_str(self):
         return '-'
 
-
-
-
 class MulExpression(TwoSameOpExpression):
 
     @property
@@ -1809,8 +1640,6 @@ class MulExpression(TwoSameOpExpression):
     @property
     def op_str(self):
         return '*'
-
-
 
 ################################################################################################################
 #
@@ -1828,8 +1657,6 @@ class BitOrExpression(TwoSameOpBitExpression):
     def op_str(self):
         return '|'
 
-
-
 class BitAndExpression(TwoSameOpBitExpression):
 
     @property
@@ -1839,8 +1666,6 @@ class BitAndExpression(TwoSameOpBitExpression):
     @property
     def op_str(self):
         return '&'
-
-
 
 class BitXorExpression(TwoSameOpBitExpression):
 
@@ -1852,8 +1677,6 @@ class BitXorExpression(TwoSameOpBitExpression):
     def op_str(self):
         return '^'
 
-
-
 class BitXnorExpression(TwoSameOpBitExpression):
 
     @property
@@ -1863,8 +1686,6 @@ class BitXnorExpression(TwoSameOpBitExpression):
     @property
     def op_str(self):
         return '^~'
-
-
 
 ################################################################################################################
 #
@@ -1883,8 +1704,6 @@ class EqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '=='
 
-
-
 class NotEqualExpression(TwoSameOpU1Expression):
 
     @property
@@ -1894,8 +1713,6 @@ class NotEqualExpression(TwoSameOpU1Expression):
     @property
     def op_str(self):
         return '!='
-
-
 
 class LessEqualExpression(TwoSameOpU1Expression):
 
@@ -1907,8 +1724,6 @@ class LessEqualExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '<='
 
-
-
 class GreaterEqualExpression(TwoSameOpU1Expression):
 
     @property
@@ -1918,8 +1733,6 @@ class GreaterEqualExpression(TwoSameOpU1Expression):
     @property
     def op_str(self):
         return '>='
-
-
 
 class LessExpression(TwoSameOpU1Expression):
 
@@ -1931,8 +1744,6 @@ class LessExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '<'
 
-
-
 class GreaterExpression(TwoSameOpU1Expression):
 
     @property
@@ -1943,8 +1754,6 @@ class GreaterExpression(TwoSameOpU1Expression):
     def op_str(self):
         return '>'
 
-
-
 class AndExpression(TwoSameOpU1Expression):
 
     @property
@@ -1954,8 +1763,6 @@ class AndExpression(TwoSameOpU1Expression):
     @property
     def op_str(self):
         return '&&'
-
-
 
 class OrExpression(TwoSameOpU1Expression):
 
@@ -2201,3 +2008,27 @@ class OrExpression(TwoSameOpU1Expression):
 # 
         # return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
         # return [".%s(%s) %s %s %s " %(self.name_before_component, rvalue_sig_name,self, self._rvalue, num)]
+
+
+
+        
+        # if isinstance(self, Inout):
+        #     if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
+        #         return ["wire",
+        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
+        #         simplified_connection_naming_judgment(self,self._rvalue)]
+        #     else:
+        #         return None
+
+    
+
+    # def exclude(self,*exclude_list):
+
+
+    #     res_list = []
+    #     exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
+    #     for var in self._var_list:
+    #         if var.name not in exclude_list:
+    #             res_list.append(var)
+    #     return res_list
+

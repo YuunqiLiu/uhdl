@@ -165,25 +165,29 @@ class ExtensibleFileObject(object):
         
 
         with open(path,'w') as f:
-            f.write(self.__file_explain)
+            # f.write(self.__file_explain)
+            # f.write('\n')
+# 
+            # f.write(self.__key_block.wrap_text)
+            # f.write('\n')
+            # f.write(self.__version_control_block.wrap_text)
+            # f.write('\n')
+            # f.write(self.__tool_message_block.wrap_text)
+            # f.write('\n')
+            # f.write(self.__user_message_block.wrap_text)
+            # f.write('\n')
+            f.write(self.__content_block.wrap_text)
             f.write('\n')
+            #f.write(self.__param_block.wrap_text)
+            #f.write('\n')
+
+
+
+
             #f.write(self.__user_message_block.wrap_text)
             #f.write('\n')
             #f.write(self.__tool_message_block.wrap_text)
             #f.write('\n')
-            f.write(self.__key_block.wrap_text)
-            f.write('\n')
-            f.write(self.__version_control_block.wrap_text)
-            f.write('\n')
-            f.write(self.__tool_message_block.wrap_text)
-            f.write('\n')
-            f.write(self.__user_message_block.wrap_text)
-            f.write('\n')
-            f.write(self.__content_block.wrap_text)
-            f.write('\n')
-            f.write(self.__param_block.wrap_text)
-            f.write('\n')
-
 # a = ExtensibleFileObject(keyword='UHDL')
 # a.write('module .....')
 # a.write_version('1.0.1')
