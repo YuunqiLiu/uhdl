@@ -3,7 +3,7 @@ import re, os
 
 from subprocess import Popen
 from .Component import Component
-from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
+from .Variable  import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
 from .Terminal  import Terminal
 
 class VParameter(object):
@@ -151,16 +151,10 @@ class VPort(object):
 class VComponent(Component):
 
 
-    def __init__(self, filelist=None, top=None, file=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
+    def __init__(self, file=None, top=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
         super().__init__()
         self._module_name = top
-        ast_json = "%s.%s.ast.json" % (top,instance)
-
-
-        # Spell the parameter into the format needed by slang
-        param_config = ''
-        for k, v in kwargs.items():
-            param_config = param_config + '-G %s=%s ' % (k,v)
+        ast_json = "%s.ast.json" % top
 
         # Try slang
         p = Popen(f'{slang_cmd} --version', shell=True)
@@ -169,17 +163,26 @@ class VComponent(Component):
             raise Exception('Cannot call slang to import verilog.')
 
 
+        # Spell the parameter into the format needed by slang
+        param_config = ''
+        for k, v in kwargs.items():
+            param_config = param_config + '-G %s=%s ' % (k,v)
+
+
         # Call slang
-        if file is not None:
-            source = file
+        if str(file).endswith('.f'):
+            source = f'-f {file}'
         else:
-            source = f'-f {filelist}'
+            source = file
+        
         cmd = f'{slang_cmd} {slang_opts} {source} -ast-json {ast_json} -top {top} {param_config}'
         p = Popen(cmd, shell=True)
         p.communicate()
 
+
         # Parse AST
         self.parse_ast(ast_json, top)
+
 
         # delete slang output
         os.remove(ast_json)
@@ -226,7 +229,7 @@ class VComponent(Component):
         if not is_top:
             for lvalue in self.input_list:
                 if lvalue.rvalue is None:
-                    lint.unconnect(lvalue)
+                    Terminal.lint_unconnect(lvalue)
 
 
     @property
