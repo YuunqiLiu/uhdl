@@ -190,3 +190,12 @@ def Unpack(rhs,*lhs_list):
 
 def BitMask(vector, mask):
     return BitAnd(vector, Fanout(mask, vector.attribute.width))
+
+
+def Exclude(io_list, exclude_list):
+    pattern = '|'.join(exclude_list)
+    io_list_new=[]
+    for io in io_list:
+        if not re.search(pattern, io.name):
+            io_list_new.append(io)
+    return io_list_new

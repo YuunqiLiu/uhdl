@@ -7,7 +7,7 @@ import string
 from .Root      import Root
 from .          import Component
 
-from .Exception     import *
+from .UHDLException import *
 from .InternalTool  import *
 
 

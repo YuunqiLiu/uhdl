@@ -1,6 +1,6 @@
 
 __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
-            'Assign','SmartAssign','Linkable',
+            'Assign','SmartAssign','Linkable','Exclude',
             'join_name',
             'Component','VComponent',
 
@@ -16,11 +16,11 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'when','Bundle',
             
             
-            'Config','Exception']
+            'Config','UHDLException','MultiFileExec','MultiFileScope']
 
 from .Component     import Component
 from .VComponent    import VComponent
-from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask
+from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask,Exclude
 from .BasicFunction import join_name
 
 from .Variable      import Input,Output,Inout,UInt,SInt,IOGroup,Parameter,Wire,Reg,AnyConstant
@@ -32,7 +32,8 @@ from .Operator      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,O
 from .Operator      import Case,Cut,When,EmptyWhen,Fanout
 from .Variable      import Bundle
 from .              import Config
-from .              import Exception
+from .              import UHDLException
+from .MultiFileCoop import MultiFileExec, MultiFileScope
 
 
 #from .Value     import Combine
@@ -46,6 +47,6 @@ smart_assign = SmartAssign
 linkable     = Linkable
 
 
-from .Exception import *
+from .UHDLException import *
 
 
