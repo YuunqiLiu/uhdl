@@ -77,6 +77,12 @@ class Component(Root):
         self._lint                  = None
         self.output_dir             = '.'
         self._module_name_prefix    = ''
+        self.circuit()
+
+
+    def circuit(self):
+        pass
+
 
     @property
     def output_path(self):
@@ -249,14 +255,12 @@ class Component(Root):
         else:
             str_list = ['%s %s (' % (self.module_name, self.name)]
 
-        #str_list = ['%s %s %s' % (self.module_name,self.name,'#(' if param_assignment_list else '(')]
-        #if param_assignment_list:
-        #    str_list += self.__eol_append(param_assignment_list,',','') + [')(']
-
         str_list += self.__eol_append(reduce(concat,[i.verilog_inst for i in self.io_list],[]),',',');')
         return str_list
 
-
+#################################################################################
+# Verilog File Opeartion
+#################################################################################
 
     def _create_this_vfile(self,path):
         FileProcess.create_file(os.path.join(path,'%s.v' % self.module_name),self.verilog_def)
@@ -300,7 +304,44 @@ class Component(Root):
 
         FileProcess.create_file( path = self._flist_path,
                                  text = new_file_list)
+
+#################################################################################
+# Lint
+#################################################################################
     
+    def _run_lint_single_lvl(self, is_top=False):
+        Terminal.lint_info('Start to check module %s.' % self.module_name)
+        if not is_top:
+            for lvalue in self.input_list:
+                if lvalue.rvalue is None:
+                    Terminal.lint_unconnect(lvalue)
+        
+        for lvalue in self.lvalue_list:
+            if lvalue.rvalue is None:
+                Terminal.lint_unconnect(lvalue)
+
+    def _run_lint_core(self, is_top=False):
+        for component in self.component_list:
+            component._run_lint_core()
+        self._run_lint_single_lvl(is_top=is_top)
+
+    def run_lint(self):
+        self._run_lint_core(is_top=True)
+
+
+#################################################################################
+# UHDL Compile
+#################################################################################
+
+    def compile(self,output_dir='.'):
+        self.output_dir = output_dir
+        self.generate_verilog()
+        self.generate_filelist()
+        self.run_lint()
+
+#################################################################################
+# Third Party Compile
+#################################################################################
 
     def run_slang_compile(self):
         cmd = 'slang -f %s' % self._flist_path
@@ -317,37 +358,6 @@ class Component(Root):
             raise Exception('Verilator compile error.')
 
 
-#################################################################################
-# Lint
-#################################################################################
-    
-    # @property
-    # def lint(self):
-    #     if self._lint is None:
-    #         self._lint = Lint(self.module_name)
-    #     return self._lint
-
-    def _run_lint_single_lvl(self, is_top=False):
-        Terminal.lint_info('Start to check module %s.' % self.module_name)
-        if not is_top:
-            for lvalue in self.input_list:
-                #print(self.module_name, lvalue,'####', lvalue.rvalue)
-                if lvalue.rvalue is None:
-                    Terminal.lint_unconnect(lvalue)
-        
-        for lvalue in self.lvalue_list:
-            if lvalue.rvalue is None:
-                Terminal.lint_unconnect(lvalue)
-
-    def _run_lint_core(self, is_top=False):
-        for component in self.component_list:
-            component._run_lint_core()
-        self._run_lint_single_lvl(is_top=is_top)
-
-    def run_lint(self):
-        #for component in self.component_list:
-        #    component._run_lint_core(self.lint)
-        self._run_lint_core(is_top=True)
         
 
 
@@ -363,22 +373,6 @@ class Component(Root):
             return result
         else:
             return []
-
-    def compile(self):
-        self.run_undriven_check()
-
-        pass
-
-    def run_undriven_check(self):
-        undriven_check_list = self.wire_list + self.reg_list + self.output_list
-
-        for i in undriven_check_list:
-            if i.rvalue == None:
-                raise Exception('%s is undriven' % i.name)
-
-
-    def run_struct_check(self):
-        pass
 
 
 
@@ -412,6 +406,9 @@ class Component(Root):
         self._PARAM._caculate_name()
 
 
+##########################################################################################
+# Syntax Sugar for Integration
+##########################################################################################
 
     def expose_io(self, io_list):
         for io in io_list:
@@ -430,11 +427,6 @@ class Component(Root):
             else:
                 raise Exception()
 
-            #print(io.template)
-            #print(new_io_name,io._father._father, io.template)
-
-
-
     def get_io(self, string):
         match_io_list = []
         for io in self.io_list:
@@ -450,8 +442,44 @@ class Component(Root):
                 io_list_new.append(io)
         return io_list_new
 
-def isComponent(obj):
-    return isinstance(obj,Component)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #def isComponent(obj):
+    #    return isinstance(obj,Component)
+    # def compile(self):
+    #     self.run_undriven_check()
+
+    #     pass
+
+    # def run_undriven_check(self):
+    #     undriven_check_list = self.wire_list + self.reg_list + self.output_list
+
+    #     for i in undriven_check_list:
+    #         if i.rvalue == None:
+    #             raise Exception('%s is undriven' % i.name)
+
+
+    # def run_struct_check(self):
+    #     pass
 
 
         #print(list_in)
