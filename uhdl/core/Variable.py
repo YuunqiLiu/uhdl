@@ -641,13 +641,21 @@ class Input(IOSig):
         def simplified_res(): 
             return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
 
+
+
+        # check whether a io need outer def.
+        # if this is not a point to point connection. connection opt will not be opened.
+        if not self.single_connection:                          return normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
-        if isinstance(self._rvalue, IOSig):
+        elif isinstance(self._rvalue, IOSig):
             if same_level_connection(self, self._rvalue):       return simplified_res()
             elif low_to_high_connection(self, self._rvalue):    return None
             else:                                               return normal_res
         else:                                                   return normal_res
+
+
+
 
 class Output(IOSig):
     '''
