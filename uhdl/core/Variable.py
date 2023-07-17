@@ -262,7 +262,10 @@ class Bundle(Root):
     def reverse(self):
         reverse = Bundle()
         for i in self.io_list:
-            setattr(reverse, i.name.lstrip('%s_'%self.name), i.reverse())
+            if self.name is None:
+                setattr(reverse, i.name, i.reverse())
+            else:
+                setattr(reverse, i.name.lstrip('%s_'%self.name), i.reverse())
         return reverse
 
 
