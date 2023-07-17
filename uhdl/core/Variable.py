@@ -612,7 +612,13 @@ class Input(IOSig):
 
     #@property
     def rstring(self, lvalue):
-        return self.name_before_component #self.__name
+        if lvalue.father_until_component() is self.father_until_component():
+            return self.name_before_component
+        elif self._rvalue is not None:
+            return self.name_until_component
+        else:
+            return self.name_before_component #self.__name
+        # return self.name_before_component #self.__name?
 
     @property
     def _iosig_type_prefix(self):
