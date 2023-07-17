@@ -415,7 +415,7 @@ class Component(Root):
             sub_inst = io._father
             if self != sub_inst._father:
                 raise Exception()
-            new_io_name = '%s_%s' % (sub_inst.name, io.name)
+            new_io_name = 'D_%s_%s' % (sub_inst.name, io.name)
             new_io = self.set(new_io_name, io.template())
 
             if isinstance(new_io, Input):
