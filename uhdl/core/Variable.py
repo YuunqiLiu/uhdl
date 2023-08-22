@@ -114,6 +114,8 @@ class Variable(Root):
                 item._inout_connect_list = updated_list
 
 
+        if self._rvalue != None:
+            raise Exception('Error: Multi-driver')
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
