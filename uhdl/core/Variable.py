@@ -115,7 +115,7 @@ class Variable(Root):
 
 
         if self._rvalue != None:
-            raise Exception('Error: Multi-driver')
+            raise Exception('Error: %s has multi-driver'% self.name)
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
