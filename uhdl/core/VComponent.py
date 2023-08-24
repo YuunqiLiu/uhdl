@@ -151,10 +151,10 @@ class VPort(object):
 class VComponent(Component):
 
 
-    def __init__(self, file=None, top=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
+    def __init__(self, file=None, top=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
         super().__init__()
         self._module_name = top
-        ast_json = "%s.ast.json" % top
+        ast_json = "%s.%s.ast.json" %(top, instance)
 
         # Try slang
         p = Popen(f'{slang_cmd} --version', shell=True)
