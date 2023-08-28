@@ -13,105 +13,117 @@ def _smart_assign_core(op1, op2, outer=False):
     op1_component = op1.father_until(Component)
     op2_component = op2.father_until(Component)
 
-    if (not isinstance(op1, (Input, Output))) or (not isinstance(op2, (Input, Output))):
-        raise ErrUHDLStr("smart assign only used for IO connection, at least one of op1 %s and op2 %s should be Input or Output." % (op1, op2))
+    if (not isinstance(op1, (Input, Output, Inout))) or (not isinstance(op2, (Input, Output, Inout))):
+        raise ErrUHDLStr("smart assign only used for IO connection, at least one of op1 %s and op2 %s should be Input, Output or Inout." % (op1, op2))
+    
+    
+    
+    if isinstance(op1, (Input, Output)) and isinstance(op2, (Input, Output)):
+        if op1_component.father is op2_component:
+            # op1 in low level
+            #    ----------------------
+            #    |                    |
+            #    |    ---------       |
+            #    |    |       |       |
+            #    |    |  (op1)-  (op2)|
+            #    |    |       |       |
+            #    |    ---------       |
+            #    |                    |
+            #    ----------------------
+            #
+            #   case1:
+            #       op1 is Input, op1 should be lhs.
+            #   case2:
+            #       op1 is Output, op1 should be rhs.
+            #
+            if isinstance(op1, Input):
+                op1 += op2
+            elif isinstance(op1, Output):
+                op2 += op1
+            else:
+                raise ErrUHDLStr("op1 %s's father Component is in op2 %s's father Component, so op1 should be Input or Output." % (op1, op2))
 
-    if op1_component.father is op2_component:
-        # op1 in low level
-        #    ----------------------
-        #    |                    |
-        #    |    ---------       |
-        #    |    |       |       |
-        #    |    |  (op1)-  (op2)|
-        #    |    |       |       |
-        #    |    ---------       |
-        #    |                    |
-        #    ----------------------
-        #
-        #   case1:
-        #       op1 is Input, op1 should be lhs.
-        #   case2:
-        #       op1 is Output, op1 should be rhs.
-        #
-        if isinstance(op1, Input):
-            op1 += op2
-        elif isinstance(op1, Output):
-            op2 += op1
-        else:
-            raise ErrUHDLStr("op1 %s's father Component is in op2 %s's father Component, so op1 should be Input or Output." % (op1, op2))
+        elif op2_component.father is op1_component:
+            # op2 in low level
+            #    ----------------------
+            #    |                    |
+            #    |    ---------       |
+            #    |    |       |       |
+            #    |    |  (op2)-  (op1)|
+            #    |    |       |       |
+            #    |    ---------       |
+            #    |                    |
+            #    ----------------------
+            #
+            #   case1:
+            #       op2 is Input, op2 should be lhs.
+            #   case2:
+            #       op2 is Output, op2 should be rhs.
+            #
+            if isinstance(op2, Input):
+                op2 += op1
+            elif isinstance(op2, Output):
+                op1 += op2
+            else:
+                raise ErrUHDLStr("op2 %s's father Component is in op1 %s's father Component, so op2 should be Input or Output." % (op2, op1))
 
-    elif op2_component.father is op1_component:
-        # op2 in low level
-        #    ----------------------
-        #    |                    |
-        #    |    ---------       |
-        #    |    |       |       |
-        #    |    |  (op2)-  (op1)|
-        #    |    |       |       |
-        #    |    ---------       |
-        #    |                    |
-        #    ----------------------
-        #
-        #   case1:
-        #       op2 is Input, op2 should be lhs.
-        #   case2:
-        #       op2 is Output, op2 should be rhs.
-        #
-        if isinstance(op2, Input):
-            op2 += op1
-        elif isinstance(op2, Output):
-            op1 += op2
-        else:
-            raise ErrUHDLStr("op2 %s's father Component is in op1 %s's father Component, so op2 should be Input or Output." % (op2, op1))
+        elif op1_component is op2_component:
+            if outer:
+                # outer connection.
+                #    -------------------
+                #    |                 |
+                #  ---(op1)-------(op2)---
+                #  | |                 | |
+                #  | ------------------- |
+                #  |                     |
+                #  -----------------------
+                if isinstance(op1, Input) and isinstance(op2, Output):
+                    op1 += op2
+                elif isinstance(op2, Input) and isinstance(op1, Output):
+                    op2 += op1
+                else:
+                    raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
 
-    elif op1_component is op2_component:
-        if outer:
-            # outer connection.
-            #    -------------------
-            #    |                 |
-            #  ---(op1)-------(op2)---
-            #  | |                 | |
-            #  | ------------------- |
-            #  |                     |
-            #  -----------------------
+            else:
+                # inter connection.
+                #    -------------------
+                #    |                 |
+                #    -(op1)-------(op2)-
+                #    |                 |
+                #    -------------------
+                if isinstance(op1, Input) and isinstance(op2, Output):
+                    op2 += op1
+                elif isinstance(op2, Input) and isinstance(op1, Output):
+                    op1 += op2
+                else:
+                    raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
+
+        elif op1_component.father is op2_component.father:
+            # same level connection.
+            #    ------------------   ------------------
+            #    |                |   |                |
+            #    |           (op1)-   -(op2)           |
+            #    |                |   |                |
+            #    ------------------   ------------------
             if isinstance(op1, Input) and isinstance(op2, Output):
                 op1 += op2
             elif isinstance(op2, Input) and isinstance(op1, Output):
                 op2 += op1
             else:
-                raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
+                raise ErrUHDLStr("op1 %s's father Component and op2 %s's father Component are in same Component, so op1 and op2 should have different direction." % (op1, op2))
 
         else:
-            # inter connection.
-            #    -------------------
-            #    |                 |
-            #    -(op1)-------(op2)-
-            #    |                 |
-            #    -------------------
-            if isinstance(op1, Input) and isinstance(op2, Output):
-                op2 += op1
-            elif isinstance(op2, Input) and isinstance(op1, Output):
-                op1 += op2
-            else:
-                raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
-
-    elif op1_component.father is op2_component.father:
-        # same level connection.
-        #    ------------------   ------------------
-        #    |                |   |                |
-        #    |           (op1)-   -(op2)           |
-        #    |                |   |                |
-        #    ------------------   ------------------
-        if isinstance(op1, Input) and isinstance(op2, Output):
-            op1 += op2
-        elif isinstance(op2, Input) and isinstance(op1, Output):
-            op2 += op1
-        else:
-            raise ErrUHDLStr("op1 %s's father Component and op2 %s's father Component are in same Component, so op1 and op2 should have different direction." % (op1, op2))
-
+            # illegal hier.
+            raise ErrUHDLStr("The hier where op1 %s and op2 %s are located cannot be legally connected." % (op1, op2))
+    elif isinstance(op1, Inout) and isinstance(op2, Inout):
+        print("inout")
+        op1 += op2 
+    elif isinstance(op1, Inout):
+        raise ErrUHDLStr("op1 %s is Inout, but op2 %s is not." % (op1, op2))
+    elif isinstance(op1, Inout):
+        raise ErrUHDLStr("op2 %s is Inout, but op1 %s is not." % (op2, op1))
     else:
-        # illegal hier.
-        raise ErrUHDLStr("The hier where op1 %s and op2 %s are located cannot be legally connected." % (op1, op2))
+        raise ErrUHDLStr("smart assign illegal case.")
 
 
 

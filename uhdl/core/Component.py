@@ -215,7 +215,9 @@ class Component(Root):
             # pylint: enable=no-member
 
         # module io define
-        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');')
+        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',')
+
+        str_list += self.__eol_append(')',';')
 
         # module wire define
         str_list += ['','\t//Wire define for this module.']
@@ -410,12 +412,20 @@ class Component(Root):
 # Syntax Sugar for Integration
 ##########################################################################################
 
-    def expose_io(self, io_list):
+    def expose_io(self, io_list, has_prefix=True):
+        
         for io in io_list:
             sub_inst = io._father
             if self != sub_inst._father:
                 raise Exception()
-            new_io_name = 'D_%s_%s' % (sub_inst.name, io.name)
+            if has_prefix==True:
+                new_io_name = '%s_%s' % (sub_inst.name, io.name)
+            else:
+                new_io_name = '%s' % (io.name)
+                self.io_name_list = [io.name for io in self.io_list]
+                if new_io_name in self.io_name_list:
+                    raise Exception("Interface <%s.%s> Existing"% (sub_inst.name,new_io_name))
+                
             new_io = self.set(new_io_name, io.template())
 
             if isinstance(new_io, Input):

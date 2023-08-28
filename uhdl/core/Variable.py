@@ -114,6 +114,8 @@ class Variable(Root):
                 item._inout_connect_list = updated_list
 
 
+        if self._rvalue != None:
+            raise Exception('Error: %s has multi-driver'% self.name)
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
@@ -639,7 +641,7 @@ class Input(IOSig):
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = simplified_connection_naming_judgment(self._rvalue, self)
         else:
-            rvalue_sig_name = self.name_until_component
+            rvalue_sig_name = ''
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
     @property
@@ -661,7 +663,8 @@ class Input(IOSig):
             if same_level_connection(self, self._rvalue):       return simplified_res()
             elif low_to_high_connection(self, self._rvalue):    return None
             else:                                               return normal_res
-        else:                                                   return normal_res
+        # else:                                                   return normal_res
+        else:                                                   return None
 
 
 
@@ -717,7 +720,7 @@ class Output(IOSig):
             else:
                 pass
         else:
-            rvalue_sig_name = self.name_until_component
+            rvalue_sig_name = ''
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
     
 
@@ -737,7 +740,8 @@ class Output(IOSig):
             elif low_to_high_connection(self, self._des_lvalue):    return None
             else:                                                   return normal_res
         # for non var-to-var connection, return normal def.
-        else:                                                       return normal_res
+        # else:                                                       return normal_res
+        else:                                                   return None
 
 class Inout(IOSig):
 
@@ -767,11 +771,11 @@ class Inout(IOSig):
                 min_lvl_var = var
         
         # all signal in same level.
-        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root():
+        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
             return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_until_component)]
         # has high level io.
         else:
-            return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_before_component)]
+            return [".%s(%s)" %(self.name_before_component, '')]
 
 
 
@@ -784,7 +788,7 @@ class Inout(IOSig):
                 min_lvl_var = var
         
         
-        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root():
+        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
             if not self is self._inout_connect_list[0]:
                 return None
             else:
