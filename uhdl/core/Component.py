@@ -215,7 +215,9 @@ class Component(Root):
             # pylint: enable=no-member
 
         # module io define
-        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');')
+        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',')
+
+        str_list += self.__eol_append(')',';')
 
         # module wire define
         str_list += ['','\t//Wire define for this module.']
