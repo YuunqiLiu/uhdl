@@ -207,7 +207,8 @@ class Variable(Root):
 
         if isinstance(self, IOSig) and isinstance(self._rvalue, IOSig):
             if not self._rvalue.single_connection:
-                pass
+                if low_to_high_connection(self, self._rvalue): return []
+                else: pass
             elif isinstance(self, Output) and isinstance(self._rvalue, Input) and\
             self.father_until_component() == self._rvalue.father_until_component():
                 pass
@@ -636,12 +637,24 @@ class Input(IOSig):
     @property
     def verilog_inst(self):
         if isinstance(self._rvalue, IOSig) and self._rvalue.single_connection:
-            if low_to_high_connection(self, self._rvalue): 
-                rvalue_sig_name = self._rvalue.name_before_component
+            if low_to_high_connection(self, self._rvalue):
+                if self._lvalue_list == []:
+                    rvalue_sig_name = self._rvalue.name_before_component
+                else:
+                    rvalue_sig_name = self.name_until_component
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = simplified_connection_naming_judgment(self._rvalue, self)
+        elif isinstance(self._rvalue, IOSig) and not self._rvalue.single_connection:
+            if low_to_high_connection(self, self._rvalue):
+                if self._lvalue_list == []:
+                    rvalue_sig_name = self._rvalue.name_before_component
+                else:
+                    rvalue_sig_name = self.name_until_component
+            elif same_level_connection(self, self._rvalue):
+                rvalue_sig_name = self.name_until_component
         else:
-            rvalue_sig_name = ''
+            if self._rvalue == None :                           rvalue_sig_name = ''
+            else:                                               rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
     @property
@@ -656,15 +669,20 @@ class Input(IOSig):
 
         # check whether a io need outer def.
         # if this is not a point to point connection. connection opt will not be opened.
-        if not self.single_connection:                          return normal_res
+        if not self.single_connection:  
+            # if self._rvalue == None:                            return None                        
+            return normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
         elif isinstance(self._rvalue, IOSig):
-            if same_level_connection(self, self._rvalue):       return simplified_res()
+            if same_level_connection(self, self._rvalue): 
+                if not self._rvalue.single_connection:          return normal_res
+                else:                                           return simplified_res()
             elif low_to_high_connection(self, self._rvalue):    return None
             else:                                               return normal_res
-        # else:                                                   return normal_res
-        else:                                                   return None
+        else:                                                   
+            if self._rvalue == None :                           return None
+            else:                                               return normal_res
 
 
 
@@ -720,7 +738,9 @@ class Output(IOSig):
             else:
                 pass
         else:
-            rvalue_sig_name = ''
+            if self._des_lvalue==None:                              rvalue_sig_name = ''
+            else:                                                   
+                rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
     
 
@@ -741,7 +761,9 @@ class Output(IOSig):
             else:                                                   return normal_res
         # for non var-to-var connection, return normal def.
         # else:                                                       return normal_res
-        else:                                                   return None
+        else:                                                   
+            if self._des_lvalue==None:                              return None
+            else:                                                   return normal_res
 
 class Inout(IOSig):
 
