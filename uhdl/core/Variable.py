@@ -638,18 +638,12 @@ class Input(IOSig):
     def verilog_inst(self):
         if isinstance(self._rvalue, IOSig) and self._rvalue.single_connection:
             if low_to_high_connection(self, self._rvalue):
-                if self._lvalue_list == []:
-                    rvalue_sig_name = self._rvalue.name_before_component
-                else:
-                    rvalue_sig_name = self.name_until_component
+                rvalue_sig_name = self._rvalue.name_before_component
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = simplified_connection_naming_judgment(self._rvalue, self)
         elif isinstance(self._rvalue, IOSig) and not self._rvalue.single_connection:
             if low_to_high_connection(self, self._rvalue):
-                if self._lvalue_list == []:
-                    rvalue_sig_name = self._rvalue.name_before_component
-                else:
-                    rvalue_sig_name = self.name_until_component
+                rvalue_sig_name = self._rvalue.name_before_component
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = self.name_until_component
         else:
