@@ -1,4 +1,4 @@
-from uhdl.uhdl import *
+from .. import *
 # from uhdl.uhdl.core.Variable import *
 import warnings
 import re

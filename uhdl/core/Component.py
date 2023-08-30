@@ -12,7 +12,7 @@ from .CustConfig        import ComponentConfig
 
 UHDL_GLOBAL_PARAM_DICT = {}
 
-class PARAM_CONTAINER(object):
+class PARAM_CONTAINER(object): 
 
     def _caculate_name(self):
         self.UHDL_MODU_NAME_POST_FIX = self.__caculate_iterable_kv(self.__dict__)
@@ -215,9 +215,8 @@ class Component(Root):
             # pylint: enable=no-member
 
         # module io define
-        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',')
-
-        str_list += self.__eol_append(')',';')
+        if self.io_list == []: str_list.append(');')
+        else: str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');')
 
         # module wire define
         str_list += ['','\t//Wire define for this module.']
