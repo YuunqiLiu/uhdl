@@ -172,7 +172,7 @@ class Component(Root):
     @property
     def lvalue_list(self) -> list:
         return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,Output,))]
-
+    
     @property
     def outer_lvalue_list(self) -> list:
         return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input,))] 
@@ -310,21 +310,48 @@ class Component(Root):
 # Lint
 #################################################################################
     
-    def _run_lint_single_lvl(self, is_top=False):
+    def _run_lint_all_single_lvl(self, is_top=False):
         Terminal.lint_info('Start to check module %s.' % self.module_name)
-        if not is_top:
-            for lvalue in self.input_list:
+        # input of top
+        if is_top==True:
+            for rvalue in self.input_list:
+                if rvalue._lvalue_list==[]:
+                    Terminal.lint_unconnect(rvalue, is_top)
+
+            # output of top
+            for lvalue in self.lvalue_list:
                 if lvalue.rvalue is None:
                     Terminal.lint_unconnect(lvalue)
         
-        for lvalue in self.lvalue_list:
-            if lvalue.rvalue is None:
-                Terminal.lint_unconnect(lvalue)
+            # inout of top
+            for inout in self.inout_list:
+                if len(inout._inout_connect_list)<=1:
+                    Terminal.lint_unconnect(inout)
+        
+        else:
+            # input of sub
+            for lvalue in self.input_list:
+                if lvalue.rvalue is None:
+                    Terminal.lint_unconnect(lvalue)
+
+            # output of sub
+            for rvalue in self.output_list:
+                if rvalue._lvalue_list==[]:
+                    Terminal.lint_unconnect(rvalue)
+
+            # inout of sub
+            for inout in self.inout_list:
+                if len(inout._inout_connect_list)<=1:
+                    Terminal.lint_unconnect(inout)
+
 
     def _run_lint_core(self, is_top=False):
+        
         for component in self.component_list:
             component._run_lint_core()
-        self._run_lint_single_lvl(is_top=is_top)
+
+        self._run_lint_all_single_lvl(is_top=is_top)
+
 
     def run_lint(self):
         self._run_lint_core(is_top=True)
