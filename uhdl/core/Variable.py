@@ -665,7 +665,8 @@ class Input(IOSig):
         # if this is not a point to point connection. connection opt will not be opened.
         if not self.single_connection:  
             # if self._rvalue == None:                            return None                        
-            return normal_res
+            if low_to_high_connection(self, self._rvalue):    return None 
+            else:                                             return normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
         elif isinstance(self._rvalue, IOSig):
