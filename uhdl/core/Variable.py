@@ -665,7 +665,8 @@ class Input(IOSig):
         # if this is not a point to point connection. connection opt will not be opened.
         if not self.single_connection:  
             # if self._rvalue == None:                            return None                        
-            return normal_res
+            if low_to_high_connection(self, self._rvalue):    return None 
+            else:                                             return normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
         elif isinstance(self._rvalue, IOSig):
@@ -929,9 +930,10 @@ class AnyConstant(Constant):
 
 class Bits(Constant):
 
-    def __init__(self,width_or_string,value=0):
+    def __init__(self,width_or_string,value=0,value_type='bin'):
         super().__init__()
         #super(Bits,self).__init__(self)
+        self.type = value_type
         if isinstance(width_or_string,int):
             self.__width = width_or_string
             self.__value = value
@@ -987,7 +989,14 @@ class Bits(Constant):
 
     #@property
     def rstring(self, lvalue):
-        return '%s\'b%s' % (self.__width,bin(self.__value).replace('0b','') )           #pass
+        if self.type == 'hex':
+            return '%s\'h%s' % (self.__width,hex(self.__value).replace('0x','') ) 
+        elif self.type == 'oct':
+            return '%s\'o%s' % (self.__width,oct(self.__value).replace('0o','') )
+        elif self.type == 'dec':
+            return '%s\'d%s' % (self.__width,self.__value )
+        else:
+            return '%s\'b%s' % (self.__width,bin(self.__value).replace('0b','') )           #pass
 
     @property
     def lstring(self):

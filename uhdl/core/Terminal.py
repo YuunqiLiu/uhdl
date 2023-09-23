@@ -43,10 +43,14 @@ class TerminalClass(object):
         self.info('[lint] %s' % string)
 
 
-    def lint_unconnect(self, op):
+    def lint_unconnect(self, op, is_top=False):
         from .Variable import Input
+
         if isinstance(op, Input):
-            src_obj = op.father_until_component().father
+            if is_top:
+                src_obj = op.father_until_component()
+            else:
+                src_obj = op.father_until_component().father
         else:
             src_obj = op.father_until_component()
 
@@ -54,6 +58,6 @@ class TerminalClass(object):
 
         self.logger.warning('[lint] %s signal %s in %s is left unconnected, may be it can be fixed in file %s' \
                             % (op.__class__.__name__, op.full_hier, op.father_until_component().module_name, src_path))
-       
+
 
 Terminal = TerminalClass()
