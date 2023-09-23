@@ -310,6 +310,17 @@ class Component(Root):
 # Lint
 #################################################################################
     
+    def _run_lint_single_lvl(self, is_top=False):
+        Terminal.lint_info('Start to check module %s.' % self.module_name)
+        if not is_top:
+            for lvalue in self.input_list:
+                if lvalue.rvalue is None:
+                    Terminal.lint_unconnect(lvalue)
+        
+        for lvalue in self.lvalue_list:
+            if lvalue.rvalue is None:
+                Terminal.lint_unconnect(lvalue)
+
     def _run_lint_all_single_lvl(self, is_top=False):
         Terminal.lint_info('Start to check module %s.' % self.module_name)
         # input of top
@@ -345,16 +356,17 @@ class Component(Root):
                     Terminal.lint_unconnect(inout)
 
 
-    def _run_lint_core(self, is_top=False):
-        
+    def _run_lint_core(self, is_top=False, lint_all=False):
         for component in self.component_list:
             component._run_lint_core()
+        if lint_all==False:
+            self._run_lint_single_lvl(is_top=is_top)
+        else:
+            self._run_lint_all_single_lvl(is_top=is_top)
 
-        self._run_lint_all_single_lvl(is_top=is_top)
 
-
-    def run_lint(self):
-        self._run_lint_core(is_top=True)
+    def run_lint(self, lint_all=False):
+        self._run_lint_core(is_top=True, lint_all=False)
 
 
 #################################################################################
