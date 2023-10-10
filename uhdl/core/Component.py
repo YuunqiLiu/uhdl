@@ -358,7 +358,7 @@ class Component(Root):
 
     def _run_lint_core(self, is_top=False, lint_all=False):
         for component in self.component_list:
-            component._run_lint_core()
+            component._run_lint_core(lint_all=lint_all)
         if lint_all==False:
             self._run_lint_single_lvl(is_top=is_top)
         else:
@@ -366,7 +366,7 @@ class Component(Root):
 
 
     def run_lint(self, lint_all=False):
-        self._run_lint_core(is_top=True, lint_all=False)
+        self._run_lint_core(is_top=True, lint_all=lint_all)
 
 
 #################################################################################
