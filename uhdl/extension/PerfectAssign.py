@@ -79,44 +79,74 @@ def perfect_assign(src, dst, io_list, ignore_list=[], src_prefix='', dst_prefix=
             if src_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (src_prefix+io+src_suffix));continue
             elif dst_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (dst_prefix+io+dst_suffix));continue
 
-            SmartAssign(src_intf, dst_intf)
+
+            single_assign(src_intf, dst_intf)
 
 
 def single_assign(op1, op2):
+    if isinstance(op1, Bundle) and isinstance(op2, Bundle):
+        op1_list = op1.as_list()
+        op2_list = op2.as_list()
+
+        for opl, opr in zip(op1_list, op2_list):
+            single_assign(opl, opr)
+
+    elif isinstance(op1, list) and isinstance(op2, list):
+        for opl, opr in zip(op1, op2):
+            single_assign(opl, opr)
+
+    else:
+        single_assign_core(op1, op2)
+
+
+def single_assign_core(op1, op2):
+
     if isinstance(op1, Inout) and isinstance(op2, Inout):
-        op1 += op2
+        if op1 in op2._inout_connect_list:  pass
+        else:                               op1 += op2
+
     elif isinstance(op1, (Input, Output)) and isinstance(op2, (Input, Output)):
-        SmartAssign(op1, op2)
+        if isinstance(op1, Input) and op1.rvalue == op2:        pass
+        elif isinstance(op1, Output) and op2.rvalue == op1:     pass
+        else:                                                   SmartAssign(op1, op2)
     
     elif isinstance(op1, (Input, Output)):
-        op1_component = op1.father_until(Component)
-        if isinstance(op1_component, VComponent):
-            if isinstance(op1, Input):
-                op1 += op2
-            else:
-                op2 += op1
-        elif isinstance(op1_component, Component):
-            if isinstance(op1, Input):
-                op2 += op1
-            else:
-                op1 += op2
+        if op1._rvalue != None and isinstance(op1, Input) and op1.rvalue.__dict__ == op2.__dict__ or \
+           op2._rvalue != None and isinstance(op1, Output) and op2._rvalue.__dict__  == op1.__dict__ :
+            pass
         else:
-            raise Exception("Hierachy Error, there is a bug")
+            op1_component = op1.father_until(Component)
+            if isinstance(op1_component, VComponent):
+                if isinstance(op1, Input):
+                    op1 += op2
+                else:
+                    op2 += op1
+            elif isinstance(op1_component, Component):
+                if isinstance(op1, Input):
+                    op2 += op1
+                else:
+                    op1 += op2
+            else:
+                raise Exception("Hierachy Error, there is a bug")
         
     elif isinstance(op2, (Input, Output)):
-        op2_component = op2.father_until(Component)
-        if isinstance(op2_component, VComponent):
-            if isinstance(op2, Input):
-                op2 += op1
-            else:
-                op1 += op2
-        elif isinstance(op2_component, Component):
-            if isinstance(op2, Input):
-                op1 += op2
-            else:
-                op2 += op1 
+        if op2._rvalue != None and isinstance(op2, Input) and op2.rvalue.__dict__ == op1.__dict__ or \
+           op1._rvalue != None and isinstance(op2, Output) and op1.rvalue.__dict__ == op2.__dict__:
+            pass
         else:
-            raise Exception("Hierachy Error, there is a bug")
+            op2_component = op2.father_until(Component)
+            if isinstance(op2_component, VComponent):
+                if isinstance(op2, Input):
+                    op2 += op1
+                else:
+                    op1 += op2
+            elif isinstance(op2_component, Component):
+                if isinstance(op2, Input):
+                    op1 += op2
+                else:
+                    op2 += op1 
+            else:
+                raise Exception("Hierachy Error, there is a bug")
         
     else:
         raise Exception("Both op1 and op2 are Wire or One op is not Inout")
@@ -128,7 +158,7 @@ def unconnect_port(component, op1):
             unconnect_port(component, io)
     elif isinstance(op1, core.Variable.Variable):
         op2 = component.set(f'{op1.name}_unconnect', Wire(UInt(op1.width)))
-        op2 += op1
+        single_assign(op1, op2)
 
 
 def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix='',has_prefix=True):
@@ -136,10 +166,10 @@ def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix=
         component.expose_io(object, has_prefix)
     elif isinstance(object, Component):
         for io in io_list:
-            print(io)
             expose_list = object.get_io('(?i)'+io)
             expose_pre_list = match_io(expose_list, '^'+prefix)
             expose_intf = match_io(expose_pre_list, suffix+'$')
             component.expose_io(expose_intf, has_prefix)
     else:
         raise Exception("io_list exist, but object is not component.")
+
