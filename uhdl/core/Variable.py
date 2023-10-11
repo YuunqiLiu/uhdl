@@ -214,6 +214,15 @@ class Variable(Root):
                 pass
             else:
                 return []
+        elif (isinstance(self, Input) and isinstance(self._rvalue, Wire)) or \
+             (isinstance(self, Wire) and isinstance(self._rvalue, Output)):
+                if isinstance(self, Input) and self._rvalue._rvalue==None:
+                    return [] # for input unconnect port
+                elif isinstance(self, Wire) and self._lvalue_list==[]:
+                    return [] # for output unconnect port
+                else:
+                    pass
+
         if self._need_always:
             str_list    = self._rvalue.bstring(self,"=")
             str_list[0] = "always @(*) %s" % str_list[0]
@@ -647,8 +656,9 @@ class Input(IOSig):
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = self.name_until_component
         else:
-            if self._rvalue == None :                           rvalue_sig_name = ''
-            else:                                               rvalue_sig_name = self.name_until_component
+            if self._rvalue == None :                                               rvalue_sig_name = ''
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None:     rvalue_sig_name = self._rvalue.name_before_component # for input unconnect port
+            else:                                                                   rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
     @property
@@ -676,8 +686,9 @@ class Input(IOSig):
             elif low_to_high_connection(self, self._rvalue):    return None
             else:                                               return normal_res
         else:                                                   
-            if self._rvalue == None :                           return None
-            else:                                               return normal_res
+            if self._rvalue == None :                                           return None
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: return None # for input unconnect port
+            else:                                                               return normal_res
 
 
 
@@ -733,9 +744,9 @@ class Output(IOSig):
             else:
                 pass
         else:
-            if self._des_lvalue==None:                              rvalue_sig_name = ''
-            else:                                                   
-                rvalue_sig_name = self.name_until_component
+            if self._des_lvalue==None:                                              rvalue_sig_name = ''
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:    rvalue_sig_name = self._des_lvalue.name_before_component # for output unconnect port
+            else:                                                                   rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
     
 
@@ -757,8 +768,9 @@ class Output(IOSig):
         # for non var-to-var connection, return normal def.
         # else:                                                       return normal_res
         else:                                                   
-            if self._des_lvalue==None:                              return None
-            else:                                                   return normal_res
+            if self._des_lvalue==None:                                              return None
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:    return None # for output unconnect port
+            else:                                                                   return normal_res
 
 class Inout(IOSig):
 
