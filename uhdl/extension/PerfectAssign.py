@@ -2,6 +2,8 @@ from .. import *
 # from uhdl.uhdl.core.Variable import *
 import warnings
 import re
+from ..core.Terminal import Terminal
+import inspect,linecache
 
 class axi_intf():
     io_list = [
@@ -76,14 +78,19 @@ def perfect_assign(src, dst, io_list, ignore_list=[], src_prefix='', dst_prefix=
             src_intf = match_io(src_pre_list, src_suffix+'$')
             dst_intf = match_io(dst_pre_list, dst_suffix+'$')
 
-            if src_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (src_prefix+io+src_suffix));continue
-            elif dst_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (dst_prefix+io+dst_suffix));continue
-
+            # if src_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (src_prefix+io+src_suffix));continue
+            if src_intf == [] :
+                Terminal.warning('Interface \'%s\' Was Not Found, %s'% (src_prefix+io+src_suffix, get_log_info()))
+                continue
+            elif dst_intf == [] : 
+                Terminal.warning('Interface \'%s\' Was Not Found, %s'% (dst_prefix+io+dst_suffix, get_log_info()))
+                continue
 
             single_assign(src_intf, dst_intf)
 
 
 def single_assign(op1, op2):
+
     if isinstance(op1, Bundle) and isinstance(op2, Bundle):
         op1_list = op1.as_list()
         op2_list = op2.as_list()
@@ -100,7 +107,6 @@ def single_assign(op1, op2):
 
 
 def single_assign_core(op1, op2):
-
     if isinstance(op1, Inout) and isinstance(op2, Inout):
         if op1 in op2._inout_connect_list:  pass
         else:                               op1 += op2
@@ -127,7 +133,7 @@ def single_assign_core(op1, op2):
                 else:
                     op1 += op2
             else:
-                raise Exception("Hierachy Error, there is a bug")
+                Terminal.warning("Hierachy Error, there is a bug with %s and %s, %s"% (op1.name, op2.name, get_log_info()))
         
     elif isinstance(op2, (Input, Output)):
         if op2._rvalue != None and isinstance(op2, Input) and op2.rvalue.__dict__ == op1.__dict__ or \
@@ -146,10 +152,10 @@ def single_assign_core(op1, op2):
                 else:
                     op2 += op1 
             else:
-                raise Exception("Hierachy Error, there is a bug")
+                Terminal.warning("Hierachy Error, there is a bug with %s and %s, %s"% (op1.name, op2.name, get_log_info()))
         
     else:
-        raise Exception("Both op1 and op2 are Wire or One op is not Inout")
+        Terminal.warning("Both %s and %s are Wire or One op is not Inout, %s"% (op1.name, op2.name, get_log_info()))
 
 
 def unconnect_port(component, op1):
@@ -171,5 +177,20 @@ def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix=
             expose_intf = match_io(expose_pre_list, suffix+'$')
             component.expose_io(expose_intf, has_prefix)
     else:
-        raise Exception("io_list exist, but object is not component.")
+        Terminal.warning("io_list exist, but %s is not component, %s"% (object, get_log_info()))
 
+
+def get_log_info():
+    current_frame = inspect.currentframe().f_back.f_back.f_back
+    caller_frame = inspect.getframeinfo(current_frame)
+    filename = caller_frame.filename
+    if 'MultiFileCoop.py' in filename:
+        # dynamic exec case
+        caller_frame = inspect.getframeinfo(current_frame.f_back)
+        filename     = caller_frame.filename
+   
+    line_content = linecache.getline(filename, caller_frame.lineno)
+    line_num = caller_frame.lineno
+
+    message = 'maybe it can be fixed in file %s at line %s:\n %s'% (filename, line_num, line_content)
+    return message
