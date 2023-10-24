@@ -58,10 +58,12 @@ class axi_intf():
     def __init__(self) -> None:
         pass
 
-def match_io(io_list, pattern):
+def match_io(io_list, pattern, prefix, suffix):
     match_io_list=[]
     for io in io_list:
-        if re.search(pattern, io.name):
+        io_name = io.name
+        if io_name.startswith(prefix) and io_name.endswith(suffix) and pattern in io_name:
+            if io_name == prefix+pattern+suffix:
                 match_io_list.append(io)
     return match_io_list
 
@@ -69,21 +71,23 @@ def match_io(io_list, pattern):
 def perfect_assign(src, dst, io_list, ignore_list=[], src_prefix='', dst_prefix='', src_suffix='', dst_suffix=''):
     for io in io_list:
         if io not in ignore_list:
-            src_list = src.get_io('(?i)'+io)
-            dst_list = dst.get_io('(?i)'+io)
+            # src_list = src.get_io('(?i)'+io)
+            # dst_list = dst.get_io('(?i)'+io)
 
-            src_pre_list = match_io(src_list, '^'+src_prefix+io)
-            dst_pre_list = match_io(dst_list, '^'+dst_prefix+io)
+            # src_pre_list = match_io(src_list, '^'+src_prefix+io)
+            # dst_pre_list = match_io(dst_list, '^'+dst_prefix+io)
 
-            src_intf = match_io(src_pre_list, io+src_suffix+'$')
-            dst_intf = match_io(dst_pre_list, io+dst_suffix+'$')
+            # src_intf = match_io(src_pre_list, io+src_suffix+'$')
+            # dst_intf = match_io(dst_pre_list, io+dst_suffix+'$')
+            src_intf = match_io(src.io_list, io, src_prefix, src_suffix)
+            dst_intf = match_io(dst.io_list, io, dst_prefix, src_suffix)
 
             # if src_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (src_prefix+io+src_suffix));continue
             if src_intf == [] :
                 Terminal.error('Interface \'%s\' Was Not Found, %s'% (src_prefix+io+src_suffix, get_log_info()))
                 continue
             elif dst_intf == [] : 
-                Terminal.eeror('Interface \'%s\' Was Not Found, %s'% (dst_prefix+io+dst_suffix, get_log_info()))
+                Terminal.error('Interface \'%s\' Was Not Found, %s'% (dst_prefix+io+dst_suffix, get_log_info()))
                 continue
 
             single_assign(src_intf, dst_intf)
