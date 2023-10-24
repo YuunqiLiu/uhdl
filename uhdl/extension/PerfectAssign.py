@@ -189,6 +189,12 @@ def get_log_info(depth=3):
         current_frame = current_frame.f_back
     caller_frame = inspect.getframeinfo(current_frame)
     filename = caller_frame.filename
+    if filename == '<string>':
+        # dynamic exec case
+        current_frame = current_frame.f_back
+        caller_frame = inspect.getframeinfo(current_frame)
+        filename     = caller_frame.filename
+
     if 'MultiFileCoop.py' in filename:
         # dynamic exec case
         caller_frame = inspect.getframeinfo(current_frame.f_back)
@@ -197,7 +203,7 @@ def get_log_info(depth=3):
     line_content = linecache.getline(filename, caller_frame.lineno)
     line_num = caller_frame.lineno
 
-    message = 'maybe it can be fixed in file %s at line %s:\n %s'% (filename, line_num, line_content)
+    message = 'maybe it can be fixed in file %s at line %s:%s'% (filename, line_num, line_content)
     return message
 
 
