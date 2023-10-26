@@ -105,7 +105,9 @@ class Variable(Root):
         if not isinstance(rvalue,Value):                        
             raise_ErrAssignTypeWrong(self,rvalue)
         if self.attribute != rvalue.attribute:  
-            raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
+            self_full_hier = self.full_hier if hasattr(self, 'full_hier') else 'NoneType'
+            rvalue_full_hier = rvalue.full_hier if hasattr(rvalue, 'full_hier') else 'NoneType'
+            raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match: %s, %s' % (self.var_name, self_full_hier, rvalue_full_hier), self, rvalue)
         
         # check io first:
         if isinstance(self, Inout) or isinstance(rvalue, Inout):
@@ -115,7 +117,7 @@ class Variable(Root):
 
 
         if self._rvalue != None:
-            raise Exception('Error: %s has multi-driver'% self.name)
+            raise Exception('Error: %s has multi-driver'% self.full_hier)
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
@@ -133,7 +135,7 @@ class Variable(Root):
         elif (isinstance(self, Inout) and not isinstance(rvalue, Inout)) or\
            (not isinstance(self, Inout) and isinstance(rvalue, Inout)):
             # inout connect to other type, error.
-            raise Exception('error.')
+            raise Exception('inout signal %s connect to other type'% (self.full_hier))
 
         elif isinstance(rvalue, Expression):
             # rvalue is expression, lvalue can be all signal.
@@ -147,7 +149,7 @@ class Variable(Root):
                 #    |                 |
                 #    -------------------
                 if isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self, rvalue, self_module))
+                    raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self.full_hier, rvalue.full_hier, self_module))
             elif self_module.father is rvalue_module.father:
                 # same level connection.
                 #    ------------------   ------------------
@@ -156,7 +158,7 @@ class Variable(Root):
                 #    |                |   |                |
                 #    ------------------   ------------------
                 if not isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s's father Component and rhs %s's father Component are in same Component, so lhs should be Input." % (self, rvalue))
+                    raise ErrUHDLStr("lhs %s's father Component and rhs %s's father Component are in same Component, so lhs should be Input." % (self.full_hier, rvalue.full_hier))
             elif self_module.father is rvalue_module:
                 # lhs in low level
                 #    ----------------------
@@ -169,7 +171,7 @@ class Variable(Root):
                 #    |                    |
                 #    ----------------------
                 if not isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s's father Component is in rhs %s's father Component, so lhs should be Input." % (self, rvalue))
+                    raise ErrUHDLStr("lhs %s's father Component is in rhs %s's father Component, so lhs should be Input." % (self.full_hier, rvalue.full_hier))
             elif self_module is rvalue_module.father:
                 # rhs in low level
                 #    ----------------------
@@ -182,15 +184,15 @@ class Variable(Root):
                 #    |                    |
                 #    ----------------------
                 if not isinstance(rvalue, Output):
-                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so rhs should be Output." % (self, rvalue))
+                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so rhs should be Output." % (self.full_hier, rvalue.full_hier))
                 if isinstance(self, Input):
-                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so lhs should not be Input." % (self, rvalue))
+                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so lhs should not be Input." % (self.full_hier, rvalue.full_hier))
             else:
                 # illegal hier.
-                raise ErrUHDLStr("The hier where lhs %s and rhs %s are located cannot be legally connected." % (self, rvalue))
+                raise ErrUHDLStr("The hier where lhs %s and rhs %s are located cannot be legally connected." % (self.full_hier, rvalue.full_hier))
         else:
             # rvalue is a unregsitered signal.
-            raise ErrUHDLStr("rhs %s does not have a legal component father, it may not be registered into a component." % rvalue)
+            raise ErrUHDLStr("rhs %s does not have a legal component father, it may not be registered into a component." % rvalue.full_hier)
         return self
 
 

@@ -5,6 +5,7 @@ import re
 from ..core.Terminal import Terminal
 import inspect,linecache
 
+
 class axi_intf():
     io_list = [
         'axi_awid',     
@@ -80,7 +81,7 @@ def perfect_assign(src, dst, io_list, ignore_list=[], src_prefix='', dst_prefix=
             # src_intf = match_io(src_pre_list, io+src_suffix+'$')
             # dst_intf = match_io(dst_pre_list, io+dst_suffix+'$')
             src_intf = match_io(src.io_list, io, src_prefix, src_suffix)
-            dst_intf = match_io(dst.io_list, io, dst_prefix, src_suffix)
+            dst_intf = match_io(dst.io_list, io, dst_prefix, dst_suffix)
 
             # if src_intf == [] : warnings.warn('Interface \'%s\' Was Not Found'% (src_prefix+io+src_suffix));continue
             if src_intf == [] :
@@ -137,7 +138,7 @@ def single_assign_core(op1, op2, outer):
                 else:
                     op1 += op2
             else:
-                Terminal.error("Hierachy Error, there is a bug with %s and %s, %s"% (op1.name, op2.name, get_log_info()))
+                Terminal.error("Hierachy Error, there is a bug with %s and %s, %s"% (op1.full_hier, op2.full_hier, get_log_info()))
         
     elif isinstance(op2, (Input, Output)):
         if op2._rvalue != None and isinstance(op2, Input) and op2.rvalue.__dict__ == op1.__dict__ or \
@@ -156,10 +157,10 @@ def single_assign_core(op1, op2, outer):
                 else:
                     op2 += op1 
             else:
-                Terminal.error("Hierachy Error, there is a bug with %s and %s, %s"% (op1.name, op2.name, get_log_info()))
+                Terminal.error("Hierachy Error, there is a bug with %s and %s, %s"% (op1.full_hier, op2.full_hier, get_log_info()))
         
     else:
-        Terminal.error("Both %s and %s are Wire or One op is not Inout, %s"% (op1.name, op2.name, get_log_info()))
+        Terminal.error("Both %s and %s are Wire or One op is not Inout, %s"% (op1.full_hier, op2.full_hier, get_log_info()))
 
 
 
@@ -187,12 +188,22 @@ def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix=
         Terminal.error("io_list exist, but %s is not component, %s"% (object, get_log_info()))
 
 
-def get_log_info(depth=3):
+def get_log_info(depth=1):
     current_frame = inspect.currentframe()
     for i in range(depth):
+        if current_frame.f_back == None: break
         current_frame = current_frame.f_back
+        caller_frame = inspect.getframeinfo(current_frame)
+        filename = caller_frame.filename
     caller_frame = inspect.getframeinfo(current_frame)
     filename = caller_frame.filename
+    
+    while 'PerfectAssign.py' in filename:
+        # inner case
+        current_frame = current_frame.f_back
+        caller_frame = inspect.getframeinfo(current_frame)
+        filename     = caller_frame.filename
+
     if filename == '<string>':
         # dynamic exec case
         current_frame = current_frame.f_back
@@ -203,12 +214,17 @@ def get_log_info(depth=3):
         # dynamic exec case
         caller_frame = inspect.getframeinfo(current_frame.f_back)
         filename     = caller_frame.filename
-   
-    line_content = linecache.getline(filename, caller_frame.lineno)
-    line_num = caller_frame.lineno
+    
 
-    message = 'maybe it can be fixed in file %s at line %s:%s'% (filename, line_num, line_content)
-    return message
+    if current_frame == None:
+        return "cannot trace file"
+    else:
+        line_content = linecache.getline(filename, caller_frame.lineno)
+        line_num = caller_frame.lineno
+
+        message = 'maybe it can be fixed in file %s at line %s:\n%s'% (filename, line_num, line_content)
+        return message
+    
 
 
 def smart_assign_core__(op1, op2, outer=False):
@@ -238,7 +254,7 @@ def smart_assign_core__(op1, op2, outer=False):
             elif isinstance(op1, Output):
                 op2 += op1
             else:
-                Terminal.error("op1 %s's father Component is in op2 %s's father Component, so op1 should be Input or Output, %s" % (op1, op2, get_log_info(depth=4)))
+                Terminal.error("op1 %s's father Component is in op2 %s's father Component, so op1 should be Input or Output, %s" % (op1.full_hier, op2.full_hier, get_log_info(depth=2)))
 
         elif op2_component.father is op1_component:
             # op2 in low level
@@ -262,7 +278,7 @@ def smart_assign_core__(op1, op2, outer=False):
             elif isinstance(op2, Output):
                 op1 += op2
             else:
-                Terminal.error("op2 %s's father Component is in op1 %s's father Component, so op2 should be Input or Output, %s" % (op2, op1, get_log_info(depth=4)))
+                Terminal.error("op2 %s's father Component is in op1 %s's father Component, so op2 should be Input or Output, %s" % (op2.full_hier, op1.full_hier, get_log_info(depth=2)))
 
         elif op1_component is op2_component:
             if outer:
@@ -279,7 +295,7 @@ def smart_assign_core__(op1, op2, outer=False):
                 elif isinstance(op2, Input) and isinstance(op1, Output):
                     op2 += op1
                 else:
-                    Terminal.error("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction, %s" % (op1, op2,get_log_info(depth=4)))
+                    Terminal.error("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction, %s" % (op1.full_hier, op2.full_hier,get_log_info(depth=2)))
 
             else:
                 # inter connection.
@@ -293,7 +309,7 @@ def smart_assign_core__(op1, op2, outer=False):
                 elif isinstance(op2, Input) and isinstance(op1, Output):
                     op1 += op2
                 else:
-                    Terminal.error("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction. %s" % (op1, op2, get_log_info(depth=4)))
+                    Terminal.error("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction. %s" % (op1.full_hier, op2.full_hier, get_log_info(depth=2)))
 
         elif op1_component.father is op2_component.father:
             # same level connection.
@@ -307,8 +323,8 @@ def smart_assign_core__(op1, op2, outer=False):
             elif isinstance(op2, Input) and isinstance(op1, Output):
                 op2 += op1
             else:
-                Terminal.error("op1 %s's father Component and op2 %s's father Component are in same Component, so op1 and op2 should have different direction, %s" % (op1, op2, get_log_info(depth=4)))
+                Terminal.error("op1 %s's father Component and op2 %s's father Component are in same Component, so op1 and op2 should have different direction, %s" % (op1.full_hier, op2.full_hier, get_log_info(depth=2)))
 
         else:
             # illegal hier.
-            Terminal.error("The hier where op1 %s and op2 %s are located cannot be legally connected, %s" % (op1, op2, get_log_info(depth=4)))
+            Terminal.error("The hier where op1 %s and op2 %s are located cannot be legally connected, %s" % (op1.full_hier, op2.full_hier, get_log_info(depth=2)))
