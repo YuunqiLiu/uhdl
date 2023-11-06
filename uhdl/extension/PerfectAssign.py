@@ -40,7 +40,7 @@ class axi_intf():
         'axi_arcache',  
         'axi_arprot',   
         'axi_arqos',    
-        'axi_aruser',   
+        'Axi_aruser',   
         'axi_arvalid',  
         'axi_arready',  
         'axi_rid',      
@@ -63,8 +63,8 @@ def match_io(io_list, pattern, prefix, suffix):
     match_io_list=[]
     for io in io_list:
         io_name = io.name
-        if io_name.startswith(prefix) and io_name.endswith(suffix) and pattern in io_name:
-            if io_name == prefix+pattern+suffix:
+        if io_name.startswith(prefix) and io_name.endswith(suffix) and pattern.casefold() in io_name.casefold():
+            if len(io_name)==(len(prefix)+len(pattern)+len(suffix)):
                 match_io_list.append(io)
     return match_io_list
 
@@ -163,7 +163,19 @@ def single_assign_core(op1, op2, outer):
         Terminal.error("Both %s and %s are Wire or One op is not Inout, %s"% (op1.full_hier, op2.full_hier, get_log_info()))
 
 
-
+def perfect_unconnect_port(component=None, object=None, io_list=[], prefix='', suffix=''):
+    if io_list==[]:
+        unconnect_port(component, object)
+    elif isinstance(object, Component):
+        for io in io_list:
+            # expose_list = object.get_io('(?i)'+io)
+            # expose_pre_list = match_io(expose_list, '^'+prefix)
+            # expose_intf = match_io(expose_pre_list, suffix+'$')
+            # print(io_list, io, prefix, suffix)
+            expose_intf = match_io(object.io_list, io, prefix, suffix)
+            unconnect_port(component, expose_intf)
+    else:
+        Terminal.error("[Unconnect Error] io_list exist, but %s is not component, %s"% (object, get_log_info()))
 
 
 def unconnect_port(component, op1):
@@ -176,16 +188,19 @@ def unconnect_port(component, op1):
 
 
 def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix='',has_prefix=True):
+    print('Object is', isinstance(object, Component))
     if io_list == []:
         component.expose_io(object, has_prefix)
     elif isinstance(object, Component):
         for io in io_list:
-            expose_list = object.get_io('(?i)'+io)
-            expose_pre_list = match_io(expose_list, '^'+prefix)
-            expose_intf = match_io(expose_pre_list, suffix+'$')
+            # expose_list = object.get_io('(?i)'+io)
+            # expose_pre_list = match_io(expose_list, '^'+prefix)
+            # expose_intf = match_io(expose_pre_list, suffix+'$')
+            # print(io_list, io, prefix, suffix)
+            expose_intf = match_io(object.io_list, io, prefix, suffix)
             component.expose_io(expose_intf, has_prefix)
     else:
-        Terminal.error("io_list exist, but %s is not component, %s"% (object, get_log_info()))
+        Terminal.error("[Expose Error] io_list exist, but %s is not component, %s"% (object, get_log_info()))
 
 
 def get_log_info(depth=1):

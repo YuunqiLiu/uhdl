@@ -8,7 +8,7 @@ from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
-
+from .Terminal          import Terminal
 
 UHDL_GLOBAL_PARAM_DICT = {}
 
@@ -398,9 +398,6 @@ class Component(Root):
             raise Exception('Verilator compile error.')
 
 
-        
-
-
 
     def __eol_append(self,list_in,common_str,end_str=None):
         if end_str is None:
@@ -462,8 +459,15 @@ class Component(Root):
                 new_io_name = '%s' % (io.name)
                 self.io_name_list = [io.name for io in self.io_list]
                 if new_io_name in self.io_name_list:
-                    raise Exception("Interface <%s.%s> Existing"% (sub_inst.name,new_io_name))
-                
+                    old_io = self.io_list[self.io_name_list.index(new_io_name)]
+                    if isinstance(old_io, Inout) and isinstance(io, Inout):
+                        Terminal.warning("Interface <%s> Existing, Please check interface <%s.%s>"% (old_io, sub_inst.name,new_io_name))
+                    elif isinstance(old_io, Input) and isinstance(io, Input):
+                        Terminal.warning("Interface <%s> Existing, Please check interface <%s.%s>"% (old_io, sub_inst.name,new_io_name))
+                    else:
+                        Terminal.error("Interface <%s> Existing, Please check interface <%s.%s>"% (old_io, sub_inst.name,new_io_name))
+                        break
+
             new_io = self.set(new_io_name, io.template())
 
             if isinstance(new_io, Input):
@@ -473,7 +477,7 @@ class Component(Root):
             elif isinstance(new_io, Inout):
                 new_io += io
             else:
-                raise Exception()
+                Terminal.error("Interface <%s.%s> is not Input/Output/Inout"% (sub_inst.name,new_io_name))
 
     def get_io(self, string):
         match_io_list = []

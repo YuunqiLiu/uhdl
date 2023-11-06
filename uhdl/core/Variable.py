@@ -117,7 +117,7 @@ class Variable(Root):
 
 
         if self._rvalue != None:
-            raise Exception('Error: %s has multi-driver'% self.full_hier)
+            Terminal.error('Error: %s has multi-driver'% self.full_hier)
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
