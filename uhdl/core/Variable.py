@@ -802,7 +802,8 @@ class Inout(IOSig):
                 min_lvl_var = var
         
         # all signal in same level.
-        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
+        # if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
+        if len(self._inout_connect_list)>1:
             return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_until_component)]
         # has high level io.
         else:
