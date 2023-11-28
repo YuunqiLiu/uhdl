@@ -203,6 +203,56 @@ def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix=
         Terminal.error("[Expose Error] io_list exist, but %s is not component, %s"% (object, get_log_info()))
 
 
+def expand_vector(component,vec):
+    vec_list = []
+    for i in range(getattr(component,vec).width):
+        if not hasattr(component, f'{vec}_bit{i}'):
+            setattr(component, f'{vec}_bit{i}', Wire(UInt(1))) 
+            vec_list.append(getattr(component, f'{vec}_bit{i}'))
+        else:   return -1
+
+    Assign(component.intr_vec, Combine(*vec_list))
+
+
+def cut_assign(component, opl, opr):
+    if opl.attribute!=opr.attribute:
+        Terminal.error("Left Value %s not equal Right Value %s, %s"% (opl,opr, get_log_info()))
+    else:
+        if isinstance(opl, core.Variable.CutExpression) and isinstance(opr, core.Variable.CutExpression):
+            for i in range(opl.lbound, opl.hbound+1):
+                if hasattr(component, f'{opl.op.name}_bit{i}'):
+                    if getattr(component, f'{opl.op.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.op.name}_bit{i}'), getattr(component, f'{opr.op.name}')[opr.lbound+i-opl.lbound])
+                    elif getattr(component, f'{opl.op.name}_bit{i}').rvalue.__dict__ == getattr(component, f'{opr.op.name}')[opr.lbound+i-opl.lbound].__dict__: pass
+                    else: Terminal.error("%s has multi-driver , %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
+                else:
+                    Terminal.error("%s does not exist, %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
+        elif isinstance(opl, core.Variable.CutExpression):
+            for i in range(opl.lbound, opl.hbound+1):
+                if hasattr(component, f'{opl.op.name}_bit{i}'):
+                    if getattr(component, f'{opl.op.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.op.name}_bit{i}'), opr[i-opl.lbound])
+                    elif getattr(component, f'{opl.op.name}_bit{i}').rvalue.__dict__ == opr[i-opl.lbound].__dict__: pass
+                    else: Terminal.error("%s has multi-driver , %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
+                else:
+                    Terminal.error("%s does not exist in %s , %s"% (f'{opl.op.name}_bit{i}', component, get_log_info()))
+        elif isinstance(opr, core.Variable.CutExpression):
+            for i in range(opl.attribute.width):
+                if hasattr(component, f'{opl.name}_bit{i}'):
+                    if getattr(component, f'{opl.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.name}_bit{i}'), getattr(component, f'{opr.op.name}')[i])
+                    elif getattr(component, f'{opl.name}_bit{i}').rvalue.__dict__==getattr(component, f'{opr.op.name}')[i].__dict__: pass
+                    else: Terminal.error("%s has multi-driver , %s"% (f'{opl.full_hier}_bit{i}', get_log_info()))
+                else:
+                    Terminal.error("%s does not exist in %s , %s"% (f'{opl}_bit{i}', component, get_log_info()))  
+        else:
+            for i in range(opl.attribute.width):
+                if hasattr(component, f'{opl.name}_bit{i}'):
+                    if getattr(component, f'{opl.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.name}_bit{i}'), getattr(component, f'{opr.name}')[i])
+                    elif getattr(component, f'{opl.name}_bit{i}').rvalue.__dict__==getattr(component, f'{opr.name}')[i].__dict__: pass
+                    else: Terminal.error("%s has multi-driver , %s"% (f'{opl.full_hier}_bit{i}', get_log_info()))
+                else:
+                    Terminal.error("%s does not exist in %s , %s"% (f'{opl.name}_bit{i}', component, get_log_info())) 
+
+
+
 def get_log_info(depth=1):
     current_frame = inspect.currentframe()
     for i in range(depth):
