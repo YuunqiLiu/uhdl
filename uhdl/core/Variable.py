@@ -1336,7 +1336,14 @@ class CutExpression(Expression):
     
     #@property
     def rstring(self, lvalue) -> str:
-        return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
+        # cut single bit
+        # e.g. rstring[3:3] --> rstring[3]
+        if self.hbound == self.lbound:
+            return self.op.rstring(lvalue) + '[%s]' % ( self.lbound )
+        # cut multi-bit
+        # e.g. rstring[3:1] --> rstring[3:1]
+        else:
+            return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
 
 class FanoutExpression(Expression):
 
