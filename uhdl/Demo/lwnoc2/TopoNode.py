@@ -1,8 +1,9 @@
 from .design.DDec import DDec
-from .design.DArb import DArb
+# from .design.DArb import DArb
 from .design.DArb2ch import DArb2ch
 from .design.DDec2ch import DDec2ch
 from .design.DMst2ch import DMst2ch
+from .design.DSlv2ch import DSlv2ch
 
 #########################################################
 #
@@ -14,18 +15,17 @@ class Node(object):
     dep_num_limit = 128
 
     def __init__(self,name,nodeid,design=DDec):
-        self._name        = name
-        self.nodeid       = nodeid
-        self.reachable_tgt_id_list = []
-        self.reachable_src_id_list = []
-        self.layer  = 0
-        self.dst_list = []
-        self.dep_list = []
-        self._port_tgt_id_mapping_dict = {}
-        self._port_src_id_mapping_dict = {}
-        self.network = None
-
-        self._design = design
+        self._name                      = name
+        self.nodeid                     = nodeid
+        self.reachable_tgt_id_list      = []
+        self.reachable_src_id_list      = []
+        self.layer                      = 0
+        self.dst_list                   = []
+        self.dep_list                   = []
+        self._port_tgt_id_mapping_dict  = {}
+        self._port_src_id_mapping_dict  = {}
+        self.network                    = None
+        self._design                    = design
 
 
     def get_vinst(self):
@@ -33,7 +33,7 @@ class Node(object):
 
     def create_vinst(self, forward=True):
         design_class = self._design
-        self.vinst = design_class(self)
+        self.vinst = design_class(self, self._father.default_interface_forward, self._father.default_interface_backward)
         return self.vinst
     
     def generate_verilog(self):
@@ -139,22 +139,9 @@ class Node(object):
 
 
 
-
-
-
-    # def _generate_route_id(self):
-    #     self.network.logger.info('[%s] start RTEID mapping generation.' % self.name)
-    #     self.network.logger.info('[%s] TGTID mapping:' % self.name)
-    #     for i, tgt in enumerate(self.tgt_list):
-    #         self.network.logger.info('forward port %s connect to %s, which has reachable tgt id list %s' % (i, tgt.name, tgt.reachable_tgt_id_list))
-    #         self._port_tgt_id_mapping_dict[tgt] = tgt.reachable_tgt_id_list
-    #     self.network.logger.info('[%s] tgt id mapping dict: %s' %(self.name ,self._port_tgt_id_mapping_dict))
-
-    #     self.network.logger.info('[%s] src id mapping:' % self.name)
-    #     for i, src in enumerate(self.src_list):
-    #         self.network.logger.info('backward port %s connect to %s, which has reachable src id list %s' % (i, src.name, src.reachable_src_id_list))
-    #         self._port_src_id_mapping_dict[src] = src.reachable_src_id_list
-    #     self.network.logger.info('[%s] src id mapping dict: %s' %(self.name ,self._port_src_id_mapping_dict))
+###################################################################
+# Slave
+###################################################################
 
 class Slave(Node):
 
@@ -162,9 +149,14 @@ class Slave(Node):
     def bwd_id_list(self):
         return [self.nodeid]
 
-    def __init__(self,name,nodeid,design=DDec2ch):
+    def __init__(self,name,nodeid,design=DSlv2ch):
         super().__init__(name,nodeid,design=design)
 
+
+
+###################################################################
+# Master
+###################################################################
 
 class Master(Node):
 
@@ -188,3 +180,20 @@ class Decoder(Switch):
 
     def __init__(self,name,nodeid,design=DDec2ch):
         super().__init__(name,nodeid,design=design)
+
+
+
+
+    # def _generate_route_id(self):
+    #     self.network.logger.info('[%s] start RTEID mapping generation.' % self.name)
+    #     self.network.logger.info('[%s] TGTID mapping:' % self.name)
+    #     for i, tgt in enumerate(self.tgt_list):
+    #         self.network.logger.info('forward port %s connect to %s, which has reachable tgt id list %s' % (i, tgt.name, tgt.reachable_tgt_id_list))
+    #         self._port_tgt_id_mapping_dict[tgt] = tgt.reachable_tgt_id_list
+    #     self.network.logger.info('[%s] tgt id mapping dict: %s' %(self.name ,self._port_tgt_id_mapping_dict))
+
+    #     self.network.logger.info('[%s] src id mapping:' % self.name)
+    #     for i, src in enumerate(self.src_list):
+    #         self.network.logger.info('backward port %s connect to %s, which has reachable src id list %s' % (i, src.name, src.reachable_src_id_list))
+    #         self._port_src_id_mapping_dict[src] = src.reachable_src_id_list
+    #     self.network.logger.info('[%s] src id mapping dict: %s' %(self.name ,self._port_src_id_mapping_dict))

@@ -279,7 +279,12 @@ class Bundle(Root):
             if self.name is None:
                 setattr(reverse, i.name, i.reverse())
             else:
-                setattr(reverse, i.name.lstrip('%s_'%self.name), i.reverse())
+                prefix = '%s_'%self.name
+                if i.name.startswith(prefix):
+                    result = i.name[len(prefix):]
+                else:
+                    result = i.name
+                setattr(reverse, result, i.reverse())
         return reverse
 
 
