@@ -105,7 +105,9 @@ class Variable(Root):
         if not isinstance(rvalue,Value):                        
             raise_ErrAssignTypeWrong(self,rvalue)
         if self.attribute != rvalue.attribute:  
-            raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match.' % self.var_name ,self,rvalue)
+            self_full_hier = self.full_hier if hasattr(self, 'full_hier') else 'NoneType'
+            rvalue_full_hier = rvalue.full_hier if hasattr(rvalue, 'full_hier') else 'NoneType'
+            raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match: %s, %s' % (self.var_name, self_full_hier, rvalue_full_hier), self, rvalue)
         
         # check io first:
         if isinstance(self, Inout) or isinstance(rvalue, Inout):
@@ -115,7 +117,7 @@ class Variable(Root):
 
 
         if self._rvalue != None:
-            raise Exception('Error: %s has multi-driver'% self.name)
+            Terminal.error('Error: %s has multi-driver'% self.full_hier)
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
@@ -133,7 +135,7 @@ class Variable(Root):
         elif (isinstance(self, Inout) and not isinstance(rvalue, Inout)) or\
            (not isinstance(self, Inout) and isinstance(rvalue, Inout)):
             # inout connect to other type, error.
-            raise Exception('error.')
+            raise Exception('inout signal %s connect to other type'% (self.full_hier))
 
         elif isinstance(rvalue, Expression):
             # rvalue is expression, lvalue can be all signal.
@@ -147,7 +149,7 @@ class Variable(Root):
                 #    |                 |
                 #    -------------------
                 if isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self, rvalue, self_module))
+                    raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self.full_hier, rvalue.full_hier, self_module))
             elif self_module.father is rvalue_module.father:
                 # same level connection.
                 #    ------------------   ------------------
@@ -156,7 +158,7 @@ class Variable(Root):
                 #    |                |   |                |
                 #    ------------------   ------------------
                 if not isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s's father Component and rhs %s's father Component are in same Component, so lhs should be Input." % (self, rvalue))
+                    raise ErrUHDLStr("lhs %s's father Component and rhs %s's father Component are in same Component, so lhs should be Input." % (self.full_hier, rvalue.full_hier))
             elif self_module.father is rvalue_module:
                 # lhs in low level
                 #    ----------------------
@@ -169,7 +171,7 @@ class Variable(Root):
                 #    |                    |
                 #    ----------------------
                 if not isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s's father Component is in rhs %s's father Component, so lhs should be Input." % (self, rvalue))
+                    raise ErrUHDLStr("lhs %s's father Component is in rhs %s's father Component, so lhs should be Input." % (self.full_hier, rvalue.full_hier))
             elif self_module is rvalue_module.father:
                 # rhs in low level
                 #    ----------------------
@@ -182,15 +184,15 @@ class Variable(Root):
                 #    |                    |
                 #    ----------------------
                 if not isinstance(rvalue, Output):
-                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so rhs should be Output." % (self, rvalue))
+                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so rhs should be Output." % (self.full_hier, rvalue.full_hier))
                 if isinstance(self, Input):
-                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so lhs should not be Input." % (self, rvalue))
+                    raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so lhs should not be Input." % (self.full_hier, rvalue.full_hier))
             else:
                 # illegal hier.
-                raise ErrUHDLStr("The hier where lhs %s and rhs %s are located cannot be legally connected." % (self, rvalue))
+                raise ErrUHDLStr("The hier where lhs %s and rhs %s are located cannot be legally connected." % (self.full_hier, rvalue.full_hier))
         else:
             # rvalue is a unregsitered signal.
-            raise ErrUHDLStr("rhs %s does not have a legal component father, it may not be registered into a component." % rvalue)
+            raise ErrUHDLStr("rhs %s does not have a legal component father, it may not be registered into a component." % rvalue.full_hier)
         return self
 
 
@@ -214,6 +216,15 @@ class Variable(Root):
                 pass
             else:
                 return []
+        elif (isinstance(self, Input) and isinstance(self._rvalue, Wire)) or \
+             (isinstance(self, Wire) and isinstance(self._rvalue, Output)):
+                if isinstance(self, Input) and self._rvalue._rvalue==None:
+                    return [] # for input unconnect port
+                elif isinstance(self, Wire) and self._lvalue_list==[]:
+                    return [] # for output unconnect port
+                else:
+                    pass
+
         if self._need_always:
             str_list    = self._rvalue.bstring(self,"=")
             str_list[0] = "always @(*) %s" % str_list[0]
@@ -648,8 +659,9 @@ class Input(IOSig):
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = self.name_until_component
         else:
-            if self._rvalue == None :                           rvalue_sig_name = ''
-            else:                                               rvalue_sig_name = self.name_until_component
+            if self._rvalue == None :                                               rvalue_sig_name = ''
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None:     rvalue_sig_name = self._rvalue.name_before_component # for input unconnect port
+            else:                                                                   rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
 
     @property
@@ -677,8 +689,9 @@ class Input(IOSig):
             elif low_to_high_connection(self, self._rvalue):    return None
             else:                                               return normal_res
         else:                                                   
-            if self._rvalue == None :                           return None
-            else:                                               return normal_res
+            if self._rvalue == None :                                           return None
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: return None # for input unconnect port
+            else:                                                               return normal_res
 
 
 
@@ -734,9 +747,9 @@ class Output(IOSig):
             else:
                 pass
         else:
-            if self._des_lvalue==None:                              rvalue_sig_name = ''
-            else:                                                   
-                rvalue_sig_name = self.name_until_component
+            if self._des_lvalue==None:                                              rvalue_sig_name = ''
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:    rvalue_sig_name = self._des_lvalue.name_before_component # for output unconnect port
+            else:                                                                   rvalue_sig_name = self.name_until_component
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
     
 
@@ -758,8 +771,9 @@ class Output(IOSig):
         # for non var-to-var connection, return normal def.
         # else:                                                       return normal_res
         else:                                                   
-            if self._des_lvalue==None:                              return None
-            else:                                                   return normal_res
+            if self._des_lvalue==None:                                              return None
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:    return None # for output unconnect port
+            else:                                                                   return normal_res
 
 class Inout(IOSig):
 
@@ -789,7 +803,8 @@ class Inout(IOSig):
                 min_lvl_var = var
         
         # all signal in same level.
-        if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
+        # if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
+        if len(self._inout_connect_list)>1:
             return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_until_component)]
         # has high level io.
         else:
@@ -1322,7 +1337,14 @@ class CutExpression(Expression):
     
     #@property
     def rstring(self, lvalue) -> str:
-        return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
+        # cut single bit
+        # e.g. rstring[3:3] --> rstring[3]
+        if self.hbound == self.lbound:
+            return self.op.rstring(lvalue) + '[%s]' % ( self.lbound )
+        # cut multi-bit
+        # e.g. rstring[3:1] --> rstring[3:1]
+        else:
+            return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
 
 class FanoutExpression(Expression):
 

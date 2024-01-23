@@ -8,7 +8,7 @@ from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
-
+from .Terminal          import Terminal
 
 UHDL_GLOBAL_PARAM_DICT = {}
 
@@ -310,6 +310,17 @@ class Component(Root):
 # Lint
 #################################################################################
     
+    def _run_lint_single_lvl(self, is_top=False):
+        Terminal.lint_info('Start to check module %s.' % self.module_name)
+        if not is_top:
+            for lvalue in self.input_list:
+                if lvalue.rvalue is None:
+                    Terminal.lint_unconnect(lvalue)
+        
+        for lvalue in self.lvalue_list:
+            if lvalue.rvalue is None:
+                Terminal.lint_unconnect(lvalue)
+
     def _run_lint_all_single_lvl(self, is_top=False):
         Terminal.lint_info('Start to check module %s.' % self.module_name)
         # input of top
@@ -345,16 +356,17 @@ class Component(Root):
                     Terminal.lint_unconnect(inout)
 
 
-    def _run_lint_core(self, is_top=False):
-        
+    def _run_lint_core(self, is_top=False, lint_all=False):
         for component in self.component_list:
-            component._run_lint_core()
+            component._run_lint_core(lint_all=lint_all)
+        if lint_all==False:
+            self._run_lint_single_lvl(is_top=is_top)
+        else:
+            self._run_lint_all_single_lvl(is_top=is_top)
 
-        self._run_lint_all_single_lvl(is_top=is_top)
 
-
-    def run_lint(self):
-        self._run_lint_core(is_top=True)
+    def run_lint(self, lint_all=False):
+        self._run_lint_core(is_top=True, lint_all=lint_all)
 
 
 #################################################################################
@@ -384,9 +396,6 @@ class Component(Root):
         slang_res = os.system(cmd)
         if slang_res != 0:
             raise Exception('Verilator compile error.')
-
-
-        
 
 
 
@@ -450,8 +459,15 @@ class Component(Root):
                 new_io_name = '%s' % (io.name)
                 self.io_name_list = [io.name for io in self.io_list]
                 if new_io_name in self.io_name_list:
-                    raise Exception("Interface <%s.%s> Existing"% (sub_inst.name,new_io_name))
-                
+                    old_io = self.io_list[self.io_name_list.index(new_io_name)]
+                    if isinstance(old_io, Inout) and isinstance(io, Inout):
+                        Terminal.warning("Interface <%s> Existing, Please check interface <%s.%s>"% (old_io, sub_inst.name,new_io_name))
+                    elif isinstance(old_io, Input) and isinstance(io, Input):
+                        Terminal.warning("Interface <%s> Existing, Please check interface <%s.%s>"% (old_io, sub_inst.name,new_io_name))
+                    else:
+                        Terminal.error("Interface <%s> Existing, Please check interface <%s.%s>"% (old_io, sub_inst.name,new_io_name))
+                        break
+
             new_io = self.set(new_io_name, io.template())
 
             if isinstance(new_io, Input):
@@ -461,7 +477,7 @@ class Component(Root):
             elif isinstance(new_io, Inout):
                 new_io += io
             else:
-                raise Exception()
+                Terminal.error("Interface <%s.%s> is not Input/Output/Inout"% (sub_inst.name,new_io_name))
 
     def get_io(self, string):
         match_io_list = []
