@@ -26,6 +26,7 @@ class Node(object):
         self._port_src_id_mapping_dict  = {}
         self.network                    = None
         self._design                    = design
+        self._father                    = None
 
 
     def get_vinst(self):
@@ -38,6 +39,10 @@ class Node(object):
     
     def generate_verilog(self):
         self.vinst.generate_verilog(iteration=True)
+
+    @property
+    def lock_arbiter(self):
+        return self._father.lock_arbiter
 
     # @property
     # def src_id_width(self):

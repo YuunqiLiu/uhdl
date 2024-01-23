@@ -25,6 +25,7 @@ class Network(object):
         self.default_interface_forward  = LwnocBundle
         self.default_interface_backward = LwnocBundle
         self._design                    = None
+        self._lock_arbiter              = True
 
 
     def add(self, node):
@@ -107,6 +108,9 @@ class Network(object):
     def __str__(self):
         return self.name
 
+    @property
+    def lock_arbiter(self):
+        return self._lock_arbiter
 
 
     def generate_verilog(self):
