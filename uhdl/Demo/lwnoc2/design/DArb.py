@@ -72,8 +72,8 @@ class DArb(Component):
                 age_bit_masked_list.append(And(self.arb_msg.get('age_bits_row_%s' % i)[j], self.get('in%s_vld' % j)))
             bit_sel = self.set('bit_sel_%s' % i, Wire(UInt(1)))
 
-            if len(age_bit_masked_list) > 1:    bit_sel += Inverse(OrList(*age_bit_masked_list))
-            else:                               bit_sel += Inverse(age_bit_masked_list[0])
+            if len(age_bit_masked_list) > 1:    bit_sel += And(Inverse(OrList(*age_bit_masked_list)),self.get('in%s_vld' %i))
+            else:                               bit_sel += And(Inverse(age_bit_masked_list[0]),self.get('in%s_vld' %i))
             self.bit_sel_list.append(bit_sel)
 
 
