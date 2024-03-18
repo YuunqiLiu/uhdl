@@ -517,9 +517,10 @@ class Reg(SingleVar):
                 tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:]]
                 str_list += tmp_str_list
             else:
-                str_list = self._rvalue.bstring(self,'<=')
-                str_list[0] = '    %s' % str_list[0]
+                tmp_str_list = self._rvalue.bstring(self,'<=')
+                tmp_str_list[0] = '    %s' % tmp_str_list[0]
                 tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:0]]
+                str_list += tmp_str_list
             str_list += ['end']
             return str_list
 
