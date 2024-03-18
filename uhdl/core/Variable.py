@@ -149,7 +149,8 @@ class Variable(Root):
                 #    |                 |
                 #    -------------------
                 if isinstance(self, Input):
-                    raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self.full_hier, rvalue.full_hier, self_module))
+                    # raise ErrUHDLStr("lhs %s and rhs %s have same father Component %s, bus lhs is Input, it\'s illegal." % (self.full_hier, rvalue.full_hier, self_module))
+                    pass
             elif self_module.father is rvalue_module.father:
                 # same level connection.
                 #    ------------------   ------------------
@@ -1336,12 +1337,13 @@ class CutExpression(Expression):
     
     #@property
     def rstring(self, lvalue) -> str:
-        # cut single bit
-        # e.g. rstring[3:3] --> rstring[3]
+        # cut single bit, e.g. rstring[3:3] --> rstring[3]
         if self.hbound == self.lbound:
-            return self.op.rstring(lvalue) + '[%s]' % ( self.lbound )
-        # cut multi-bit
-        # e.g. rstring[3:1] --> rstring[3:1]
+            # rstring is not a vector
+            if self.op.attribute.width == 1:    return self.op.rstring(lvalue)
+            # rstring is a vector
+            else:                               return self.op.rstring(lvalue) + '[%s]' % ( self.lbound )
+        # cut multi-bit, e.g. rstring[3:1] --> rstring[3:1]
         else:
             return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
 
