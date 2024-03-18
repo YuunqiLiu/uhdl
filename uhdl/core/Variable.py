@@ -215,6 +215,10 @@ class Variable(Root):
             elif isinstance(self, Output) and isinstance(self._rvalue, Input) and\
             self.father_until_component() == self._rvalue.father_until_component():
                 pass
+            elif isinstance(self._rvalue, Output) and\
+            self.father_until_component() == self._rvalue.father_until_component():
+                print(self.lstring, self._rvalue.rstring(self))
+                pass
             else:
                 return []
         elif (isinstance(self, Input) and isinstance(self._rvalue, Wire)) or \
@@ -721,8 +725,8 @@ class Output(IOSig):
 
     #@property
     def rstring(self, lvalue):
-
-        if lvalue.father_until_component() is self.father_until_component():
+        # return self.name_until_component
+        if (lvalue.father_until_component() is self.father_until_component()) and not isinstance(lvalue, Input):
             return self.name_before_component
         else:
             return self.name_until_component #self.__name
