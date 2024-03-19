@@ -216,8 +216,7 @@ class Variable(Root):
             self.father_until_component() == self._rvalue.father_until_component():
                 pass
             elif isinstance(self._rvalue, Output) and\
-            self.father_until_component() == self._rvalue.father_until_component():
-                print(self.lstring, self._rvalue.rstring(self))
+            self.father_until_component() == self._rvalue.father_until_component() and not self.single_connection:
                 pass
             else:
                 return []
