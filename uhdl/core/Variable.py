@@ -207,13 +207,16 @@ class Variable(Root):
         if not hasattr(self, '_rvalue') or self._rvalue is None:
             return []
         # a tmp hack
-
+        
         if isinstance(self, IOSig) and isinstance(self._rvalue, IOSig):
             if not self._rvalue.single_connection:
                 if low_to_high_connection(self, self._rvalue): return []
                 else: pass
             elif isinstance(self, Output) and isinstance(self._rvalue, Input) and\
             self.father_until_component() == self._rvalue.father_until_component():
+                pass
+            elif isinstance(self._rvalue, Output) and\
+            self.father_until_component() == self._rvalue.father_until_component() and not self.single_connection:
                 pass
             else:
                 return []
@@ -222,7 +225,10 @@ class Variable(Root):
                 if isinstance(self, Input) and self._rvalue._rvalue==None:
                     return [] # for input unconnect port
                 elif isinstance(self, Wire) and self._lvalue_list==[]:
-                    return [] # for output unconnect port
+                    if self._rvalue.single_connection:
+                        return [] # for output unconnect port
+                    else:
+                         Terminal.error('output %s has unconnect port, but connect to other signal'% self._rvalue.full_hier)
                 else:
                     pass
 
@@ -669,7 +675,7 @@ class Input(IOSig):
     def verilog_outer_def_as_list_io(self):
         normal_res     = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
         #simplified_res = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
-
+        normal_reg_res = ["reg", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
         def simplified_res(): 
             return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
 
@@ -679,8 +685,8 @@ class Input(IOSig):
         # if this is not a point to point connection. connection opt will not be opened.
         if not self.single_connection:  
             # if self._rvalue == None:                            return None                        
-            if low_to_high_connection(self, self._rvalue):    return None 
-            else:                                             return normal_res
+            if low_to_high_connection(self, self._rvalue):      return None 
+            else:                                               return normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
         elif isinstance(self._rvalue, IOSig):
@@ -692,7 +698,9 @@ class Input(IOSig):
         else:                                                   
             if self._rvalue == None :                                           return None
             elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: return None # for input unconnect port
-            else:                                                               return normal_res
+            else:                                                               
+                if self._need_always:                           return normal_reg_res
+                else:                                           return normal_res
 
 
 
@@ -721,8 +729,8 @@ class Output(IOSig):
 
     #@property
     def rstring(self, lvalue):
-
-        if lvalue.father_until_component() is self.father_until_component():
+        # return self.name_until_component
+        if (lvalue.father_until_component() is self.father_until_component()) and not isinstance(lvalue, Input):
             return self.name_before_component
         else:
             return self.name_until_component #self.__name
@@ -747,10 +755,15 @@ class Output(IOSig):
                 rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
             else:
                 pass
+            
         else:
             if self._des_lvalue==None:                                              rvalue_sig_name = ''
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:    rvalue_sig_name = self._des_lvalue.name_before_component # for output unconnect port
-            else:                                                                   rvalue_sig_name = self.name_until_component
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[] and self.single_connection: 
+                rvalue_sig_name = self._des_lvalue.name_before_component # for output unconnect port
+
+            else:                                                                   
+                rvalue_sig_name = self.name_until_component
+
         return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
     
 
@@ -759,7 +772,7 @@ class Output(IOSig):
     def verilog_outer_def_as_list_io(self):
         normal_res     = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
         #simplified_res = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self,self._des_lvalue)]
-
+        
         # check whether a io need outer def.
         # if this is not a point to point connection. connection opt will not be opened.
         if not self.single_connection:                              return normal_res
@@ -772,9 +785,9 @@ class Output(IOSig):
         # for non var-to-var connection, return normal def.
         # else:                                                       return normal_res
         else:                                                   
-            if self._des_lvalue==None:                                              return None
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:    return None # for output unconnect port
-            else:                                                                   return normal_res
+            if self._des_lvalue==None:                                                                         return None
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:                               return None # for output unconnect port
+            else:                                                                                              return normal_res
 
 class Inout(IOSig):
 
@@ -1018,7 +1031,7 @@ class Bits(Constant):
     @property
     def lstring(self):
         raise NotImplementedError
-
+    
     def __eq__(self,other):
         return True if type(self) == type(other) and self.width == other.width else False
 

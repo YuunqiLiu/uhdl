@@ -48,7 +48,8 @@ class axi_intf():
         'axi_rlast',    
         'axi_ruser',    
         'axi_rvalid',   
-        'axi_rready'  
+        'axi_rready',
+        'axi_inout'  
         ]
 
     ignore_list = [
@@ -85,7 +86,6 @@ def perfect_assign(src, dst, io_list, ignore_list=[], src_prefix='', dst_prefix=
             elif dst_intf == [] : 
                 Terminal.warning('Interface \'%s\' Was Not Found, %s'% (dst_prefix+io+dst_suffix, get_log_info()))
                 continue
-
             single_assign(src_intf, dst_intf)
 
 
@@ -161,6 +161,7 @@ def single_assign_core(op1, op2):
     else:
         Terminal.warning("Both %s and %s are Wire or One op is not Inout, %s"% (op1.name, op2.name, get_log_info()))
 
+    
 
 def unconnect_port(component, op1):
     if isinstance(op1, list):
@@ -190,9 +191,9 @@ def perfect_expose_io(component=None, object=None, io_list=[], prefix='',suffix=
 def expand_vector(component,vec):
     vec_list = []
     for i in range(vec.width):
-        if not hasattr(component, f'{vec.name}_bit{i}'):
-            setattr(component, f'{vec.name}_bit{i}', Wire(UInt(1))) 
-            vec_list.append(getattr(component, f'{vec.name}_bit{i}'))
+        if not hasattr(component, f'{vec.lstring}_bit{i}'):
+            setattr(component, f'{vec.lstring}_bit{i}', Wire(UInt(1))) 
+            vec_list.append(getattr(component, f'{vec.lstring}_bit{i}'))
         else:   return -1
     
     vec_list.reverse()
@@ -206,52 +207,52 @@ def cut_assign(component, opl, opr):
         if isinstance(opl, core.Variable.CutExpression): # opl is cutexpression
             for i in range(opl.lbound, opl.hbound+1):
                 if isinstance(opr, core.Variable.CutExpression):
-                    if hasattr(component, f'{opl.op.name}_bit{i}'):
-                        if getattr(component, f'{opl.op.name}_bit{i}').rvalue==None: 
-                                Assign(getattr(component, f'{opl.op.name}_bit{i}'), opr.op[opr.lbound+i-opl.lbound])
+                    if hasattr(component, f'{opl.op.lstring}_bit{i}'):
+                        if getattr(component, f'{opl.op.lstring}_bit{i}').rvalue==None: 
+                                Assign(getattr(component, f'{opl.op.lstring}_bit{i}'), opr.op[opr.lbound+i-opl.lbound])
                         # duplicate connect case
-                        elif getattr(component, f'{opl.op.name}_bit{i}').rvalue.__dict__ == opr.op[opr.lbound+i-opl.lbound].__dict__: pass
+                        elif getattr(component, f'{opl.op.lstring}_bit{i}').rvalue.__dict__ == opr.op[opr.lbound+i-opl.lbound].__dict__: pass
                         # multi-driver case
                         else: Terminal.error("%s has multi-driver , %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
                     else:
                         Terminal.error("%s does not exist, %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
                 elif isinstance(opr, UInt):
-                    if hasattr(component, f'{opl.op.name}_bit{i}'):
-                        if getattr(component, f'{opl.op.name}_bit{i}').rvalue==None:    Assign(getattr(component, f'{opl.op.name}_bit{i}'), UInt(1,((opr.value >> (i-opl.lbound)) & 1)))
-                        elif getattr(component, f'{opl.op.name}_bit{i}').rvalue.__dict__ == UInt(1,((opr.value >> (i-opl.lbound)) & 1)).__dict__: pass
+                    if hasattr(component, f'{opl.op.lstring}_bit{i}'):
+                        if getattr(component, f'{opl.op.lstring}_bit{i}').rvalue==None:    Assign(getattr(component, f'{opl.op.lstring}_bit{i}'), UInt(1,((opr.value >> (i-opl.lbound)) & 1)))
+                        elif getattr(component, f'{opl.op.lstring}_bit{i}').rvalue.__dict__ == UInt(1,((opr.value >> (i-opl.lbound)) & 1)).__dict__: pass
                         else: Terminal.error("%s has multi-driver , %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
                     else:
                         Terminal.error("%s does not exist, %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
                 else:
-                    if hasattr(component, f'{opl.op.name}_bit{i}'):
-                        if getattr(component, f'{opl.op.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.op.name}_bit{i}'), opr[i-opl.lbound])
-                        elif getattr(component, f'{opl.op.name}_bit{i}').rvalue.__dict__ == opr[i-opl.lbound].__dict__: pass
+                    if hasattr(component, f'{opl.op.lstring}_bit{i}'):
+                        if getattr(component, f'{opl.op.lstring}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.op.lstring}_bit{i}'), opr[i-opl.lbound])
+                        elif getattr(component, f'{opl.op.lstring}_bit{i}').rvalue.__dict__ == opr[i-opl.lbound].__dict__: pass
                         else: Terminal.error("%s has multi-driver , %s"% (f'{opl.op.full_hier}_bit{i}', get_log_info()))
                     else:
-                        Terminal.error("%s does not exist in %s , %s"% (f'{opl.op.name}_bit{i}', component, get_log_info()))
+                        Terminal.error("%s does not exist in %s , %s"% (f'{opl.op.lstring}_bit{i}', component, get_log_info()))
         else:
             for i in range(opl.attribute.width):
                 if isinstance(opr, core.Variable.CutExpression):
-                    if hasattr(component, f'{opl.name}_bit{i}'):
-                        if getattr(component, f'{opl.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.name}_bit{i}'), opr.op[opr.lbound+i])
-                        elif getattr(component, f'{opl.name}_bit{i}').rvalue.__dict__==opr.op[opr.lbound+i].__dict__: pass
+                    if hasattr(component, f'{opl.lstring}_bit{i}'):
+                        if getattr(component, f'{opl.lstring}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.lstring}_bit{i}'), opr.op[opr.lbound+i])
+                        elif getattr(component, f'{opl.lstring}_bit{i}').rvalue.__dict__==opr.op[opr.lbound+i].__dict__: pass
                         else: Terminal.error("%s has multi-driver , %s"% (f'{opl.full_hier}_bit{i}', get_log_info()))
                     else:
                         Terminal.error("%s does not exist in %s , %s"% (f'{opl}_bit{i}', component, get_log_info())) 
                 elif isinstance(opr, UInt):
-                    if hasattr(component, f'{opl.name}_bit{i}'):
-                        if getattr(component, f'{opl.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.name}_bit{i}'),  UInt(1,((opr.value >> i) & 1)))
-                        elif getattr(component, f'{opl.name}_bit{i}').rvalue.__dict__==UInt(1,((opr.value >> i) & 1)).__dict__: pass
+                    if hasattr(component, f'{opl.lstring}_bit{i}'):
+                        if getattr(component, f'{opl.lstring}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.lstring}_bit{i}'),  UInt(1,((opr.value >> i) & 1)))
+                        elif getattr(component, f'{opl.lstring}_bit{i}').rvalue.__dict__==UInt(1,((opr.value >> i) & 1)).__dict__: pass
                         else: Terminal.error("%s has multi-driver , %s"% (f'{opl.full_hier}_bit{i}', get_log_info()))
                     else:
-                        Terminal.error("%s does not exist in %s , %s"% (f'{opl.name}_bit{i}', component, get_log_info())) 
+                        Terminal.error("%s does not exist in %s , %s"% (f'{opl.lstring}_bit{i}', component, get_log_info())) 
                 else:
-                    if hasattr(component, f'{opl.name}_bit{i}'):
-                        if getattr(component, f'{opl.name}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.name}_bit{i}'), opr[i])
-                        elif getattr(component, f'{opl.name}_bit{i}').rvalue.__dict__==opr[i].__dict__: pass
+                    if hasattr(component, f'{opl.lstring}_bit{i}'):
+                        if getattr(component, f'{opl.lstring}_bit{i}').rvalue==None: Assign(getattr(component, f'{opl.lstring}_bit{i}'), opr[i])
+                        elif getattr(component, f'{opl.lstring}_bit{i}').rvalue.__dict__==opr[i].__dict__: pass
                         else: Terminal.error("%s has multi-driver , %s"% (f'{opl.full_hier}_bit{i}', get_log_info()))
                     else:
-                        Terminal.error("%s does not exist in %s , %s"% (f'{opl.name}_bit{i}', component, get_log_info())) 
+                        Terminal.error("%s does not exist in %s , %s"% (f'{opl.lstring}_bit{i}', component, get_log_info())) 
 
 def get_log_info(depth=1):
     current_frame = inspect.currentframe()
