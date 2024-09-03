@@ -110,7 +110,14 @@ class Variable(Root):
             raise_ErrAttrMismatch('%s is expected to be connected by a Rvalue with same attribute,but the current attribute does not match: %s, %s' % (self.var_name, self_full_hier, rvalue_full_hier), self, rvalue)
         
         # check io first:
-        if isinstance(self, Inout) or isinstance(rvalue, Inout):
+        #TODO: for inout assign
+        if isinstance(self, Output) and isinstance(rvalue, Inout):
+            self_module = self.father_until(Component.Component)
+            rvalue_module = rvalue.father_until(Component.Component)
+            if rvalue_module is not None and (self_module is rvalue_module or self_module is rvalue_module.father):
+                rvalue._need_assign = [self]
+            
+        elif isinstance(self, Inout) or isinstance(rvalue, Inout):
             updated_list = list(set(self._inout_connect_list + rvalue._inout_connect_list))
             for item in updated_list:
                 item._inout_connect_list = updated_list
@@ -132,11 +139,23 @@ class Variable(Root):
         if isinstance(self, Inout) and isinstance(rvalue, Inout):
             # inout connection, give up all check.
             pass
+        elif isinstance(self, Output) and isinstance(rvalue, Inout):
+            #TODO: add two case
+            if rvalue_module is not None:
+                if self_module is rvalue_module:
+                    pass 
+                elif self_module is rvalue_module.father:
+                    pass
+                else: 
+                    raise ErrUHDLStr("Inout connect error, The hier where lhs %s and rhs %s are located cannot be legally connected." % (self.full_hier, rvalue.full_hier))
+            else:
+                raise ErrUHDLStr("Inout connect error, rhs %s Componet is None." % (rvalue.full_hier))
+                    
         elif (isinstance(self, Inout) and not isinstance(rvalue, Inout)) or\
            (not isinstance(self, Inout) and isinstance(rvalue, Inout)):
             # inout connect to other type, error.
             raise Exception('inout signal %s connect to other type'% (self.full_hier))
-
+        
         elif isinstance(rvalue, Expression):
             # rvalue is expression, lvalue can be all signal.
             pass
@@ -210,8 +229,19 @@ class Variable(Root):
         
         if isinstance(self, IOSig) and isinstance(self._rvalue, IOSig):
             if not self._rvalue.single_connection:
-                if low_to_high_connection(self, self._rvalue): return []
-                else: pass
+                if low_to_high_connection(self, self._rvalue): 
+                    return []
+                else: 
+                    pass
+            #TODO: for inout assign
+            elif isinstance(self, Output) and isinstance(self._rvalue, Inout):
+                if self.father_until_component() == self._rvalue.father_until_component().father:
+                    if len(self._rvalue._inout_connect_list)<=1:    return [] 
+                    else:                                           pass
+                elif self.father_until_component() == self._rvalue.father_until_component():
+                    pass
+                else:
+                    return []
             elif isinstance(self, Output) and isinstance(self._rvalue, Input) and\
             self.father_until_component() == self._rvalue.father_until_component():
                 pass
@@ -231,13 +261,30 @@ class Variable(Root):
                          Terminal.error('output %s has unconnect port, but connect to other signal'% self._rvalue.full_hier)
                 else:
                     pass
-
+        
+        # TODO: inout
+        sig_name = None
+        if isinstance(self._rvalue, Inout):
+            min_lvl_var = self._rvalue._inout_connect_list[0]
+            for var in self._rvalue._inout_connect_list:
+                if var.level_until_root() < min_lvl_var.level_until_root():
+                    min_lvl_var = var
+            
+            # all signal in same level.
+            # if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
+            if len(self._rvalue._inout_connect_list)>1:
+                sig_name = min_lvl_var.name_until_component
+            # has high level io.
+            else:
+                sig_name = self._rvalue.name_before_component
+        
         if self._need_always:
             str_list    = self._rvalue.bstring(self,"=")
             str_list[0] = "always @(*) %s" % str_list[0]
             return str_list
         else:
-            return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
+            if sig_name == None:    return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
+            else:                   return ['assign ' + str(self.lstring) + ' = ' + str(sig_name) + ';']
 
 class Bundle(Root):
 
@@ -719,6 +766,10 @@ class Output(IOSig):
     The type of Output in this example will be consistent with UInt(32), 
     that is, it is a 32-bit unsigned integer.
     '''
+
+    # def __init__(self,template):
+    #     super().__init__(template)
+    #     self._inout_connect_list = [self]
     #@property
     #def is_lvalue(self):
     #    pass
@@ -795,6 +846,7 @@ class Inout(IOSig):
     def __init__(self,template):
         super().__init__(template)
         self._inout_connect_list = [self]
+        self._need_assign = None
 
     @property
     def _iosig_type_prefix(self):
@@ -822,7 +874,10 @@ class Inout(IOSig):
             return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_until_component)]
         # has high level io.
         else:
-            return [".%s(%s)" %(self.name_before_component, '')]
+            if self._need_assign is not None:
+                return [".%s(%s)" %(self.name_before_component, self._need_assign[0].name_before_component)]
+            else:
+                return [".%s(%s)" %(self.name_before_component, '')]
 
 
 
