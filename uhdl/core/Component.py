@@ -4,7 +4,7 @@ from functools          import reduce
 from collections.abc    import Iterable
 from .Terminal          import Terminal
 from .Root              import Root
-from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout
+from .Variable          import Wire,IOSig,Bundle,Variable,Parameter,Reg,Output,Input,Inout
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
@@ -158,11 +158,15 @@ class Component(Root):
 
     @property
     def io_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(IOSig,IOGroup))]
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(IOSig))]
     
     @property
+    def bundle_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Bundle))]
+
+    @property
     def io_list_exclude_inout(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input, Output, IOGroup))]
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input, Output))]
 
 
     @property

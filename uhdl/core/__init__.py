@@ -4,7 +4,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'join_name',
             'Component','VComponent',
 
-            'Input','Output','Inout','UInt','SInt','IOGroup','Parameter','Wire','Reg','AnyConstant',
+            'Input','Output','Inout','UInt','SInt','Parameter','Wire','Reg','AnyConstant',
             'And','Or','Greater','Less','GreaterEqual','LessEqual','NotEqual','Equal',
             'BitXnor','BitXor','BitAnd','BitOr',
             'Add','Sub','Mul',
@@ -23,7 +23,7 @@ from .VComponent    import VComponent
 from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask,Exclude
 from .BasicFunction import join_name
 
-from .Variable      import Input,Output,Inout,UInt,SInt,IOGroup,Parameter,Wire,Reg,AnyConstant
+from .Variable      import Input,Output,Inout,UInt,SInt,Bundle,Parameter,Wire,Reg,AnyConstant
 from .Operator      import And,Or,Greater,Less,GreaterEqual,LessEqual,NotEqual,Equal
 from .Operator      import BitXnor,BitXor,BitAnd,BitOr
 from .Operator      import Add,Sub,Mul

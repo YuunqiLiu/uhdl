@@ -1,9 +1,9 @@
 import json
 import re, os
 
-from subprocess import Popen
+import subprocess
 from .Component import Component
-from .Variable  import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
+from .Variable  import Wire,IOSig,Bundle,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
 from .Terminal  import Terminal
 
 class VParameter(object):
@@ -153,14 +153,25 @@ class VComponent(Component):
 
     def __init__(self, file=None, top=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
         super().__init__()
+        self._file = file
         self._module_name = top
         ast_json = "%s.%s.ast.json" %(top, instance)
 
         # Try slang
-        p = Popen(f'{slang_cmd} --version', shell=True)
+        p = subprocess.Popen(f'{slang_cmd} --version', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p.communicate()
+        stdout, stderr = p.communicate()
+
+        output_str = stdout.decode('utf-8')
+        error_str = stderr.decode('utf-8')
+
         if p.returncode != 0:
+            print('slang verion check fail.')
+            print('stdout: %s' % stdout)
+            print('stderr: %s' % stderr)
+
             raise Exception('Cannot call slang to import verilog.')
+
 
 
         # Spell the parameter into the format needed by slang
@@ -176,9 +187,18 @@ class VComponent(Component):
             source = file
         
         cmd = f'{slang_cmd} {slang_opts} {source} -ast-json {ast_json} -top {top} {param_config}'
-        p = Popen(cmd, shell=True)
-        p.communicate()
+        p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
 
+        output_str = stdout.decode('utf-8')
+        error_str = stderr.decode('utf-8')
+
+        #if error_str != '':
+
+        if p.returncode != 0:
+            print('slang error detect.')
+            print('stdout: %s' % stdout)
+            print('stderr: %s' % stderr)
 
         # Parse AST
         self.parse_ast(ast_json, top)
@@ -230,6 +250,16 @@ class VComponent(Component):
             for lvalue in self.input_list:
                 if lvalue.rvalue is None:
                     Terminal.lint_unconnect(lvalue)
+
+    def _generate_filelist_core(self,prefix=''):
+        if prefix != '':
+            name_list = [os.path.abspath(self._file)]
+        else:
+            name_list = [self._file]
+        #name_list = ["%s/%s.v" % (prefix,self.module_name)]
+        #for component in self.component_list:
+        #    name_list += component._generate_filelist_core(prefix=prefix)
+        return name_list
 
 
     @property

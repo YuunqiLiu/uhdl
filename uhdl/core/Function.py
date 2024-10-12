@@ -134,9 +134,13 @@ def Assign(opl:Value, opr:Value):
 
 def SmartAssign(op1, op2, outer=False):
 
+
     if isinstance(op1, Bundle) and isinstance(op2, Bundle):
-        op1_list = op1.as_list()
-        op2_list = op2.as_list()
+        #op1_list = op1.as_list()
+        #op2_list = op2.as_list()
+        op1_list = op1.bundle_and_io_list
+        op2_list = op2.bundle_and_io_list
+
 
         for opl, opr in zip(op1_list, op2_list):
             SmartAssign(opl, opr, outer)

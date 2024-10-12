@@ -19,7 +19,10 @@ def simplified_connection_naming_judgment(lvalue_obj, rvalue_obj):
     return "%s_TO_%s_SIG_%s" % (lvalue_comp_name, rvalue_comp_name, sig_name)
 
 def low_to_high_connection(low, high):
-    return True if low.father_until_component().father == high.father_until_component() else False
+    if low is not None and high is not None:
+        return True if low.father_until_component().father == high.father_until_component() else False
+    else:
+        return False
 
 def same_level_connection(a, b):
     return True if a.father_until_component().father == b.father_until_component().father else False
@@ -100,7 +103,7 @@ class Variable(Root):
     def __iadd__(self,rvalue):
         # check whether variable used in Assign belongs to component.
         # rvalue may be expression, so it's no need to check them.
-        if not isinstance(self.father, Component.Component):    
+        if not isinstance(self.father_until_component(), Component.Component):    
             raise_ErrVarNotBelongComponent(self)
         if not isinstance(rvalue,Value):                        
             raise_ErrAssignTypeWrong(self,rvalue)
@@ -124,7 +127,7 @@ class Variable(Root):
 
 
         if self._rvalue != None:
-            Terminal.error('Error: %s has multi-driver'% self.full_hier)
+            Terminal.error('Error: %s has multi-driver: \n\t %s \n\t %s'% (self.full_hier, self._rvalue,rvalue))
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
@@ -286,84 +289,6 @@ class Variable(Root):
             if sig_name == None:    return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
             else:                   return ['assign ' + str(self.lstring) + ' = ' + str(sig_name) + ';']
 
-class Bundle(Root):
-
-
-    def __init__(self):
-        super().__init__()
-        self._rvalue = None
-        self._var_list = []
-
-    @property
-    def rvalue(self):
-        return self._rvalue
-
-    @property
-    def name_until_component(self):
-        return self.name_until_not(Bundle)
-
-    @property
-    def name_before_component(self):
-        return self.name_before_not(Bundle)
-
-    @property
-    def attribute(self):
-        raise NotImplementedError
-
-    def __setattr__(self, name, value):
-        if not hasattr(self, "_var_list") or value not in self._var_list:
-            if isinstance(value, (Bundle, Variable)):
-                self._var_list.append(value)
-            super().__setattr__(name, value)
-
-    def _setattr_hook(self):
-        component_father = self.father_until(Component.Component)
-        for value in self._var_list:
-            setattr(component_father, value.name_before(Component.Component), value)
-
-    @property
-    def io_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)]
-
-
-
-    def reverse(self):
-        reverse = Bundle()
-        for i in self.io_list:
-            if self.name is None:
-                setattr(reverse, i.name, i.reverse())
-            else:
-                prefix = '%s_'%self.name
-                if i.name.startswith(prefix):
-                    result = i.name[len(prefix):]
-                else:
-                    result = i.name
-                setattr(reverse, result, i.reverse())
-        return reverse
-
-
-
-
-    def as_list(self, exclude=None):
-        exclude_list = [] if exclude is None else exclude
-        res_list = []
-
-
-        exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
-        for var in self._var_list:
-            if var.name not in exclude_list:
-                res_list.append(var)
-        return res_list
-
-
-    def connect(self, other):
-        pass
-
-    def exclude(self, *args):
-        result = copy(self)
-        for a in args:
-            delattr(result, a)
-        return result
 
 class ValueRoot():
     pass
@@ -499,6 +424,12 @@ class SingleVar(Variable, Value):
     @property
     def attribute(self):
         return self._template
+
+    def count_up(self):    
+        return AddExpression(self, type(self.attribute)(self.attribute.width,1), overflow= False)
+    
+    def count_down(self):
+        return SubExpression(self, type(self.attribute)(self.attribute.width,1), overflow= False)
 
 class WireSig(SingleVar):
     pass
@@ -662,6 +593,9 @@ class IOSig(WireSig):
                 '' if self.attribute.width==1 else '[%s:0]' %(self.attribute.width-1),
                 self.name_before_component]
 
+    #def wire(self):
+    #    return Wire(self.attribute)
+
 class Input(IOSig):
     '''
     Input is used to declare an input port for Component in UHDL.
@@ -698,6 +632,8 @@ class Input(IOSig):
     def _iosig_type_prefix(self):
         return 'input'
 
+
+
     def reverse(self):
         return Output(self.attribute)
 
@@ -732,29 +668,29 @@ class Input(IOSig):
             return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
 
 
-
         # check whether a io need outer def.
         # if this is not a point to point connection. connection opt will not be opened.
         if not self.single_connection:  
             # if self._rvalue == None:                            return None                        
-            if low_to_high_connection(self, self._rvalue):      return None 
-            else:                                               return normal_res
+            if low_to_high_connection(self, self._rvalue):      res =  normal_res # None 
+            else:                                               res =  normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
         elif isinstance(self._rvalue, IOSig):
             if same_level_connection(self, self._rvalue): 
-                if not self._rvalue.single_connection:          return normal_res
-                else:                                           return simplified_res()
-            elif low_to_high_connection(self, self._rvalue):    return None
-            else:                                               return normal_res
+                if not self._rvalue.single_connection:          res =  normal_res
+                else:                                           res =  simplified_res()
+            elif low_to_high_connection(self, self._rvalue):    res =  None
+            else:                                               res =  normal_res
         else:                                                   
-            if self._rvalue == None :                                           return None
-            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: return None # for input unconnect port
+            if self._rvalue == None :                                           res =  None
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: res =  None # for input unconnect port
             else:                                                               
-                if self._need_always:                           return normal_reg_res
-                else:                                           return normal_res
+                if self._need_always:                           res =  normal_reg_res
+                else:                                           res =  normal_res
 
-
+        #print(res)
+        return res
 
 
 class Output(IOSig):
@@ -910,21 +846,78 @@ class GroupVar(Variable):
     def exclude(self,*str_list):
         pass
 
-class IOGroup(GroupVar):
+
+
+class Bundle(GroupVar):
 
     def __init__(self):
         super().__init__()
-        #super(IOGroup,self).__init__()
-        self._rvalue = None
+        self._var_list = []
+
+
+    def __str__(self):
+        attr_str_list = '\n'+ '\n'.join([str(x) for x in self._var_list]) + '\n'
+        return "%s - %s(%s)" % (self.name_before(None), self.__class__.__name__, attr_str_list)
+
+    @property
+    def name_until_component(self):
+        return self.name_until_not(Bundle)
+
+    @property
+    def name_before_component(self):
+        return self.name_before_not(Bundle)
+
+    @property
+    def attribute(self):
+        raise NotImplementedError
+
+
+    def as_list(self, exclude=None):
+        exclude_list = [] if exclude is None else exclude
+        res_list = []
+
+
+        exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
+        for var in self._var_list:
+            if var.name not in exclude_list:
+                res_list.append(var)
+        return res_list
+
+
+    @property
+    def bundle_and_io_list(self) -> list:
+        res = [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Bundle, IOSig))]
+        if self._father in res:
+            res.remove(self._father)
+        return res
+
+    @property
+    def bundle_list(self) -> list:
+        res = [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Bundle))]
+        
+        #print(self.__dict__)
+        #my_list.remove(3)  # 移除值为3的对象
+        if self._father in res:
+            res.remove(self._father)
+        return res
+        #return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Bundle))]
 
     @property
     def io_list(self) -> list:
-        return sorted([self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)])
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)]
+
+    @property
+    def input_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Input)]
+    
+    @property
+    def output_list(self) -> list:
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Output)]
 
     # += as circuit assignment
     def __iadd__(self,rvalue):
-        if not isinstance(rvalue,IOGroup):
-            raise ArithmeticError('A IOGroup expect assigned by a IOGroup.')
+        if not isinstance(rvalue, Bundle):
+            raise ArithmeticError('A Bundle expect assigned by a Bundle.')
         # elif self.attribute != rvalue.attribute:
         #     raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
         else:
@@ -942,34 +935,239 @@ class IOGroup(GroupVar):
             delattr(result,a)
         return result
 
-    def __getitem__(self,*args):
-        result = copy(self)
-        for a in args:
-            delattr(result,a)
-        return result
-
-
-    @property
-    def verilog_assignment(self) -> str:
-        return reduce(concat,[x.verilog_assignment for x in self.io_list],[])
-
-    @property
-    def verilog_def(self):
-        return reduce(concat,[x.verilog_def for x in self.io_list],[])
+    # def __getitem__(self,*args):
+    #     result = copy(self)
+    #     for a in args:
+    #         delattr(result,a)
+    #     return result
     
-    @property
-    def verilog_outer_def(self):
-        return reduce(concat,[x.verilog_outer_def for x in self.io_list],[])
+    def __setattr__(self, name, value):
+        if not hasattr(self, "_var_list") or value not in self._var_list:
+            if isinstance(value, (Variable,)):
+                self._var_list.append(value)
+                value.set_name(name)
+                value.set_father(self)
+                #value._setattr_hook(self)
+            object.__setattr__(self, name, value)
 
-    @property
-    def verilog_inst(self):
-        return reduce(concat,[x.verilog_inst for x in self.io_list],[])
+
+    #def __setattr__(self, name, value):
+    #    if isinstance(value, Root):
+    #        value.set_name(name)
+    #        value.set_father(self)
+    #        value._setattr_hook(self)
+    #    object.__setattr__(self, name, value)
+
+    def _setattr_hook(self,attr_father):
+        #component_father = self.father_until(Component.Component)
+        for value in self._var_list:
+            if isinstance(value, Root):
+                value._setattr_hook(attr_father)
+            object.__setattr__(attr_father, value.name_before(Component.Component), value)
+        #    setattr(component_father, value.name_before(Component.Component), value)
+
+
+    # def __setattr__(self, name, value):
+    #     if isinstance(value, Root):
+    #         value.set_name(name)
+    #         value.set_father(self)
+    #         value._setattr_hook(self)
+    #     object.__setattr__(self, name, value)
+
+    # @property
+    # def verilog_assignment(self) -> str:
+    #     return reduce(concat,[x.verilog_assignment for x in self.io_list],[])
+
+    # @property
+    # def verilog_def(self):
+    #     return reduce(concat,[x.verilog_def for x in self.io_list],[])
+    
+    # @property
+    # def verilog_outer_def(self):
+    #     return reduce(concat,[x.verilog_outer_def for x in self.io_list],[])
+
+    # @property
+    # def verilog_inst(self):
+    #     return reduce(concat,[x.verilog_inst for x in self.io_list],[])
+
+    #def reverse(self):
+    #    reverse = IOGroup()
+    #    for i in self.io_list:
+    #        setattr(reverse,i.name,i.reverse())
+    #    return reverse
+
+
+    # def wire(self):
+    #     wb = Bundle()
+    #     for i in self.bundle_list:
+    #         setattr(wb, i.name, i.wb())
+
+    #     name_list = [x.name for x in wb.io_list]
+
+    #     for i in self.io_list:
+    #         if i.name not in name_list:
+    #             #print(i.name)
+    #             if self.name is None:
+    #                 setattr(wb, i.name, i.wire())
+    #             else:
+    #                 prefix = '%s_'%self.name
+    #                 if i.name.startswith(prefix):
+    #                     result = i.name[len(prefix):]
+    #                 else:
+    #                     result = i.name
+    #                 setattr(wb, result, i.wire())
+    #     return wb
 
     def reverse(self):
-        reverse = IOGroup()
-        for i in self.io_list:
-            setattr(reverse,i.name,i.reverse())
+
+        newBundleClass = type('%s_Reverse' % self.__class__.__name__, (Bundle,), {})
+        reverse = newBundleClass()
+        #print(reverse.__class__.__name__)
+
+        #for i in self.bundle_and_list:
+        #    print(i)
+        #    print(i.name)
+        #    setattr(reverse, i.name, i.reverse())
+
+        for i in self.bundle_and_io_list:
+            if isinstance(i,Bundle):
+                setattr(reverse, i.name, i.reverse())
+            else:
+                name_list = [x.name for x in reverse.io_list]
+                if i.name not in name_list:
+                    #print(i.name)
+                    if self.name is None:
+                        setattr(reverse, i.name, i.reverse())
+                    else:
+                        prefix = '%s_'%self.name
+                        if i.name.startswith(prefix):
+                            result = i.name[len(prefix):]
+                        else:
+                            result = i.name
+                        setattr(reverse, result, i.reverse())
+        #print('~~~~~~~~~~~~~~~')
+        #print(reverse)
         return reverse
+
+
+    #               def reverse(self):
+    #                   reverse = Bundle()
+    #                   for i in self.bundle_list:
+
+    #                       setattr(reverse, i.name, i.reverse())
+    #                       #print(i)
+    #                   #print(reverse.__dict__)
+
+    #                   name_list = [x.name for x in reverse.io_list]
+    #                   #print(name_list)
+    #                   for i in self.io_list:
+
+    #                       if i.name not in name_list:
+    #                           #print(i.name)
+    #                           if self.name is None:
+    #                               setattr(reverse, i.name, i.reverse())
+    #                           else:
+    #                               prefix = '%s_'%self.name
+    #                               if i.name.startswith(prefix):
+    #                                   result = i.name[len(prefix):]
+    #                               else:
+    #                                   result = i.name
+    #                               setattr(reverse, result, i.reverse())
+    #                   return reverse
+
+
+
+# class Bundle(Root):# 
+# 
+
+#     def __init__(self):
+#         super().__init__()
+#         self._rvalue = None
+#         self._var_list = []
+
+    #@property
+    #def rvalue(self):
+    #    return self._rvalue
+
+    # @property
+    # def name_until_component(self):
+    #     return self.name_until_not(Bundle)
+
+    # @property
+    # def name_before_component(self):
+    #     return self.name_before_not(Bundle)
+
+    # @property
+    # def attribute(self):
+    #     raise NotImplementedError
+   #  
+    #@property
+    #def zero_attribute(self):
+
+
+    #def __setattr__(self, name, value):
+    #    if not hasattr(self, "_var_list") or value not in self._var_list:
+    #        if isinstance(value, (Bundle, Variable)):
+    #            self._var_list.append(value)
+    #        super().__setattr__(name, value)
+
+    #def _setattr_hook(self):
+    #    component_father = self.father_until(Component.Component)
+    #    for value in self._var_list:
+    #        setattr(component_father, value.name_before(Component.Component), value)
+
+    #@property
+    #def io_list(self) -> list:
+    #    return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],IOSig)]
+
+    #@property
+    #def input_list(self) -> list:
+    #    return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],Input)]
+
+
+
+    # def reverse(self):
+    #     reverse = Bundle()
+    #     for i in self.io_list:
+    #         if self.name is None:
+    #             setattr(reverse, i.name, i.reverse())
+    #         else:
+    #             prefix = '%s_'%self.name
+    #             if i.name.startswith(prefix):
+    #                 result = i.name[len(prefix):]
+    #             else:
+    #                 result = i.name
+    #             setattr(reverse, result, i.reverse())
+    #     return reverse
+
+
+
+
+#     # def as_list(self, exclude=None):
+    #     exclude_list = [] if exclude is None else exclude
+    #     res_list = []
+
+# 
+#     #     exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
+    #     for var in self._var_list:
+    #         if var.name not in exclude_list:
+    #             res_list.append(var)
+    #     return res_list
+
+
+    #def connect(self, other):
+    #    pass
+
+    #def exclude(self, *args):
+    #    result = copy(self)
+    #    for a in args:
+    #        delattr(result, a)
+    #    return result
+
+
+
+
+
 
 class Expression(Value):
 
@@ -1183,6 +1381,9 @@ class Parameter(SingleVar):
         return ['parameter %s = %s' % (self.lstring,self.attribute.rstring(self))]
 
 
+
+
+
     # @property
     # def width(self):
     #     return self.__width
@@ -1249,13 +1450,13 @@ class CaseExpression(AlwaysCombExpression):
         str_list = ['case(%s)' % self.__select.rstring(lvalue)]
 
         for k,v in self.__case_pair:
-            logic_block     = v.bstring(lstring,assign_method)
+            logic_block     = v.bstring(lvalue,assign_method)
             logic_block[0]  = '%s : %s' % (k.rstring(lvalue),logic_block[0])
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
 
         if self.__default != None:
-            logic_block     = self.__default.bstring(lstring,assign_method)
+            logic_block     = self.__default.bstring(lvalue,assign_method)
             logic_block[0]  = 'default : %s' % logic_block[0]
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
@@ -1745,9 +1946,22 @@ class TwoSameOpBitExpression(TwoSameOpExpression):
 
 class AddExpression(TwoSameOpExpression):
 
+    def __init__(self,opL,opR,overflow=True):
+        self._overflow = overflow
+        super().__init__(opL,opR)
+
+    def rstring(self, lvalue) -> str:
+        if self._overflow:
+            return '(%s %s %s)'  % (self.opL.rstring(lvalue) ,self.op_str,self.opR.rstring(lvalue))
+        else:
+            return '(%s)\'(%s %s %s)'  % (self.opL.attribute.width, self.opL.rstring(lvalue) ,self.op_str,self.opR.rstring(lvalue))
+
     @property
     def attribute(self) -> int:
-        return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width) + 1)
+        if self._overflow:
+            return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width) + 1)
+        else:
+            return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width))
 
     @property
     def op_name(self):
@@ -1759,9 +1973,27 @@ class AddExpression(TwoSameOpExpression):
 
 class SubExpression(TwoSameOpExpression):
 
+
+    def __init__(self,opL,opR,overflow=True):
+        self._overflow = overflow
+        super().__init__(opL,opR)
+
+    def rstring(self, lvalue) -> str:
+        if self._overflow:
+            return '(%s %s %s)'  % (self.opL.rstring(lvalue) ,self.op_str,self.opR.rstring(lvalue))
+        else:
+            return '(%s)\'(%s %s %s)'  % (self.opL.attribute.width, self.opL.rstring(lvalue) ,self.op_str,self.opR.rstring(lvalue))
+
     @property
     def attribute(self) -> int:
-        return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width) + 1)
+        if self._overflow:
+            return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width) + 1)
+        else:
+            return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width))
+
+    #@property
+    #def attribute(self) -> int:
+    #    return type(self.opL.attribute)(max(self.opL.attribute.width,self.opR.attribute.width) + 1)
 
     @property
     def op_name(self):

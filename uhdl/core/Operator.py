@@ -263,7 +263,7 @@ def SelfXnor(I):
     return SelfXnorExpression(I)
 
 
-def Add(A,B):
+def Add(A,B,overflow=True):
     '''
     The circuit expressed by this function takes 
         
@@ -284,10 +284,10 @@ def Add(A,B):
     
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
-    return AddExpression(A,B)
+    return AddExpression(A,B,overflow=overflow)
 
 
-def Sub(A,B):
+def Sub(A,B,overflow=True):
     '''
     The circuit expressed by this function takes 
     
@@ -308,7 +308,7 @@ def Sub(A,B):
 
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
-    return SubExpression(A,B)
+    return SubExpression(A,B,overflow=overflow)
 
 def Mul(A,B):
     '''
