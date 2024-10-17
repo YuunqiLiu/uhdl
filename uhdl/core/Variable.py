@@ -1085,6 +1085,7 @@ class Bits(Constant):
 
     @property
     def lstring(self):
+        return self.rstring
         raise NotImplementedError
     
     def __eq__(self,other):
@@ -1244,13 +1245,13 @@ class CaseExpression(AlwaysCombExpression):
         str_list = ['case(%s)' % self.__select.rstring(lvalue)]
 
         for k,v in self.__case_pair:
-            logic_block     = v.bstring(lstring,assign_method)
+            logic_block     = v.bstring(lvalue, assign_method)
             logic_block[0]  = '%s : %s' % (k.rstring(lvalue),logic_block[0])
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
 
         if self.__default != None:
-            logic_block     = self.__default.bstring(lstring,assign_method)
+            logic_block     = self.__default.bstring(lvalue, assign_method)
             logic_block[0]  = 'default : %s' % logic_block[0]
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
