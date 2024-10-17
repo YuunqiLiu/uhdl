@@ -26,7 +26,10 @@ class DArb(Component):
         for i in range(channel_num):
             in_i = self.in_list[i] 
             bit_i = self.set('msg_update_en_bit_%s' % i, Wire(UInt(1)))
-            Assign(bit_i, AndList(in_i.vld, in_i.rdy, in_i.head))
+            if (self.topo_node.lock_arbiter):
+                Assign(bit_i, AndList(in_i.vld, in_i.rdy, in_i.head))
+            else:
+                Assign(bit_i, AndList(in_i.vld, in_i.rdy))
             self.msg_udpate_en_bit_list.append(bit_i)
         Assign(self.msg_update_en, Combine(*self.msg_udpate_en_bit_list))
         
@@ -41,16 +44,23 @@ class DArb(Component):
         self.arb_msg.rst_n      += self.rst_n
 
         # Arbiter lock
-        self.arb_unlock     = Wire(UInt(1))
-        self.arb_unlock     += AndList(self.out0.vld, self.out0.rdy, self.out0.tail)
-# 
-        self.arb_lock       = Wire(UInt(1))
-        self.arb_lock       += AndList(self.out0.vld, self.out0.rdy, self.out0.head)
 
-        self.arb_lock_reg   = Reg(UInt(1), self.clk, self.rst_n)
-        self.arb_lock_reg   +=  when(self.arb_unlock).then(UInt(1, 0)).\
-                                when(self.arb_lock).then(UInt(1, 1))
+        if (self.topo_node.lock_arbiter):
+            self.arb_unlock     = Wire(UInt(1))
+            self.arb_unlock     += AndList(self.out0.vld, self.out0.rdy, self.out0.tail)
+    # 
+            self.arb_lock       = Wire(UInt(1))
+            self.arb_lock       += AndList(self.out0.vld, self.out0.rdy, self.out0.head)
 
+            self.arb_lock_reg   = Reg(UInt(1), self.clk, self.rst_n)
+            self.arb_lock_reg   +=  when(self.arb_unlock).then(UInt(1, 0)).\
+                                    when(self.arb_lock).then(UInt(1, 1))
+        else:
+            self.arb_lock_reg   = Wire(UInt(1))
+            self.arb_lock_reg   += UInt(1,0)
+
+            self.arb_lock       = Wire(UInt(1))
+            self.arb_lock       += UInt(1,0)
 
 
 
@@ -62,8 +72,8 @@ class DArb(Component):
                 age_bit_masked_list.append(And(self.arb_msg.get('age_bits_row_%s' % i)[j], self.get('in%s_vld' % j)))
             bit_sel = self.set('bit_sel_%s' % i, Wire(UInt(1)))
 
-            if len(age_bit_masked_list) > 1:    bit_sel += OrList(*age_bit_masked_list)
-            else:                               bit_sel += age_bit_masked_list[0]
+            if len(age_bit_masked_list) > 1:    bit_sel += And(Inverse(OrList(*age_bit_masked_list)),self.get('in%s_vld' %i))
+            else:                               bit_sel += And(Inverse(age_bit_masked_list[0]),self.get('in%s_vld' %i))
             self.bit_sel_list.append(bit_sel)
 
 

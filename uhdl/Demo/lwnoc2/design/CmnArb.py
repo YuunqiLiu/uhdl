@@ -40,5 +40,6 @@ class CmnAgeMtx(Component):
             for j in range(width):
                 age_bit_row_list.append(self.get('age_bit_%s_%s' % (i, j)))
             age_bit_row = self.get("age_bits_row_%s" % i)
+            age_bit_row_list.reverse()
             age_bit_row += Combine(*age_bit_row_list)
 

@@ -5,7 +5,7 @@ from ....core import *
 from .Bundle import LwnocBundle
 
 
-class DMst2ch(Component):
+class DSlv2ch(Component):
 
     def __init__(self, node, fwd_pld_type=LwnocBundle, bwd_pld_type=LwnocBundle, forward=True):
         super().__init__()
