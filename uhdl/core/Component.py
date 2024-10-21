@@ -315,7 +315,7 @@ class Component(Root):
 #################################################################################
     
     def _run_lint_single_lvl(self, is_top=False):
-        Terminal.lint_info('Start to check module %s.' % self.module_name)
+        Terminal.lint_info('Start checking the instantiation of Component %s, instance %s.' % (self.module_name, self.full_hier))
         if not is_top:
             for lvalue in self.input_list:
                 if lvalue.rvalue is None:
@@ -454,11 +454,16 @@ class Component(Root):
     def expose_io(self, io_list, has_prefix=True):
         
         for io in io_list:
-            sub_inst = io._father
+            sub_inst = io.father_until_component()
+            #print('========================')
+            #print(io)
+            #print(sub_inst)
+            #print(sub_inst._father)
+            #print(self)
             if self != sub_inst._father:
                 raise Exception()
             if has_prefix==True:
-                new_io_name = '%s_%s' % (sub_inst.name, io.name)
+                new_io_name = '%s_%s' % (sub_inst.name, io.name_before_component)
             else:
                 new_io_name = '%s' % (io.name)
                 self.io_name_list = [io.name for io in self.io_list]
@@ -486,7 +491,7 @@ class Component(Root):
     def get_io(self, string):
         match_io_list = []
         for io in self.io_list:
-            if re.search(string, io.name):
+            if re.search(string, io.name_before_component):
                 match_io_list.append(io)
         return match_io_list
     

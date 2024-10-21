@@ -242,7 +242,9 @@ class VComponent(Component):
             #print(res)
 
     def _run_lint_single_lvl(self, is_top=False):
-        Terminal.lint_info('Start to check VComponent module %s.' % self.module_name)
+        Terminal.lint_info('Start checking the instantiation of VComponent %s, instance %s.' % (self.module_name, self.full_hier))
+
+        #Terminal.lint_info('Start to check VComponent module %s.' % self.module_name)
 
         # VComponent will only check input signal.
         # If VComp is a top module, nothing need to be checked.

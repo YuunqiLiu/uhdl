@@ -92,6 +92,10 @@ class Variable(Root):
         return "%s - %s(%s)" % (self.name_before(None), self.__class__.__name__, self.attribute)
 
     @property
+    def template(self):
+        return self.__class__
+
+    @property
     def attribute(self):
         raise NotImplementedError
 
@@ -670,13 +674,15 @@ class Input(IOSig):
 
         # check whether a io need outer def.
         # if this is not a point to point connection. connection opt will not be opened.
-        if not self.single_connection:  
-            # if self._rvalue == None:                            return None                        
-            if low_to_high_connection(self, self._rvalue):      res =  normal_res # None 
-            else:                                               res =  normal_res
+        # if not self.single_connection:  
+        #     # if self._rvalue == None:                            return None                        
+        #     if low_to_high_connection(self, self._rvalue):      res =  normal_res # None 
+        #     else:    
+        # 
+        #                                            res =  normal_res
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
-        elif isinstance(self._rvalue, IOSig):
+        if isinstance(self._rvalue, IOSig):
             if same_level_connection(self, self._rvalue): 
                 if not self._rvalue.single_connection:          res =  normal_res
                 else:                                           res =  simplified_res()
@@ -931,10 +937,18 @@ class Bundle(GroupVar):
 
     def exclude(self,*args):
         result = copy(self)
+
+        #print(self._var_list)
         for a in args:
-            delattr(result,a)
+
+            self._var_list.remove(a)    
+            delattr(result,a.name)
         return result
 
+
+
+
+    #print(args)
     # def __getitem__(self,*args):
     #     result = copy(self)
     #     for a in args:
