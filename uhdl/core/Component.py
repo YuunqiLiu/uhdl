@@ -75,7 +75,7 @@ class Component(Root):
         self._PARAM                 = PARAM_CONTAINER()
         self.__subclass_init_param_get()
         self._lint                  = None
-        self.output_dir             = '.'
+        self.output_dir             = '-'
         self._module_name_prefix    = ''
         self.circuit()
 
@@ -86,7 +86,10 @@ class Component(Root):
 
     @property
     def output_path(self):
-        return '%s/%s' % (self.output_dir, self.module_name)
+        if self.output_dir == '-':
+            return "./%s" % (self.module_name)
+        else:
+            return '%s' % (self.output_dir)
 
     def create(self, name, val):
         setattr(self, name, val)
@@ -275,8 +278,9 @@ class Component(Root):
         for c in self.component_list:
             c._create_all_vfile(path)
 
-    def generate_verilog(self,iteration=False):
-        FileProcess.refresh_directory(self.output_path)
+    def generate_verilog(self,iteration=False,refresh_dir=True):
+        if refresh_dir:
+            FileProcess.refresh_directory(self.output_path)
         if iteration:
             self._create_all_vfile(self.output_path)
         else:
@@ -296,7 +300,7 @@ class Component(Root):
         self._flist_path = os.path.join(path,name)
 
         if abs_path is True:
-            real_prefix = os.path.join(self.output_dir,self.module_name)
+            real_prefix = os.path.join(self.output_dir)
         else:
             real_prefix = os.path.join(prefix,self.module_name)
 

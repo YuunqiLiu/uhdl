@@ -197,8 +197,8 @@ class VComponent(Component):
 
         if p.returncode != 0:
             print('slang error detect.')
-            print('stdout: %s' % stdout)
-            print('stderr: %s' % stderr)
+            #print('stdout: %s' % stdout)
+            #print('stderr: %s' % stderr)
 
         # Parse AST
         self.parse_ast(ast_json, top)
@@ -270,3 +270,12 @@ class VComponent(Component):
 
     def _create_this_vfile(self, path):
         pass
+
+
+
+class RenderComponent(VComponent):
+
+
+    def __init__(self):
+        
+        super().__init__()
