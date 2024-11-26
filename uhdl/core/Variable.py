@@ -686,7 +686,8 @@ class Input(IOSig):
 
     #@property
     def rstring(self, lvalue):
-        if lvalue.father_until_component() is self.father_until_component():
+        if lvalue.father_until_component() is self.father_until_component() or \
+           lvalue.father_until_component().father is self.father_until_component():
             return self.name_before_component
         elif self._rvalue is not None:
             return self.name_until_component
@@ -697,6 +698,8 @@ class Input(IOSig):
     @property
     def _iosig_type_prefix(self):
         return 'input'
+
+
 
     def reverse(self):
         return Output(self.attribute)
@@ -731,28 +734,35 @@ class Input(IOSig):
         def simplified_res(): 
             return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
 
-
-
         # check whether a io need outer def.
         # if this is not a point to point connection. connection opt will not be opened.
-        if not self.single_connection:  
-            # if self._rvalue == None:                            return None                        
-            if low_to_high_connection(self, self._rvalue):      return None 
-            else:                                               return normal_res
+        # if not self.single_connection:  
+        #     if self._rvalue == None:                            return None                        
+        #     if low_to_high_connection(self, self._rvalue):      res =  normal_res # None 
+        #     else:                                               res =  normal_res
+        
         # check whether an io need outer def.
         # for input , only need to check input's rvalue.
-        elif isinstance(self._rvalue, IOSig):
+        if isinstance(self._rvalue, IOSig):
+            
             if same_level_connection(self, self._rvalue): 
-                if not self._rvalue.single_connection:          return normal_res
-                else:                                           return simplified_res()
-            elif low_to_high_connection(self, self._rvalue):    return None
-            else:                                               return normal_res
+                # if 'u_xbar_req_out0_rdy' in normal_res: 
+                #     print(self._rvalue.father_until_component())
+                #     print(self._rvalue._lvalue_list)
+                if not self._rvalue.single_connection:          res =  normal_res
+                else:                                           res =  simplified_res()
+            elif low_to_high_connection(self, self._rvalue):    res =  None
+            else:                                               res =  normal_res
         else:                                                   
-            if self._rvalue == None :                                           return None
-            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: return None # for input unconnect port
+            if self._rvalue == None :                                           res =  None
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: res =  None # for input unconnect port
             else:                                                               
-                if self._need_always:                           return normal_reg_res
-                else:                                           return normal_res
+                if self._need_always:                           res =  normal_reg_res
+                else:                                           res =  normal_res
+
+
+        #print(res)
+        return res
 
 
 
@@ -1090,6 +1100,7 @@ class Bits(Constant):
 
     @property
     def lstring(self):
+        return self.rstring
         raise NotImplementedError
     
     def __eq__(self,other):
@@ -1249,13 +1260,13 @@ class CaseExpression(AlwaysCombExpression):
         str_list = ['case(%s)' % self.__select.rstring(lvalue)]
 
         for k,v in self.__case_pair:
-            logic_block     = v.bstring(lstring,assign_method)
+            logic_block     = v.bstring(lvalue, assign_method)
             logic_block[0]  = '%s : %s' % (k.rstring(lvalue),logic_block[0])
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
 
         if self.__default != None:
-            logic_block     = self.__default.bstring(lstring,assign_method)
+            logic_block     = self.__default.bstring(lvalue, assign_method)
             logic_block[0]  = 'default : %s' % logic_block[0]
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
