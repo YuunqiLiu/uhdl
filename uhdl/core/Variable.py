@@ -624,7 +624,8 @@ class Input(IOSig):
 
     #@property
     def rstring(self, lvalue):
-        if lvalue.father_until_component() is self.father_until_component():
+        if lvalue.father_until_component() is self.father_until_component() or \
+           lvalue.father_until_component().father is self.father_until_component():
             return self.name_before_component
         elif self._rvalue is not None:
             return self.name_until_component
