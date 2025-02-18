@@ -153,6 +153,7 @@ class VComponent(Component):
 
     def __init__(self, file=None, top=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
         super().__init__()
+        self.enable_filelist_generation = False
         self._module_name = top
         ast_json = "%s.%s.ast.json" %(top, instance)
 
@@ -232,9 +233,18 @@ class VComponent(Component):
                     Terminal.lint_unconnect(lvalue)
 
 
+
+
     @property
     def module_name(self):
         return self._module_name
 
     def _create_this_vfile(self, path):
         pass
+
+
+    def _generate_filelist_core(self, prefix=''):
+        if self.enable_filelist_generation:
+            return super()._generate_filelist_core(prefix)
+        else:
+            return []
