@@ -292,8 +292,47 @@ class Variable(Root):
             str_list[0] = "always @(*) %s" % str_list[0]
             return str_list
         else:
-            if sig_name == None:    return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
-            else:                   return ['assign ' + str(self.lstring) + ' = ' + str(sig_name) + ';']
+            # For certain RHS forms, emit via a temporary wire for better Verilog compatibility.
+            rv = self._rvalue
+            # If slicing an expression (e.g., (a+b)[h:l] or (a*b)[h:l]), create a temp wire:
+            #   tmp = (expr);
+            #   assign lhs = tmp[h:l];
+            # This avoids tools rejecting part-selects on expressions and preserves widened widths.
+            try:
+                from . import Component as _CompMod  # local import to avoid cycles at top
+            except Exception:
+                _CompMod = None
+
+            if isinstance(rv, CutExpression) and isinstance(rv.op, Expression) and _CompMod is not None:
+                comp = self.father_until(_CompMod)
+                # Build a stable, unique temp name per LHS
+                base_tmp = f"{self.name_before_component}_cut_tmp"
+                tmp_name = base_tmp
+                # Avoid collision if the name already exists with a different width
+                idx = 0
+                while hasattr(comp, tmp_name):
+                    exist = getattr(comp, tmp_name)
+                    if isinstance(exist, Wire) and getattr(exist, 'attribute', None) == rv.op.attribute:
+                        tmp_wire = exist
+                        break
+                    idx += 1
+                    tmp_name = f"{base_tmp}_{idx}"
+                else:
+                    tmp_wire = comp.create(tmp_name, Wire(rv.op.attribute))
+                    # Connect temp wire to the expression
+                    tmp_wire += rv.op
+
+                if rv.hbound == rv.lbound:
+                    rhs_str = f"{tmp_wire.name_before_component}[{rv.lbound}]"
+                else:
+                    rhs_str = f"{tmp_wire.name_before_component}[{rv.hbound}:{rv.lbound}]"
+                return ['assign ' + str(self.lstring) + ' = ' + rhs_str + ';']
+
+            # Default simple assign path
+            if sig_name == None:
+                return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
+            else:
+                return ['assign ' + str(self.lstring) + ' = ' + str(sig_name) + ';']
 
 class Bundle(Root):
 
@@ -1444,6 +1483,44 @@ class CutExpression(Expression):
         # cut multi-bit, e.g. rstring[3:1] --> rstring[3:1]
         else:
             return self.op.rstring(lvalue) + '[%s:%s]' % ( self.hbound, self.lbound )
+
+    def bstring(self, lvalue, assign_method) -> str:
+        # For clocked assignments like reg <= expr[h:l], create temp wire approach:
+        #   always @(posedge clk) begin
+        #       tmp = expr;
+        #       reg <= tmp[h:l];
+        #   end
+        try:
+            from . import Component as _CompMod
+        except Exception:
+            _CompMod = None
+
+        if isinstance(self.op, Expression) and _CompMod is not None:
+            comp = lvalue.father_until(_CompMod)
+            # Build unique temp name
+            base_tmp = f"{lvalue.name_before_component}_bcut_tmp"
+            tmp_name = base_tmp
+            idx = 0
+            while hasattr(comp, tmp_name):
+                exist = getattr(comp, tmp_name)
+                if isinstance(exist, Wire) and getattr(exist, 'attribute', None) == self.op.attribute:
+                    tmp_wire = exist
+                    break
+                idx += 1
+                tmp_name = f"{base_tmp}_{idx}"
+            else:
+                tmp_wire = comp.create(tmp_name, Wire(self.op.attribute))
+                # Connect temp wire to the expression
+                tmp_wire += self.op
+
+            if self.hbound == self.lbound:
+                rhs_str = f"{tmp_wire.name_before_component}[{self.lbound}]"
+            else:
+                rhs_str = f"{tmp_wire.name_before_component}[{self.hbound}:{self.lbound}]"
+            return [" ".join([lvalue.lstring, assign_method, rhs_str]) + ";"]
+
+        # Default path: fall back to direct slicing
+        return [" ".join([lvalue.lstring, assign_method, self.rstring(lvalue)]) + ";"]
 
 class FanoutExpression(Expression):
 

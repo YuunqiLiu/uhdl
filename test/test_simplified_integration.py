@@ -49,8 +49,7 @@ class top(Component):
 def test_simplified_integration():
 
     t = top()
-    t.generate_verilog()
-    t.output_dir = 'test_build'
+    t.output_dir = 'test_build/test_simplified_integration'
     t.generate_verilog(iteration=True)
     t.generate_filelist(abs_path=True)
 

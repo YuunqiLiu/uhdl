@@ -1,4 +1,4 @@
-import os, inspect, re
+import os, inspect, re, subprocess
 from operator           import concat
 from functools          import reduce
 from collections.abc    import Iterable
@@ -21,23 +21,25 @@ class PARAM_CONTAINER(object):
     def __caculate_iterable_kv(self,iterable_param):
         res = 'S'
         for k,v in iterable_param.items():
-            #print(k, v)
-            res += '_%s_%s' % (k, v)
-            #if    isinstance(v,(int,float,bool,str,)):
-            #    res = res + '_%s_%s' %(k,v)
-            #elif  isinstance(v,(dict,)):
-            #    res = res + '_%s_%s' %(k,self.__caculate_iterable_kv(v))
-            #elif  isinstance(v,Iterable):
-            #    res = res + '_%s_%s' %(k,self.__caculate_iterable_varg(v))
-            #else:
-            #ID = id(v)
-            #if ID in UHDL_GLOBAL_PARAM_DICT:
-            #    seq = UHDL_GLOBAL_PARAM_DICT[ID]
-            #    UHDL_GLOBAL_PARAM_DICT[ID] = seq + 1
-            #else:
-            #    seq = 0
-            #    UHDL_GLOBAL_PARAM_DICT[ID] = 0
-            #    res = res + '_%s_%s%s' %(k,type(v).__name__,str(seq))
+            # Expand values into a stable token string without Python reprs
+            if isinstance(v, (int, float, bool, str)):
+                res += '_%s_%s' % (k, v)
+            elif isinstance(v, dict):
+                # recursively expand nested dicts
+                res += '_%s_%s' % (k, self.__caculate_iterable_kv(v))
+            elif isinstance(v, Iterable):
+                # expand lists/tuples/sets, etc.
+                res += '_%s_%s' % (k, self.__caculate_iterable_varg(v))
+            else:
+                # fallback to a stable type token
+                ID = id(v)
+                if ID in UHDL_GLOBAL_PARAM_DICT:
+                    seq = UHDL_GLOBAL_PARAM_DICT[ID]
+                    UHDL_GLOBAL_PARAM_DICT[ID] = seq + 1
+                else:
+                    seq = 0
+                    UHDL_GLOBAL_PARAM_DICT[ID] = 0
+                res += '_%s_%s%s' % (k, type(v).__name__, str(seq))
         res = res + '_E'
         return res
 
@@ -206,6 +208,9 @@ class Component(Root):
 
     @property
     def verilog_def(self):
+        # Pre-create temporary wires for cut expressions before generating wire declarations
+        self._ensure_temp_wires_for_cuts()
+        
         str_list = ['module %s %s' % (self.module_name,'#(' if self.param_list else '(')]
 
         # parameter define
@@ -244,7 +249,21 @@ class Component(Root):
         str_list += ['','endmodule']
         return str_list
 
-
+    def _ensure_temp_wires_for_cuts(self):
+        """Pre-create temporary wires for cut expressions to ensure they're declared before use."""
+        # Pre-generate all assignments to trigger temporary wire creation
+        temp_assignments = []
+        
+        # Generate assignments for this module's lvalue variables
+        for var in self.lvalue_list:
+            if var.verilog_assignment:
+                temp_assignments.extend(var.verilog_assignment)
+        
+        # Generate assignments for sub-module connections
+        for comp in self.component_list:
+            for var in comp.outer_lvalue_list:
+                if var.verilog_assignment:
+                    temp_assignments.extend(var.verilog_assignment)
     @property
     def verilog_inst(self):
         param_assignment_list = reduce(concat,[i.verilog_assignment for i in self.param_list],[])
@@ -384,11 +403,18 @@ class Component(Root):
 #################################################################################
 
     def run_slang_compile(self):
-        cmd = 'slang -f %s' % self._flist_path
-        print('Run command: %s' % cmd)
-        slang_res = os.system(cmd)
-        if slang_res != 0:
-            raise Exception('Slang compile error.')
+        cmd = ['slang', '-f', self._flist_path]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError as e:
+            raise Exception(f'Slang executable not found: {e}')
+
+        if res.returncode != 0:
+            print('Run command: slang -f %s' % self._flist_path)
+            out = (res.stdout or '').strip()
+            err = (res.stderr or '').strip()
+            details = '\n'.join([s for s in [out, err] if s])
+            raise Exception('Slang compile error.' + (f"\n{details}" if details else ''))
 
     def run_verilator_compile(self):
         cmd = 'verilator --lint-only -f %s' % self._flist_path

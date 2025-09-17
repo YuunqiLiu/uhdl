@@ -12,4 +12,6 @@ class Test(Component):
 
 
 def test_CompCircuit():
-    Test().compile()
+    t = Test()
+    t.output_dir = 'test_build/test_CompCircuit'
+    t.compile()

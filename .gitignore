@@ -5,3 +5,4 @@ docs/generated_verilog
 test_build
 UHDL.log
 case/Test
+.pytest_cache/
