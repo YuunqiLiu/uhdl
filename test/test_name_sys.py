@@ -41,8 +41,8 @@ class UniqueNameTestWrapper(Component):
 
 
 class TestNameSys(unittest.TestCase):
-    
+
     def test_unique_name(self):
         res = UniqueNameTestWrapper()
-        res.output_path = './Vout/Test/unique_name'
+        res.output_dir = 'test_build/Test/unique_name'
         res.generate_verilog(iteration=True)

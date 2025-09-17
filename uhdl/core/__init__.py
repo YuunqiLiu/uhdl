@@ -33,6 +33,7 @@ from .Operator      import Case,Cut,When,EmptyWhen,Fanout
 from .Variable      import Bundle
 from .              import Config
 from .              import UHDLException
+from .              import InternalTool
 from .MultiFileCoop import MultiFileExec, MultiFileScope
 
 

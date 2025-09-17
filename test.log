@@ -1,0 +1,18 @@
+
+
+
+
+
+
+
+RTL_Connect(a.intf1, b.intf1)
+
+
+a.intf1.io_list
+
+b.intf1.io_list = [Component().vld, Component().rdy, Component().data]
+
+
+Wrapper.intf1 = 
+
+AtomicNode.intf1 = 

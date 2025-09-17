@@ -1227,10 +1227,13 @@ class CaseExpression(AlwaysCombExpression):
         for k,v in case_pair:
             self.check_rvalue(k)
             self.check_rvalue(v)
-            if k.attribute != select.attribute:                         ErrAttrMismatch('All key in case_pair must have the same attribute select signal.',self.__select,*self.__case_key)
+            if k.attribute != select.attribute:
+                raise ErrAttrMismatch('All key in case_pair must have the same attribute select signal.', self.__select, *self.__case_key)
             if self.__attr is not None and v.attribute != self.__attr:  
-                if self.__default is None: ErrAttrMismatch('All value in case_pair must have same attribute.',*self.__case_value)
-                else                     : ErrAttrMismatch('All value in case_pair must have same attribute.',*self.__case_value,self.__default)
+                if self.__default is None:
+                    raise ErrAttrMismatch('All value in case_pair must have same attribute.', *self.__case_value)
+                else:
+                    raise ErrAttrMismatch('All value in case_pair must have same attribute.', *self.__case_value, self.__default)
             self.__attr = v.attribute 
 
     @property
@@ -1239,7 +1242,8 @@ class CaseExpression(AlwaysCombExpression):
 
     @property
     def __case_value(self):
-        return [x[0] for x in self.__case_value]
+        # return the value part of each (key, value) pair
+        return [x[1] for x in self.__case_pair]
 
     @property
     def attribute(self):
@@ -1249,13 +1253,14 @@ class CaseExpression(AlwaysCombExpression):
         str_list = ['case(%s)' % self.__select.rstring(lvalue)]
 
         for k,v in self.__case_pair:
-            logic_block     = v.bstring(lstring,assign_method)
+            # Generate the assignment block for this case using the provided lvalue
+            logic_block     = v.bstring(lvalue,assign_method)
             logic_block[0]  = '%s : %s' % (k.rstring(lvalue),logic_block[0])
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block
 
         if self.__default != None:
-            logic_block     = self.__default.bstring(lstring,assign_method)
+            logic_block     = self.__default.bstring(lvalue,assign_method)
             logic_block[0]  = 'default : %s' % logic_block[0]
             logic_block[1:] = ['    %s' %x for x in logic_block[1:]]
             str_list += logic_block

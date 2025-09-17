@@ -55,7 +55,8 @@ class ErrConstInWrong(ErrUHDL):
         self.int_or_string  = int_or_string
 
     def __str__(self):
-        return '%s is expected a "int" or "string" to declare width (and value),but get "%s"' % (self.bits.var_name,self.int_or_string.__class__.__name__)
+        name = getattr(self.bits, 'var_name', self.bits.__class__.__name__)
+        return '%s is expected a "int" or "string" to declare width (and value),but get "%s"' % (name, self.int_or_string.__class__.__name__)
 
 
 class ErrAttrTypeWrong(ErrUHDL):
