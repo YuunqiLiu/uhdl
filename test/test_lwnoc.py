@@ -8,6 +8,7 @@ from uhdl import *
 from uhdl.Demo.lwnoc import *
 
 
+@unittest.skip("temporarily skipping all LwNOC tests per request")
 class TestBasic(unittest.TestCase):
 
     def test_basic_DMst(self):

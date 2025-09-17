@@ -129,10 +129,19 @@ class Variable(Root):
         rvalue.add_lvalue(self)
 
         self_module = self.father_until(Component.Component)
-        if isinstance(rvalue, CutExpression):
-            rvalue_module = rvalue.op.father_until(Component.Component)
-        elif isinstance(rvalue, Expression):
-            rvalue_module = None
+        # Determine the module context of RHS for legality checks.
+        # - Pure Expressions have no owning component context (treat as None)
+        # - CutExpression may wrap either a Variable/Value (has component) or another Expression (no component)
+        if isinstance(rvalue, Expression):
+            if isinstance(rvalue, CutExpression):
+                r_op = rvalue.op
+                # If cutting an Expression, treat as expression (no module)
+                if isinstance(r_op, Expression) or not hasattr(r_op, 'father_until'):
+                    rvalue_module = None
+                else:
+                    rvalue_module = r_op.father_until(Component.Component)
+            else:
+                rvalue_module = None
         else:
             rvalue_module = rvalue.father_until(Component.Component)
 
