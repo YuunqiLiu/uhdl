@@ -1,7 +1,7 @@
 import json
 import re, os
 
-from subprocess import Popen
+from subprocess import Popen, PIPE
 from .Component import Component
 from .Variable  import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
 from .Terminal  import Terminal
@@ -158,10 +158,10 @@ class VComponent(Component):
         ast_json = "%s.%s.ast.json" %(top, instance)
 
         # Try slang
-        p = Popen(f'{slang_cmd} --version', shell=True)
-        p.communicate()
+        p = Popen(f'{slang_cmd} --version', shell=True, stdout=PIPE, stderr=PIPE)
+        _out, _err = p.communicate()
         if p.returncode != 0:
-            raise Exception('Cannot call slang to import verilog.')
+            raise Exception(f'Cannot call slang to import verilog. stderr: {(_err or b"").decode(errors="ignore").strip()}')
 
 
         # Spell the parameter into the format needed by slang
@@ -177,8 +177,10 @@ class VComponent(Component):
             source = file
         
         cmd = f'{slang_cmd} {slang_opts} {source} -ast-json {ast_json} -top {top} {param_config}'
-        p = Popen(cmd, shell=True)
-        p.communicate()
+        p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
+        _out, _err = p.communicate()
+        if p.returncode != 0:
+            raise Exception(f'Slang failed to parse design. stderr: {(_err or b"").decode(errors="ignore").strip()}')
 
 
         # Parse AST

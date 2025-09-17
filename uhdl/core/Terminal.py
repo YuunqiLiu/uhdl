@@ -6,7 +6,6 @@ class TerminalClass(object):
         self.logger = logging.getLogger('UHDL')
         self.logger.setLevel(logging.DEBUG)
         fpath = "UHDL.log"
-        print(fpath)
 
         if os.path.exists(fpath):
             os.remove(fpath)
