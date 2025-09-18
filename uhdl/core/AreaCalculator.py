@@ -14,7 +14,7 @@ They represent relative resource usage for comparison purposes.
 # Each type uses direct lambda functions for area calculation
 AREA_CALCULATORS = {
     # Register types - Reg objects always have attribute.width
-    'Reg': lambda reg: reg.attribute.width * 0.1,
+    'Reg': lambda reg: reg.attribute.width * 1,
     
     # Arithmetic Expression types
     'AddExpression'     : lambda expr: expr.attribute.width * 4.0,  # Carry lookahead adder: ~4 gates per bit (including group-level carry logic)

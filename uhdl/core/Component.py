@@ -147,10 +147,19 @@ class Component(Root):
         # Import here to avoid circular imports
         from .Variable import Expression
         
-        processed_expressions = set()
+        processed_expressions = []
+        
+        def _contains_identity(lst, obj):
+            """Check if object is already in list by identity (is operator)"""
+            for o in lst:
+                if o is obj:
+                    return True
+            return False
+        
         for lvalue in self.lvalue_list:
             if lvalue._rvalue is not None and isinstance(lvalue._rvalue, Expression):
-                processed_expressions.add(lvalue._rvalue)
+                if not _contains_identity(processed_expressions, lvalue._rvalue):
+                    processed_expressions.append(lvalue._rvalue)
         
         # Add collected expressions to instance list
         self._sub_instance_list.extend(processed_expressions)
