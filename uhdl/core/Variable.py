@@ -6,6 +6,7 @@ from copy       import copy
 import string
 from .Root      import Root
 from .          import Component
+from .AreaCalculator import get_area_for_object
 
 from .UHDLException import *
 from .InternalTool  import *
@@ -91,6 +92,20 @@ class Variable(Root):
     @property
     def attribute(self):
         raise NotImplementedError
+
+    def get_area(self) -> float:
+        """
+        Get the normalized area of this variable/circuit element.
+        Base implementation returns area based on signal width.
+        
+        Returns:
+            float: The normalized area of this circuit element
+        """
+        if hasattr(self, 'attribute') and hasattr(self.attribute, 'width'):
+            width = self.attribute.width
+            return width * 0.01  # Base area per bit
+        else:
+            return 0.01  # Default minimal area
 
     @property
     def var_name(self):
@@ -639,6 +654,16 @@ class Reg(SingleVar):
     def verilog_def_as_list(self):
         return ['reg','[%s:0]'%((self.attribute.width-1)),self.name_before_component]
 
+    def get_area(self) -> float:
+        """
+        Get the normalized area of this register.
+        Uses the unified area calculation system.
+        
+        Returns:
+            float: The normalized area of this register
+        """
+        return get_area_for_object(self)
+
 class Wire(WireSig):
     '''
     Wire is used to declare an internal signal wire in Component in UHDL.
@@ -672,6 +697,16 @@ class Wire(WireSig):
     def verilog_def_as_list(self):
         def_keyword = 'reg' if self._need_always else 'wire'
         return [def_keyword,'[%s:0]'%(self.attribute.width-1),self.name_before_component]
+
+    def get_area(self) -> float:
+        """
+        Get the normalized area of this wire.
+        Wires are just connections and have no physical area.
+        
+        Returns:
+            float: Always 0.0 for wires
+        """
+        return 0.0
 
 class IOSig(WireSig):
 
@@ -1042,6 +1077,27 @@ class Expression(Value):
     def op_name(self):
         raise NotImplementedError
 
+    @property
+    def fanin_list(self):
+        """
+        Get the list of input expressions that this expression depends on.
+        Should be implemented by each Expression subclass.
+        
+        Returns:
+            list: List of expressions that are inputs to this expression
+        """
+        return []  # Default: no fanins
+
+    def get_area(self) -> float:
+        """
+        Get the normalized area of this expression (combinational logic).
+        Uses the unified area calculation system.
+        
+        Returns:
+            float: The normalized area of this expression
+        """
+        return get_area_for_object(self)
+
 
 ################################################################################################################
 #
@@ -1050,7 +1106,11 @@ class Expression(Value):
 ################################################################################################################
 
 class Constant(Expression):
-    pass
+    
+    @property
+    def fanin_list(self):
+        """Constants have no fanins"""
+        return []
 
 class AnyConstant(Constant):
 
@@ -1305,6 +1365,16 @@ class CaseExpression(AlwaysCombExpression):
         return [x[1] for x in self.__case_pair]
 
     @property
+    def fanin_list(self):
+        """Case expressions have select signal, case keys and values as fanins"""
+        fanins = [self.__select]
+        fanins.extend(self.__case_key)
+        fanins.extend(self.__case_value)
+        if self.__default is not None:
+            fanins.append(self.__default)
+        return fanins
+
+    @property
     def attribute(self):
         return self.__attr
 
@@ -1419,6 +1489,16 @@ class WhenExpression(AlwaysCombExpression):
     Ohterwise = otherwise
 
     @property
+    def fanin_list(self):
+        """When expressions have conditions and actions as fanins"""
+        fanins = []
+        fanins.extend(self._condition_list)
+        fanins.extend(self._action_list)
+        if self._otherwise_action is not None:
+            fanins.append(self._otherwise_action)
+        return fanins
+
+    @property
     def attribute(self):
         if self._attribute == None: raise Exception('Unprocess Error.expression used before constructed.')
         return self._attribute
@@ -1463,6 +1543,11 @@ class CutExpression(Expression):
     @property
     def op_name(self):
         return 'Cut([*:*])'
+
+    @property
+    def fanin_list(self):
+        """Cut expressions have single fanin"""
+        return [self.op]
 
     @property
     def attribute(self) -> int:
@@ -1530,6 +1615,11 @@ class FanoutExpression(Expression):
         self._fanout = fanout
 
     @property
+    def fanin_list(self):
+        """Fanout expressions have single fanin"""
+        return [self._op]
+
+    @property
     def attribute(self):
         return type(self._op.attribute)(self._op.attribute.width * self._fanout)
 
@@ -1554,6 +1644,11 @@ class ListExpression(Expression):
         self.op_list = op_list
         for op in op_list:
             self.check_rvalue(op)
+
+    @property
+    def fanin_list(self):
+        """List expressions' fanins are all operands in op_list"""
+        return list(self.op_list)
 
     #@property
     #def string(self) -> str:
@@ -1684,6 +1779,11 @@ class OneOpExpression(Expression):
         self._op = op
         self.check_rvalue(op)
 
+    @property
+    def fanin_list(self):
+        """One-operand expressions have single fanin"""
+        return [self._op]
+
     #@property
     #def string(self) -> str:
     #    return '(%s%s)' % (self.op_str,self._op.string)
@@ -1778,6 +1878,11 @@ class TwoOpExpression(Expression):
         self.check_rvalue(opR)
         self.opL = opL
         self.opR = opR
+
+    @property
+    def fanin_list(self):
+        """Two-operand expressions have left and right fanins"""
+        return [self.opL, self.opR]
 
     #@property
     #def string(self) -> str:

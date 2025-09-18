@@ -79,6 +79,7 @@ class Component(Root):
         self._lint                  = None
         self.output_dir             = '.'
         self._module_name_prefix    = ''
+        self._sub_instance_list     = []  # List to store all circuit instances belonging to this component
         self.circuit()
 
 
@@ -125,6 +126,148 @@ class Component(Root):
 
     def get_circuit_list(self,iteration=False,has_self=True) -> list:
         return self.get_component_list(iteration,has_self) + self.get_io_list(iteration,has_self)
+
+    def update_instance_tree(self):
+        """
+        Update the instance tree for this component and all sub-components.
+        This method collects all circuit instances (storage + combinational logic) 
+        that belong to this component and stores them in _sub_instance_list.
+        Wire instances are excluded as they have no physical area.
+        """
+        # Clear the current instance list
+        self._sub_instance_list = []
+        
+        # Add registers (have physical area, exclude wires)
+        self._sub_instance_list.extend(self.reg_list)
+        
+        # Add all sub-components
+        self._sub_instance_list.extend(self.component_list)
+        
+        # Collect all combinational logic expressions from lvalue drivers
+        # Import here to avoid circular imports
+        from .Variable import Expression
+        
+        processed_expressions = set()
+        for lvalue in self.lvalue_list:
+            if lvalue._rvalue is not None and isinstance(lvalue._rvalue, Expression):
+                processed_expressions.add(lvalue._rvalue)
+        
+        # Add collected expressions to instance list
+        self._sub_instance_list.extend(processed_expressions)
+        
+        # Recursively update sub-components
+        for sub_component in self.component_list:
+            sub_component.update_instance_tree()
+    
+    def get_area(self) -> float:
+        """
+        Get the normalized area of this component.
+        Must call update_instance_tree() first to populate _sub_instance_list.
+        
+        Returns:
+            float: The normalized area of this component
+        """
+        total_area = 0.0
+        
+        # Calculate area from all instances in this component
+        # All objects in _sub_instance_list are guaranteed to have get_area() method
+        for instance in self._sub_instance_list:
+            total_area += instance.get_area()
+        
+        return total_area
+
+    def _generate_area_table(self, indent=0, table_rows=None):
+        """
+        Generate a hierarchical area report in table format.
+        Must call update_instance_tree() first to populate _sub_instance_list.
+        
+        Args:
+            indent: Current indentation level for hierarchy display
+            table_rows: List to accumulate table rows (used internally for recursion)
+        
+        Returns:
+            list: List of table rows [instance_name, module_name, area]
+        """
+        if table_rows is None:
+            table_rows = []
+        
+        prefix = "  " * indent
+        total_area = self.get_area()
+        
+        # Add this component to the table
+        # Use 'name' if available, otherwise use module_name, otherwise use class name
+        if hasattr(self, 'name') and self.name is not None:
+            display_name = self.name
+        elif hasattr(self, 'module_name') and self.module_name is not None:
+            display_name = self.module_name
+        else:
+            display_name = self.__class__.__name__
+            
+        instance_name = f"{prefix}{display_name}"
+        table_rows.append([instance_name, self.module_name, f"{total_area:.3f}"])
+        
+        # Process all instances in this component
+        from .Variable import Reg, Expression
+        
+        # Sort all instances by area (largest first)
+        sorted_instances = sorted(self._sub_instance_list, key=lambda x: x.get_area(), reverse=True)
+        
+        for instance in sorted_instances:
+            instance_area = instance.get_area()
+            child_prefix = "  " * (indent + 1)
+            if isinstance(instance, Reg):
+                reg_name = getattr(instance, 'name', 'unnamed_reg')
+                instance_name = f"{child_prefix}{reg_name}"
+                width = getattr(instance.attribute, 'width', 'N/A')
+                module_name = f"Reg[{width}]"
+                table_rows.append([instance_name, module_name, f"{instance_area:.3f}"])
+            elif isinstance(instance, Expression):
+                if instance_area == 0.0:
+                    continue  # Skip expressions with zero area
+                expr_type = type(instance).__name__
+                width = getattr(getattr(instance, 'attribute', None), 'width', 'N/A')
+                # Expression instance_name is just type name (no suffix)
+                instance_name = f"{child_prefix}{expr_type}"
+                module_name = f"{expr_type}[{width}]"
+                table_rows.append([instance_name, module_name, f"{instance_area:.3f}"])
+            elif isinstance(instance, Component):
+                instance._generate_area_table(indent + 1, table_rows)
+        
+        return table_rows
+
+    def report_area(self):
+        """
+        Generate a hierarchical area report in table format as string.
+        Must call update_instance_tree() first to populate _sub_instance_list.
+        
+        Returns:
+            str: Formatted area report table as string
+        """
+        table_rows = self._generate_area_table()
+        
+        # Calculate column widths for proper alignment
+        if not table_rows:
+            return "No area data available."
+        
+        max_name_width = max(len(row[0]) for row in table_rows)
+        max_module_width = max(len(row[1]) for row in table_rows)
+        max_area_width = max(len(row[2]) for row in table_rows)
+        
+        # Ensure minimum column widths
+        name_width = max(max_name_width, len("Instance Name"))
+        module_width = max(max_module_width, len("Module Name"))
+        area_width = max(max_area_width, len("Area"))
+        
+        # Build table header
+        header = f"{'Instance Name':<{name_width}} | {'Module Name':<{module_width}} | {'Area':>{area_width}}"
+        separator = "-" * len(header)
+        
+        # Build table rows
+        result_lines = [header, separator]
+        for instance_name, module_name, area in table_rows:
+            result_lines.append(f"{instance_name:<{name_width}} | {module_name:<{module_width}} | {area:>{area_width}}")
+        
+        return "\n".join(result_lines)
 
     @property
     def inter_sig_list(self) -> list:

@@ -1,4 +1,5 @@
 import unittest
+import os
 
 # pylint: disable=unused-wildcard-import
 from uhdl import *
@@ -10,12 +11,20 @@ from uhdl.Demo.RomFromFile.example_top import RomTop
 
 
 class TestDemos(unittest.TestCase):
+
     def test_bitfield_generate_verilog(self):
         top = BitfieldTop()
         top.output_dir = 'test_build/demos/Bitfield'
         top.generate_verilog(iteration=True)
         top.generate_filelist(abs_path=True)
         top.run_slang_compile()
+        
+        # Generate and save area report to file
+        area_report = top.report_area()
+        os.makedirs('test_build/demos/Bitfield/area_reports', exist_ok=True)
+        with open('test_build/demos/Bitfield/area_reports/bitfield_area_report.txt', 'w') as f:
+            f.write(area_report)
+        print("Bitfield area report saved to test_build/demos/Bitfield/area_reports/bitfield_area_report.txt")
 
     def test_dynamic_pipeline_generate_verilog(self):
         top = PipelineTop()
@@ -23,6 +32,13 @@ class TestDemos(unittest.TestCase):
         top.generate_verilog(iteration=True)
         top.generate_filelist(abs_path=True)
         top.run_slang_compile()
+        
+        # Generate and save area report to file
+        area_report = top.report_area()
+        os.makedirs('test_build/demos/DynamicPipeline/area_reports', exist_ok=True)
+        with open('test_build/demos/DynamicPipeline/area_reports/dynamic_pipeline_area_report.txt', 'w') as f:
+            f.write(area_report)
+        print("DynamicPipeline area report saved to test_build/demos/DynamicPipeline/area_reports/dynamic_pipeline_area_report.txt")
 
     def test_sparse_switch_generate_verilog(self):
         top = SparseSwitchTop()
@@ -30,6 +46,13 @@ class TestDemos(unittest.TestCase):
         top.generate_verilog(iteration=True)
         top.generate_filelist(abs_path=True)
         top.run_slang_compile()
+        
+        # Generate and save area report to file
+        area_report = top.report_area()
+        os.makedirs('test_build/demos/SparseSwitch/area_reports', exist_ok=True)
+        with open('test_build/demos/SparseSwitch/area_reports/sparse_switch_area_report.txt', 'w') as f:
+            f.write(area_report)
+        print("SparseSwitch area report saved to test_build/demos/SparseSwitch/area_reports/sparse_switch_area_report.txt")
 
     def test_rom_from_file_generate_verilog(self):
         top = RomTop()
@@ -37,3 +60,10 @@ class TestDemos(unittest.TestCase):
         top.generate_verilog(iteration=True)
         top.generate_filelist(abs_path=True)
         top.run_slang_compile()
+        
+        # Generate and save area report to file
+        area_report = top.report_area()
+        os.makedirs('test_build/demos/RomFromFile/area_reports', exist_ok=True)
+        with open('test_build/demos/RomFromFile/area_reports/rom_from_file_area_report.txt', 'w') as f:
+            f.write(area_report)
+        print("RomFromFile area report saved to test_build/demos/RomFromFile/area_reports/rom_from_file_area_report.txt")
