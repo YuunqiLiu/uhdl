@@ -6,14 +6,17 @@ def Case(select, casepair, default):
     Case is used to construct a parallel selection circuit,and the input of this function is
 
         rhs select    - UInt/SInt(k)
-        rhs casepair  - list[(UInt/SInt(k),UInt/SInt(v)),...,(UInt/SInt(k),UInt/SInt(v))]
+        rhs casepair  - list[(UInt/SInt(k),UInt/SInt(v)),...,(UInt/SInt(k),UInt/SInt(v))] 
+                        OR dict{UInt/SInt(k): UInt/SInt(v), ...}
         rhs default   - UInt/SInt(v)
 
     select is the selection signal.
 
-    casepair is a lookup table organized in the form of a list.Each item in this list is a tuple.
-    This tuple is used to express a mapping relationship. 
-    When sel is equal to the first value in the tuple, the output value of the circuit is the second value of the tuple.
+    casepair can be either:
+    1. A lookup table organized as a list of tuples. Each tuple expresses a mapping relationship.
+       When sel equals the first value in the tuple, the output is the second value of the tuple.
+    2. A dictionary where keys are selection values and values are corresponding outputs.
+       When sel equals a key, the output is the corresponding value.
 
     default is the default output value of the circuit. 
     When sel does not match any item in the lookup table, the circuit will output this value.
@@ -22,11 +25,15 @@ def Case(select, casepair, default):
     
         rhs O - UInt/SInt(v)
 
-    A typical example is:
+    Typical examples:
 
+    Using list of tuples:
         O += Case(sel,[(UInt(2,0),Ares),(UInt(2,1),Bres)],DFTres)
 
-    The corresponding behavior of this selection circuit example it expresses is 
+    Using dictionary:
+        O += Case(sel,{UInt(2,0):Ares, UInt(2,1):Bres}, DFTres)
+
+    Both examples correspond to the same behavior: 
 
         case(sel)
         2'b0:       O = Ares

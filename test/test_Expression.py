@@ -337,6 +337,25 @@ class TestExpression(TestValue):
         # value type mismatch
         self.ErrAttrMismatchTest(lambda s, kv, d: Case(s, kv, d), sel, [(UInt(2, 0), UInt(7, 0))], dft)
 
+    def test_Case_dict_input(self):
+        """Test CaseExpression with dict input"""
+        sel = Wire(UInt(2))
+        val_a = Wire(UInt(8))
+        val_b = Wire(UInt(8))
+        val_c = Wire(UInt(8))
+        default_val = Wire(UInt(8))
+
+        # Test with list of tuples (original format)
+        case_list = Case(sel, [(UInt(2,0), val_a), (UInt(2,1), val_b), (UInt(2,2), val_c)], default_val)
+        # Test with dict (new format)
+        case_dict = Case(sel, {UInt(2,0): val_a, UInt(2,1): val_b, UInt(2,2): val_c}, default_val)
+
+        self.assertEqual(case_list.attribute, case_dict.attribute)
+        self.assertEqual(len(case_list._CaseExpression__case_pair), len(case_dict._CaseExpression__case_pair))
+        dict_pairs = case_dict._CaseExpression__case_pair
+        self.assertIsInstance(dict_pairs, list)
+        self.assertTrue(all(isinstance(pair, tuple) and len(pair) == 2 for pair in dict_pairs))
+
     def test_Case_value_mismatch_without_default(self):
         # case values mismatch and default is None should raise
         sel = UInt(2, 0)

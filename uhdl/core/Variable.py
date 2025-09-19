@@ -1214,6 +1214,10 @@ class Bits(Constant):
     def __eq__(self,other):
         return True if type(self) == type(other) and self.width == other.width else False
 
+    def __hash__(self):
+        """Make Bits objects hashable so they can be used as dict keys."""
+        return hash((self.__class__.__name__, self.__width, self.__value))
+
     def __str__(self):
         return "%s(%s,%s)" % (self.__class__.__name__, self.width, self.value)
 
@@ -1333,9 +1337,14 @@ class CaseExpression(AlwaysCombExpression):
     def __init__(self,select,case_pair=[],default=None):
         super().__init__()
         self.__select    = select
-        self.__case_pair = case_pair
         self.__default   = default
         self.__attr      = None
+
+        # Convert dict input to list of tuples if needed
+        if isinstance(case_pair, dict):
+            self.__case_pair = list(case_pair.items())
+        else:
+            self.__case_pair = case_pair
 
         self.check_rvalue(select)
 
@@ -1343,7 +1352,7 @@ class CaseExpression(AlwaysCombExpression):
             self.check_rvalue(default)
             self.__attr = default.attribute
 
-        for k,v in case_pair:
+        for k,v in self.__case_pair:
             self.check_rvalue(k)
             self.check_rvalue(v)
             if k.attribute != select.attribute:
