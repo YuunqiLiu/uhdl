@@ -11,6 +11,19 @@ from uhdl.Demo.RomFromFile.example_top import RomTop
 
 
 class TestDemos(unittest.TestCase):
+    def test_fir_parallel_generate_verilog(self):
+        from uhdl.Demo.FIR.FIRParallel import FIRParallel
+        fir = FIRParallel(tap_num=8, data_width=16, coef_width=16)
+        fir.output_dir = 'test_build/demos/FIRParallel'
+        fir.generate_verilog(iteration=True)
+        fir.generate_filelist(abs_path=True)
+        fir.run_slang_compile()
+        # 生成并保存面积报告
+        area_report = fir.report_area()
+        os.makedirs('test_build/demos/FIRParallel/area_reports', exist_ok=True)
+        with open('test_build/demos/FIRParallel/area_reports/fir_parallel_area_report.txt', 'w') as f:
+            f.write(area_report)
+        print("FIRParallel area report saved to test_build/demos/FIRParallel/area_reports/fir_parallel_area_report.txt")
 
     def test_bitfield_generate_verilog(self):
         top = BitfieldTop()

@@ -171,11 +171,15 @@ class Component(Root):
     def get_area(self) -> float:
         """
         Get the normalized area of this component.
-        Must call update_instance_tree() first to populate _sub_instance_list.
+        Automatically calls update_instance_tree() if instance tree hasn't been built.
         
         Returns:
             float: The normalized area of this component
         """
+        # Check if instance tree has been built, if not, build it
+        if not hasattr(self, '_sub_instance_list') or not self._sub_instance_list:
+            self.update_instance_tree()
+            
         total_area = 0.0
         
         # Calculate area from all instances in this component
@@ -247,11 +251,15 @@ class Component(Root):
     def report_area(self):
         """
         Generate a hierarchical area report in table format as string.
-        Must call update_instance_tree() first to populate _sub_instance_list.
+        Automatically calls update_instance_tree() if instance tree hasn't been built.
         
         Returns:
             str: Formatted area report table as string
         """
+        # Check if instance tree has been built, if not, build it
+        if not hasattr(self, '_sub_instance_list') or not self._sub_instance_list:
+            self.update_instance_tree()
+        
         table_rows = self._generate_area_table()
         
         # Calculate column widths for proper alignment
