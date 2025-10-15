@@ -1064,6 +1064,48 @@ class IOGroup(GroupVar):
             setattr(reverse,i.name,i.reverse())
         return reverse
 
+class StructIOGroup(IOGroup):
+    """IOGroup with stable field order and name-based assignment for struct ports.
+
+    - Preserves declaration order for fields
+    - Assignment aligns by field name and direction, not by accidental sort
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._field_order = []  # preserve declaration order
+
+    def add_field(self, name, iosig):
+        setattr(self, name, iosig)
+        self._field_order.append(name)
+
+    @property
+    def io_list(self) -> list:
+        # Return fields by declaration order, not sorted by name
+        return [getattr(self, n) for n in self._field_order if hasattr(self, n)]
+
+    def __iadd__(self, rvalue):
+        # Require StructIOGroup on RHS for safe, name-based alignment
+        if not isinstance(rvalue, StructIOGroup):
+            raise ArithmeticError('A StructIOGroup expects assignment from a StructIOGroup.')
+        # Check fields match by name
+        rhs_fields = set(rvalue._field_order)
+        lhs_fields = set(self._field_order)
+        if lhs_fields != rhs_fields:
+            missing_lhs = rhs_fields - lhs_fields
+            missing_rhs = lhs_fields - rhs_fields
+            raise ArithmeticError(f'Struct field mismatch. Missing on LHS: {missing_lhs}, Missing on RHS: {missing_rhs}')
+        # Connect by name respecting directions like IOGroup
+        for name in self._field_order:
+            iol = getattr(self, name)
+            ior = getattr(rvalue, name)
+            if isinstance(iol, Input):
+                ior += iol
+            else:
+                iol += ior
+        object.__setattr__(self, '_rvalue', rvalue)
+        return self
+
 class Expression(Value):
 
     def __init__(self):

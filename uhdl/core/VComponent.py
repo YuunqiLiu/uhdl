@@ -3,7 +3,7 @@ import re, os
 
 from subprocess import Popen, PIPE
 from .Component import Component
-from .Variable  import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
+from .Variable  import Wire,IOSig,IOGroup,StructIOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
 from .Terminal  import Terminal
 
 class VParameter(object):
@@ -38,11 +38,22 @@ class VParameter(object):
 
 class VPort(object):
 
-    def __init__(self, ast_dict):
+    def __init__(self, ast_dict, type_aliases=None, struct_mode: str = 'auto'):
         self.name = ast_dict['name']
         self.direction = ast_dict['direction']
+        self._type_aliases = type_aliases or {}
+        self._struct_mode = struct_mode
         
-        type_string = ast_dict['type']        
+        type_string = ast_dict['type']
+        # detect struct types via inline 'struct packed{' or typedef alias
+        self.is_struct = self._is_struct_type(type_string)
+        self.struct_fields = []
+        if self.is_struct and self._struct_mode != 'packed':
+            # try to parse fields for group modeling; fallback to width-only
+            try:
+                self.struct_fields = self._parse_struct_fields(type_string)
+            except Exception:
+                self.struct_fields = []
         self.width = self.get_width(type_string)
 
         sign_res = re.search('signed',type_string)
@@ -88,6 +99,18 @@ class VPort(object):
         return parse_res
 
     def get_width(self, type_string):
+        # If this is a struct type, prefer summing parsed field widths
+        if getattr(self, 'is_struct', False):
+            fields = getattr(self, 'struct_fields', None)
+            if not fields:
+                # parse ad-hoc in case struct_mode prevented earlier parsing
+                try:
+                    fields = self._parse_struct_fields(type_string)
+                except Exception:
+                    fields = None
+            if fields:
+                return sum(int(f.get('width', 1)) for f in fields)
+        # Fallback: sum vector widths for simple types
         width = 0
         type_list = self.parse_type(type_string)
         for t in type_list:
@@ -127,7 +150,83 @@ class VPort(object):
             else:
                 return 1
 
+    def _is_struct_type(self, type_string: str) -> bool:
+        if 'struct packed' in type_string:
+            return True
+        # typedef alias case like pkg::my_struct_t or my_struct_t
+        base = type_string.strip()
+        # strip vector ranges
+        base = re.sub(r'\[[^\]]+\]', '', base)
+        # strip extra spaces
+        base = re.sub(r'\s+', ' ', base).strip()
+        # only a bare typename contains '::' or identifier
+        if '::' in base or base.isidentifier():
+            target = self._type_aliases.get(base)
+            if isinstance(target, str) and 'struct packed' in target:
+                return True
+        return False
+
+    def _parse_struct_fields(self, type_string: str):
+        # inline struct
+        target = None
+        if 'struct packed' in type_string:
+            target = type_string
+        else:
+            base = re.sub(r'\[[^\]]+\]', '', type_string).strip()
+            base = re.sub(r'\s+', ' ', base)
+            target = self._type_aliases.get(base)
+        if not target:
+            return []
+        # extract body: struct packed{...}
+        m = re.search(r'struct\s+packed\s*\{([^}]*)\}', target)
+        if not m:
+            return []
+        body = m.group(1)
+        # split by ';' and filter empties
+        decls = [d.strip() for d in body.split(';') if d.strip()]
+        fields = []
+        for d in decls:
+            # d like: logic [3:0] a  OR  pkg::enum_t state  OR  logic b
+            parts = d.split()
+            if not parts:
+                continue
+            name = parts[-1]
+            ts = d[: d.rfind(name)].strip()
+            signed = bool(re.search(r'\bsigned\b', ts))
+            # width from vector or typedef/enum
+            w = 1
+            vec = re.search(r'\[([0-9]+):([0-9]+)\]', ts)
+            if vec:
+                hi, lo = int(vec.group(1)), int(vec.group(2))
+                w = hi - lo + 1
+            else:
+                # typedef width via alias -> may use $bits registry in future
+                alias_target = self._type_aliases.get(ts)
+                if alias_target:
+                    # best-effort parse enum width: look for N'b
+                    m2 = re.search(r"(\d+)'[bodh]", alias_target)
+                    if m2:
+                        w = int(m2.group(1))
+            fields.append({'name': name, 'width': w, 'signed': signed})
+        return fields
+
     def create_uhdl_port(self):
+        # struct -> StructIOGroup if enabled and fields parsed
+        if getattr(self, 'is_struct', False) and self._struct_mode != 'packed' and self.struct_fields:
+            g = StructIOGroup()
+            for f in self.struct_fields:
+                width = f['width']
+                signed = f['signed']
+                if self.direction == 'Out':
+                    sig = Output(SInt(width)) if signed else Output(UInt(width))
+                elif self.direction == 'In':
+                    sig = Input(SInt(width)) if signed else Input(UInt(width))
+                elif self.direction == 'InOut':
+                    sig = Inout(SInt(width)) if signed else Inout(UInt(width))
+                else:
+                    raise Exception()
+                g.add_field(f['name'], sig)
+            return g
         if self.direction == "Out":
             if self.signed:
                 return Output(SInt(self.width))
@@ -151,10 +250,11 @@ class VPort(object):
 class VComponent(Component):
 
 
-    def __init__(self, file=None, top=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', **kwargs):
+    def __init__(self, file=None, top=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', struct_mode: str = 'auto', **kwargs):
         super().__init__()
         self.enable_filelist_generation = False
         self._module_name = top
+        self._struct_mode = struct_mode
         ast_json = "%s.%s.ast.json" %(top, instance)
 
         # Try slang
@@ -215,6 +315,36 @@ class VComponent(Component):
 
         parameter_list = []
         port_list = []
+        # Build type alias registry: map qualified/unqualified to target string
+        type_aliases = {}
+
+        # Walk all root members to collect TypeAlias with package context
+        def collect_aliases(node, pkg=None):
+            if isinstance(node, dict):
+                kind = node.get('kind')
+                name = node.get('name')
+                if kind == 'Package':
+                    for m in node.get('members', []):
+                        collect_aliases(m, pkg=name)
+                elif kind == 'TypeAlias':
+                    target = node.get('target')
+                    if name and target:
+                        qname = f"{pkg}::{name}" if pkg else name
+                        type_aliases[qname] = target
+                        # also map unqualified (best-effort)
+                        type_aliases[name] = target
+                else:
+                    for m in node.get('members', []) if isinstance(node.get('members'), list) else []:
+                        collect_aliases(m, pkg)
+        # gather from either top-level 'design' or 'members'
+        roots = []
+        if isinstance(data, dict) and 'design' in data and isinstance(data['design'], dict):
+            roots = [data['design']]
+        else:
+            roots = [data]
+        for r in roots:
+            for m in r.get('members', []) if isinstance(r.get('members'), list) else []:
+                collect_aliases(m, None)
 
         for member in top['members']:
             if member['kind'] == 'Parameter' and not member['isLocal']:
@@ -222,7 +352,7 @@ class VComponent(Component):
             if member['kind'] == 'Port':
                 port_list.append(member)
 
-        self._vport_list = [VPort(x) for x in port_list]
+        self._vport_list = [VPort(x, type_aliases=type_aliases, struct_mode=self._struct_mode) for x in port_list]
         self._vparam_list = [VParameter(x) for x in parameter_list]
 
         for vport in self._vport_list:

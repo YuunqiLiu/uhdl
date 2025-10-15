@@ -2,7 +2,7 @@
 __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'Assign','SmartAssign','Linkable','Exclude',
             'join_name',
-            'Component','VComponent',
+            'Component','VComponent','TemplateIP',
 
             'Input','Output','Inout','UInt','SInt','IOGroup','Parameter','Wire','Reg','AnyConstant',
             'And','Or','Greater','Less','GreaterEqual','LessEqual','NotEqual','Equal',
@@ -20,6 +20,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
 
 from .Component     import Component
 from .VComponent    import VComponent
+from .TemplateIP    import TemplateIP
 from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask,Exclude
 from .BasicFunction import join_name
 
