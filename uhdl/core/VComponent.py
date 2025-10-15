@@ -196,13 +196,22 @@ class VComponent(Component):
         with open(file,'r') as f:
             data = json.loads(f.read())
 
-        # get top instance
+        # get top instance (support legacy and newer slang JSON shapes)
         top = None
-        for member in data['members']:
-            if member['name'] == top_name:
-                top = member['body']
+        members = None
+        if isinstance(data, dict):
+            if 'members' in data and isinstance(data['members'], list):
+                members = data['members']
+            elif 'design' in data and isinstance(data['design'], dict) and isinstance(data['design'].get('members'), list):
+                members = data['design']['members']
+        if members is None:
+            raise KeyError("Invalid AST JSON: cannot find 'members' at top or under 'design'.")
+        for member in members:
+            if member.get('name') == top_name:
+                # some slang versions place instance body at 'body'
+                top = member.get('body') or member
         if top is None:
-            raise Exception()
+            raise Exception(f"Top instance '{top_name}' not found in AST JSON")
 
         parameter_list = []
         port_list = []
