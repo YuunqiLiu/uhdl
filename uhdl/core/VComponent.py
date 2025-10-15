@@ -95,7 +95,7 @@ class VPort(object):
         return width
 
     def get_enum_width(self, type_string):
-        width = re.search("\S+=(\d+)'[bodh]\d+[,]*", type_string)
+        width = re.search(r"\S+=(\d+)'[bodh]\d+[,]*", type_string)
         return int(width.groups()[0])
 
     # def get_struct_width(self, type_string):
@@ -119,7 +119,7 @@ class VPort(object):
         if '=' in type_string:
             return self.get_enum_width(type_string)
         else:
-            width_res = re.search('\[([0-9]+)\:([0-9]+)\]', type_string)
+            width_res = re.search(r'\[([0-9]+):([0-9]+)\]', type_string)
             if width_res:
                 high = int(width_res.groups()[0])
                 low = int(width_res.groups()[1])
