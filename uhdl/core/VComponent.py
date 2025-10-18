@@ -3,7 +3,7 @@ import re, os
 
 from subprocess import Popen, PIPE
 from .Component import Component
-from .Variable  import Wire,IOSig,IOGroup,StructIOGroup,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
+from .Variable  import Wire,IOSig,IOGroup,InputStructIO,OutputStructIO,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
 from .Terminal  import Terminal
 
 class VParameter(object):
@@ -211,9 +211,13 @@ class VPort(object):
         return fields
 
     def create_uhdl_port(self):
-        # struct -> StructIOGroup if enabled and fields parsed
+        # struct -> InputStructIO/OutputStructIO if enabled and fields parsed
         if getattr(self, 'is_struct', False) and self._struct_mode != 'packed' and self.struct_fields:
-            g = StructIOGroup()
+            # Calculate total width of all fields
+            total_width = sum(f['width'] for f in self.struct_fields)
+            
+            # Create field list
+            fields = []
             for f in self.struct_fields:
                 width = f['width']
                 signed = f['signed']
@@ -224,9 +228,17 @@ class VPort(object):
                 elif self.direction == 'InOut':
                     sig = Inout(SInt(width)) if signed else Inout(UInt(width))
                 else:
-                    raise Exception()
-                g.add_field(f['name'], sig)
-            return g
+                    sig = Input(UInt(width))
+                fields.append((f['name'], sig))
+            
+            # Create InputStructIO or OutputStructIO with total width as template
+            if self.direction == 'Out':
+                return OutputStructIO(UInt(total_width), fields=fields)
+            elif self.direction == 'In':
+                return InputStructIO(UInt(total_width), fields=fields)
+            else:
+                # InOut not supported for struct yet, fallback to InputStructIO
+                return InputStructIO(UInt(total_width), fields=fields)
         if self.direction == "Out":
             if self.signed:
                 return Output(SInt(self.width))

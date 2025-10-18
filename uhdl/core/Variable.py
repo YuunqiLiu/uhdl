@@ -28,6 +28,22 @@ def same_level_connection(a, b):
 def same_module_connection(a, b):
     return True if a.father_until_component() == b.father_until_component() else False
 
+def is_input_port(sig):
+    """Check if a signal is an input-type port (Input or InputStructIO)."""
+    # Forward declaration to avoid circular import
+    try:
+        return isinstance(sig, (Input, InputStructIO))
+    except NameError:
+        # Classes not defined yet, fallback to type name check
+        return type(sig).__name__ in ('Input', 'InputStructIO')
+
+def is_output_port(sig):
+    """Check if a signal is an output-type port (Output or OutputStructIO)."""
+    try:
+        return isinstance(sig, (Output, OutputStructIO))
+    except NameError:
+        return type(sig).__name__ in ('Output', 'OutputStructIO')
+
 #   Root
 #       Variable
 #       Bundle
@@ -201,7 +217,7 @@ class Variable(Root):
                 #    |          (lhs)<-   <-(rhs)          |
                 #    |                |   |                |
                 #    ------------------   ------------------
-                if not isinstance(self, Input):
+                if not is_input_port(self):
                     raise ErrUHDLStr("lhs %s's father Component and rhs %s's father Component are in same Component, so lhs should be Input." % (self.full_hier, rvalue.full_hier))
             elif self_module.father is rvalue_module:
                 # lhs in low level
@@ -214,7 +230,7 @@ class Variable(Root):
                 #    |    ---------       |
                 #    |                    |
                 #    ----------------------
-                if not isinstance(self, Input):
+                if not is_input_port(self):
                     raise ErrUHDLStr("lhs %s's father Component is in rhs %s's father Component, so lhs should be Input." % (self.full_hier, rvalue.full_hier))
             elif self_module is rvalue_module.father:
                 # rhs in low level
@@ -227,9 +243,9 @@ class Variable(Root):
                 #    |    ---------       |
                 #    |                    |
                 #    ----------------------
-                if not isinstance(rvalue, Output):
+                if not is_output_port(rvalue):
                     raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so rhs should be Output." % (self.full_hier, rvalue.full_hier))
-                if isinstance(self, Input):
+                if is_input_port(self):
                     raise ErrUHDLStr("rhs %s's father Component is in lhs %s's father Component, so lhs should not be Input." % (self.full_hier, rvalue.full_hier))
             else:
                 # illegal hier.
@@ -258,7 +274,7 @@ class Variable(Root):
                 else: 
                     pass
             #TODO: for inout assign
-            elif isinstance(self, Output) and isinstance(self._rvalue, Inout):
+            elif is_output_port(self) and isinstance(self._rvalue, Inout):
                 if self.father_until_component() == self._rvalue.father_until_component().father:
                     if len(self._rvalue._inout_connect_list)<=1:    return [] 
                     else:                                           pass
@@ -266,17 +282,17 @@ class Variable(Root):
                     pass
                 else:
                     return []
-            elif isinstance(self, Output) and isinstance(self._rvalue, Input) and\
+            elif is_output_port(self) and is_input_port(self._rvalue) and\
             self.father_until_component() == self._rvalue.father_until_component():
                 pass
-            elif isinstance(self._rvalue, Output) and\
+            elif is_output_port(self._rvalue) and\
             self.father_until_component() == self._rvalue.father_until_component() and not self.single_connection:
                 pass
             else:
                 return []
-        elif (isinstance(self, Input) and isinstance(self._rvalue, Wire)) or \
-             (isinstance(self, Wire) and isinstance(self._rvalue, Output)):
-                if isinstance(self, Input) and self._rvalue._rvalue==None:
+        elif (is_input_port(self) and isinstance(self._rvalue, Wire)) or \
+             (isinstance(self, Wire) and is_output_port(self._rvalue)):
+                if is_input_port(self) and self._rvalue._rvalue==None:
                     return [] # for input unconnect port
                 elif isinstance(self, Wire) and self._lvalue_list==[]:
                     if self._rvalue.single_connection:
@@ -879,7 +895,7 @@ class Output(IOSig):
     #@property
     def rstring(self, lvalue):
         # return self.name_until_component
-        if (lvalue.father_until_component() is self.father_until_component()) and not isinstance(lvalue, Input):
+        if (lvalue.father_until_component() is self.father_until_component()) and not is_input_port(lvalue):
             return self.name_before_component
         else:
             return self.name_until_component #self.__name
@@ -998,6 +1014,229 @@ class Inout(IOSig):
         else:
             return None
 
+class StructIO(IOSig):
+    """Base class for structured IO ports.
+    
+    StructIO is a single port with structured fields, treated as a whole unit
+    rather than a group of separate signals. It inherits from IOSig like Input/Output.
+    
+    Use InputStructIO for input struct ports and OutputStructIO for output struct ports.
+    
+    Attributes:
+        _field_order: list of field names in declaration order
+        _fields: dict mapping field name to IOSig instance
+        _struct_name: optional name of the struct type
+    """
+
+    def __init__(self, template, fields=None, struct_name=None):
+        """Initialize a StructIO port.
+        
+        Args:
+            template: Type template (usually a Constant like UInt)
+            fields: OrderedDict or list of (name, IOSig) tuples for struct fields
+            struct_name: Optional name of the struct typedef
+        """
+        super().__init__(template)
+        self._field_order = []
+        self._fields = {}  # name -> IOSig mapping
+        self._struct_name = struct_name
+        
+        if fields:
+            if isinstance(fields, dict):
+                for name, iosig in fields.items():
+                    self.add_field(name, iosig)
+            elif isinstance(fields, list):
+                for name, iosig in fields:
+                    self.add_field(name, iosig)
+    
+    def add_field(self, name, iosig):
+        """Add a field to this struct port."""
+        if not isinstance(iosig, IOSig):
+            raise TypeError(f"Field {name} must be an IOSig, got {type(iosig)}")
+        self._fields[name] = iosig
+        if name not in self._field_order:
+            self._field_order.append(name)
+    
+    @property
+    def _iosig_type_prefix(self):
+        """Return the Verilog port direction keyword. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement _iosig_type_prefix")
+    
+    @property
+    def lstring(self):
+        """Return the left-hand side string for assignments. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement lstring")
+    
+    def rstring(self, lvalue):
+        """Return the right-hand side string for assignments. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement rstring")
+    
+    def reverse(self):
+        """Create a reversed StructIO. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement reverse")
+    
+    def template(self):
+        """Create a template StructIO. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement template")
+    
+    @property
+    def verilog_inst(self):
+        """Generate the instantiation string. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement verilog_inst")
+    
+    @property
+    def verilog_outer_def_as_list_io(self):
+        """Generate the outer definition. Must be overridden by subclasses."""
+        raise NotImplementedError("StructIO subclasses must implement verilog_outer_def_as_list_io")
+
+class InputStructIO(StructIO):
+    """Input struct port - behaves like Input but for structured types."""
+    
+    @property
+    def _iosig_type_prefix(self):
+        return 'input'
+    
+    @property
+    def lstring(self):
+        return self.name_until_component
+    
+    def rstring(self, lvalue):
+        if lvalue.father_until_component() is self.father_until_component() or \
+           lvalue.father_until_component().father is self.father_until_component():
+            return self.name_before_component
+        elif self._rvalue is not None:
+            return self.name_until_component
+        else:
+            return self.name_before_component
+    
+    def reverse(self):
+        """Create an OutputStructIO with reversed fields."""
+        reversed_fields = [(name, self._fields[name].reverse()) for name in self._field_order]
+        return OutputStructIO(self.attribute, fields=reversed_fields, struct_name=self._struct_name)
+    
+    def template(self):
+        """Create a template InputStructIO with same structure."""
+        template_fields = [(name, self._fields[name].template()) for name in self._field_order]
+        return InputStructIO(self.attribute, fields=template_fields, struct_name=self._struct_name)
+    
+    @property
+    def verilog_inst(self):
+        """Generate the instantiation string - similar to Input logic."""
+        if isinstance(self._rvalue, IOSig) and self._rvalue.single_connection:
+            if low_to_high_connection(self, self._rvalue):
+                rvalue_sig_name = self._rvalue.name_before_component
+            elif same_level_connection(self, self._rvalue):
+                rvalue_sig_name = simplified_connection_naming_judgment(self._rvalue, self)
+        elif isinstance(self._rvalue, IOSig) and not self._rvalue.single_connection:
+            if low_to_high_connection(self, self._rvalue):
+                rvalue_sig_name = self._rvalue.name_before_component
+            elif same_level_connection(self, self._rvalue):
+                rvalue_sig_name = self.name_until_component
+        else:
+            if self._rvalue == None:
+                rvalue_sig_name = ''
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue == None:
+                rvalue_sig_name = self._rvalue.name_before_component
+            else:
+                rvalue_sig_name = self.name_until_component
+        return [".%s(%s)" % (self.name_before_component, rvalue_sig_name)]
+    
+    @property
+    def verilog_outer_def_as_list_io(self):
+        """Generate the outer definition - similar to Input logic."""
+        normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        
+        if isinstance(self._rvalue, IOSig):
+            if same_level_connection(self, self._rvalue):
+                if not self._rvalue.single_connection:
+                    res = normal_res
+                else:
+                    res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self._rvalue, self)]
+            elif low_to_high_connection(self, self._rvalue):
+                res = None
+            else:
+                res = normal_res
+        else:
+            if self._rvalue == None:
+                res = None
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue == None:
+                res = None
+            else:
+                if self._need_always:
+                    res = normal_reg_res
+                else:
+                    res = normal_res
+        return res
+
+class OutputStructIO(StructIO):
+    """Output struct port - behaves like Output but for structured types."""
+    
+    @property
+    def _iosig_type_prefix(self):
+        return 'output reg' if self._need_always else 'output'
+    
+    @property
+    def lstring(self):
+        return self.name_before_component
+    
+    def rstring(self, lvalue):
+        if (lvalue.father_until_component() is self.father_until_component()) and not is_input_port(lvalue):
+            return self.name_before_component
+        else:
+            return self.name_until_component
+    
+    def reverse(self):
+        """Create an InputStructIO with reversed fields."""
+        reversed_fields = [(name, self._fields[name].reverse()) for name in self._field_order]
+        return InputStructIO(self.attribute, fields=reversed_fields, struct_name=self._struct_name)
+    
+    def template(self):
+        """Create a template OutputStructIO with same structure."""
+        template_fields = [(name, self._fields[name].template()) for name in self._field_order]
+        return OutputStructIO(self.attribute, fields=template_fields, struct_name=self._struct_name)
+    
+    @property
+    def verilog_inst(self):
+        """Generate the instantiation string - similar to Output logic."""
+        if isinstance(self._des_lvalue, IOSig) and self.single_connection:
+            if low_to_high_connection(self, self._des_lvalue):
+                rvalue_sig_name = self._des_lvalue.name_before_component
+            elif same_level_connection(self, self._des_lvalue):
+                rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
+            else:
+                rvalue_sig_name = self.name_until_component
+        else:
+            if self._des_lvalue == None:
+                rvalue_sig_name = ''
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == [] and self.single_connection:
+                rvalue_sig_name = self._des_lvalue.name_before_component
+            else:
+                rvalue_sig_name = self.name_until_component
+        return [".%s(%s)" % (self.name_before_component, rvalue_sig_name)]
+    
+    @property
+    def verilog_outer_def_as_list_io(self):
+        """Generate the outer definition - similar to Output logic."""
+        normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        
+        if not self.single_connection:
+            return normal_res
+        elif isinstance(self._des_lvalue, IOSig):
+            if same_level_connection(self, self._des_lvalue):
+                return None
+            elif low_to_high_connection(self, self._des_lvalue):
+                return None
+            else:
+                return normal_res
+        else:
+            if self._des_lvalue == None:
+                return None
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == []:
+                return None
+            else:
+                return normal_res
+
 class GroupVar(Variable):
 
     def exclude(self,*str_list):
@@ -1022,7 +1261,7 @@ class IOGroup(GroupVar):
         #     raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
         else:
             for iol,ior in zip(self.io_list,rvalue.io_list):
-                if isinstance(iol,Input):
+                if is_input_port(iol):
                     ior += iol
                 else:
                     iol += ior
@@ -1099,7 +1338,7 @@ class StructIOGroup(IOGroup):
         for name in self._field_order:
             iol = getattr(self, name)
             ior = getattr(rvalue, name)
-            if isinstance(iol, Input):
+            if is_input_port(iol):
                 ior += iol
             else:
                 iol += ior
