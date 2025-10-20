@@ -638,7 +638,7 @@ class TemplateIP:
         if not self._component_build_completed:
             # Build with required parameters for components
             # Use default output_dir to avoid conflicts with custom builds
-            default_output_dir = os.path.join(os.getcwd(), "build", "deliver", self.name)
+            default_output_dir = os.path.join(os.getcwd(), "build", "temp", self.name)
             self.build(
                 output_dir=default_output_dir,
                 exclude_foundation_ip=False,
