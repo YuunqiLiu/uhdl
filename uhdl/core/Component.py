@@ -458,10 +458,23 @@ class Component(Root):
             self._create_this_vfile(self.output_path)
 
 
-    def _generate_filelist_core(self,prefix=''):
-        name_list = ["%s/%s.v" % (prefix,self.module_name)]
+    def _generate_filelist_core(self, prefix=''):
+        """
+        Generate filelist recursively, collecting .v files from this component and sub-components.
+        
+        Args:
+            prefix: Path prefix for generated files
+        
+        Returns:
+            List of file paths
+        """
+        # Add this component's .v file
+        name_list = ["%s/%s.v" % (prefix, self.module_name)]
+        
+        # Recursively collect from sub-components
         for component in self.component_list:
             name_list += component._generate_filelist_core(prefix=prefix)
+        
         return name_list
 
 
@@ -474,6 +487,11 @@ class Component(Root):
             real_prefix = os.path.join(self.output_dir,self.module_name)
         else:
             real_prefix = os.path.join(prefix,self.module_name)
+
+        # Reset TemplateComponent's tracking set at the start of filelist generation
+        # This ensures each top-level generate_filelist() call gets a fresh start
+        from .TemplateIP import TemplateComponent
+        TemplateComponent._filelist_template_ips.clear()
 
         file_list = self._generate_filelist_core(prefix=real_prefix)
         file_list.reverse()
