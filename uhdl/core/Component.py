@@ -324,7 +324,8 @@ class Component(Root):
     
     @property
     def io_list_exclude_inout(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input, Output, IOGroup))]
+        from .Variable import InputStructIO, OutputStructIO
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Input, Output, InputStructIO, OutputStructIO, IOGroup))]
 
 
     @property
@@ -353,6 +354,33 @@ class Component(Root):
         result = [i.verilog_outer_def_as_list_io for i in self.inout_list if i.verilog_outer_def_as_list_io != None]
         return result
 
+    def _collect_struct_packages(self):
+        """Collect all unique struct packages used in this component's IOs and sub-component IOs.
+        
+        Returns:
+            set: Set of package names that need to be imported
+        """
+        packages = set()
+        
+        # Import InputStructIO and OutputStructIO for type checking
+        from .Variable import InputStructIO, OutputStructIO
+        
+        # Check this component's IO ports
+        for io in self.io_list:
+            if isinstance(io, (InputStructIO, OutputStructIO)):
+                pkg = getattr(io, '_struct_package', None)
+                if pkg:
+                    packages.add(pkg)
+        
+        # Check sub-components' outer IO definitions (intermediate wires)
+        for comp in self.component_list:
+            for io in comp.io_list_exclude_inout:
+                if isinstance(io, (InputStructIO, OutputStructIO)):
+                    pkg = getattr(io, '_struct_package', None)
+                    if pkg:
+                        packages.add(pkg)
+        
+        return packages
 
     def __gen_aligned_signal_def(self,io_para_list):
         max_prefix_length = 0
@@ -371,7 +399,19 @@ class Component(Root):
         # Pre-create temporary wires for cut expressions before generating wire declarations
         self._ensure_temp_wires_for_cuts()
         
-        str_list = ['module %s %s' % (self.module_name,'#(' if self.param_list else '(')]
+        # Collect required packages from StructIO signals
+        required_packages = self._collect_struct_packages()
+        
+        # Generate module declaration with imports
+        if required_packages:
+            # Module with imports
+            str_list = ['module %s' % self.module_name]
+            for pkg in sorted(required_packages):  # Sort for deterministic output
+                str_list.append('\timport %s::*;' % pkg)
+            str_list.append('\t%s' % ('#(' if self.param_list else '('))
+        else:
+            # Module without imports (original format)
+            str_list = ['module %s %s' % (self.module_name, '#(' if self.param_list else '(')]
 
         # parameter define
         if self.param_list:

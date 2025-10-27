@@ -47,6 +47,14 @@ class VPort(object):
         type_string = ast_dict['type']
         # detect struct types via inline 'struct packed{' or typedef alias
         self.is_struct = self._is_struct_type(type_string)
+        self.struct_type_name = None  # Store the original struct type name
+        self.struct_package = None    # Store the package name if scoped
+        if self.is_struct:
+            # Extract the struct type name from type_string
+            self.struct_type_name = self._extract_struct_type_name(type_string)
+            # Extract package name if the type is scoped (pkg::type)
+            if self.struct_type_name and '::' in self.struct_type_name:
+                self.struct_package = self.struct_type_name.split('::')[0]
         self.struct_fields = []
         if self.is_struct and self._struct_mode != 'packed':
             # try to parse fields for group modeling; fallback to width-only
@@ -166,6 +174,27 @@ class VPort(object):
                 return True
         return False
 
+    def _extract_struct_type_name(self, type_string: str) -> str:
+        """Extract the struct type name from a type string.
+        
+        For typedef like 'lwnoc_lp_req_signal_t' or 'pkg::struct_t', returns the type name.
+        For inline 'struct packed{...}', returns None.
+        """
+        # Strip vector ranges first
+        base = type_string.strip()
+        base = re.sub(r'\[[^\]]+\]', '', base)
+        base = re.sub(r'\s+', ' ', base).strip()
+        
+        # If inline struct, no type name
+        if 'struct packed' in type_string:
+            return None
+        
+        # typedef case: just the identifier (with :: if scoped)
+        if '::' in base or base.isidentifier():
+            return base
+        
+        return None
+
     def _parse_struct_fields(self, type_string: str):
         # inline struct
         target = None
@@ -232,13 +261,16 @@ class VPort(object):
                 fields.append((f['name'], sig))
             
             # Create InputStructIO or OutputStructIO with total width as template
+            # Pass the struct_type_name and struct_package if available
+            struct_name = getattr(self, 'struct_type_name', None)
+            struct_package = getattr(self, 'struct_package', None)
             if self.direction == 'Out':
-                return OutputStructIO(UInt(total_width), fields=fields)
+                return OutputStructIO(UInt(total_width), fields=fields, struct_name=struct_name, struct_package=struct_package)
             elif self.direction == 'In':
-                return InputStructIO(UInt(total_width), fields=fields)
+                return InputStructIO(UInt(total_width), fields=fields, struct_name=struct_name, struct_package=struct_package)
             else:
                 # InOut not supported for struct yet, fallback to InputStructIO
-                return InputStructIO(UInt(total_width), fields=fields)
+                return InputStructIO(UInt(total_width), fields=fields, struct_name=struct_name, struct_package=struct_package)
         if self.direction == "Out":
             if self.signed:
                 return Output(SInt(self.width))

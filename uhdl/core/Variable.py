@@ -155,7 +155,11 @@ class Variable(Root):
 
 
         if self._rvalue != None:
-            Terminal.error('Error: %s has multi-driver'% self.full_hier)
+            existing_driver = self._rvalue.full_hier if hasattr(self._rvalue, 'full_hier') else str(self._rvalue)
+            new_driver = rvalue.full_hier if hasattr(rvalue, 'full_hier') else str(rvalue)
+            Terminal.error(f'Error: {self.full_hier} has multi-driver\n'
+                          f'  Existing driver: {existing_driver}\n'
+                          f'  New driver:      {new_driver}')
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
@@ -1028,18 +1032,20 @@ class StructIO(IOSig):
         _struct_name: optional name of the struct type
     """
 
-    def __init__(self, template, fields=None, struct_name=None):
+    def __init__(self, template, fields=None, struct_name=None, struct_package=None):
         """Initialize a StructIO port.
         
         Args:
             template: Type template (usually a Constant like UInt)
             fields: OrderedDict or list of (name, IOSig) tuples for struct fields
-            struct_name: Optional name of the struct typedef
+            struct_name: Optional name of the struct typedef (e.g., 'pkg::my_struct_t')
+            struct_package: Optional package name if the struct is scoped (e.g., 'pkg')
         """
         super().__init__(template)
         self._field_order = []
         self._fields = {}  # name -> IOSig mapping
         self._struct_name = struct_name
+        self._struct_package = struct_package
         
         if fields:
             if isinstance(fields, dict):
@@ -1144,15 +1150,24 @@ class InputStructIO(StructIO):
     @property
     def verilog_outer_def_as_list_io(self):
         """Generate the outer definition - similar to Input logic."""
-        normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
-        normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        # Use struct type name if available, otherwise use wire [width]
+        if self._struct_name:
+            normal_res = [self._struct_name, '', self.name_until_component]
+            normal_reg_res = [self._struct_name, '', self.name_until_component]
+        else:
+            normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+            normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
         
         if isinstance(self._rvalue, IOSig):
             if same_level_connection(self, self._rvalue):
                 if not self._rvalue.single_connection:
                     res = normal_res
                 else:
-                    res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self._rvalue, self)]
+                    # Use struct type name for simplified connection naming if available
+                    if self._struct_name:
+                        res = [self._struct_name, '', simplified_connection_naming_judgment(self._rvalue, self)]
+                    else:
+                        res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self._rvalue, self)]
             elif low_to_high_connection(self, self._rvalue):
                 res = None
             else:
@@ -1218,7 +1233,11 @@ class OutputStructIO(StructIO):
     @property
     def verilog_outer_def_as_list_io(self):
         """Generate the outer definition - similar to Output logic."""
-        normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        # Use struct type name if available, otherwise use wire [width]
+        if self._struct_name:
+            normal_res = [self._struct_name, '', self.name_until_component]
+        else:
+            normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
         
         if not self.single_connection:
             return normal_res
