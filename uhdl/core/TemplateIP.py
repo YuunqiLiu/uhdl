@@ -117,6 +117,35 @@ class TemplateComponent(VComponent):
         name_list.append(f"-f {filelist_path}")
         
         return name_list
+    
+    @property
+    def verilog_inst(self):
+        """
+        Override verilog_inst to exclude parameter assignments.
+        
+        TemplateComponents should be instantiated without parameters in the wrapper,
+        as the parameters are typically configured at the IP build stage.
+        
+        Returns:
+            List of strings for Verilog instantiation without parameters
+        """
+        from functools import reduce
+        
+        # Helper to concatenate lists
+        def concat(a, b):
+            return a + b
+        
+        # Generate instance without parameters
+        str_list = ['%s %s (' % (self.module_name, self.name)]
+        
+        # Add IO connections
+        str_list += self._Component__eol_append(
+            reduce(concat, [i.verilog_inst for i in self.io_list], []),
+            ',',
+            ');'
+        )
+        
+        return str_list
 
 
 @dataclass
