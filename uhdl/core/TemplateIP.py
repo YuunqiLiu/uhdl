@@ -35,6 +35,10 @@ class TemplateComponent(VComponent):
         comp = TemplateComponent(config=cfg, top="my_top_module")
     """
     
+    # Class-level set to track TemplateIPs during filelist generation
+    # Used by Component.generate_filelist() to avoid duplicate -f directives
+    _filelist_template_ips: set = set()
+    
     def __init__(self, config: 'TemplateIPConfig', top: str, instance: Optional[str] = None, **kwargs) -> None:
         """
         Create a TemplateComponent from a TemplateIPConfig and top module name.
@@ -78,13 +82,14 @@ class TemplateComponent(VComponent):
         Override _create_this_vfile to trigger TemplateIP release build.
         
         This method is called by Component.generate_verilog() -> _create_all_vfile() chain.
-        It triggers the parent TemplateIP to build the RTL files in the release directory.
+        It triggers the parent TemplateIP to build the RTL files in the specified directory.
         
         Args:
-            path: The base output directory from component hierarchy (ignored for TemplateIP)
+            path: The base output directory for the release build
         """
-        # Build using TemplateIP's release_output_dir
-        self._parent_template.release_build()
+        # Build using the provided path with TemplateIP name as subdirectory
+        output_path = os.path.join(path, self._parent_template.name)
+        self._parent_template.release_build(path=output_path)
     
     def _generate_filelist_core(self, prefix=''):
         """
@@ -458,23 +463,35 @@ class TemplateIP:
         
         return filelist_path
     
-    def release_build(self) -> str:
+    def release_build(self, path: Optional[str] = None) -> str:
         """
         Build in release directory.
         
         This method is executed only once during the lifetime of the TemplateIP instance.
         Subsequent calls will skip the build and return the existing filelist path.
         
+        Args:
+            path: Optional output directory path. If not provided, uses the default
+                  release_output_dir configured during initialization.
+        
         Returns:
             Path to the generated filelist in release directory
         """
+        # Use provided path or fall back to default release_output_dir
+        output_dir = path if path is not None else self._release_output_dir
+        output_dir = os.path.abspath(output_dir)
+        
         if self._release_build_completed:
             # Already built, return existing filelist
-            return os.path.join(self._release_output_dir, f"{self.prefix}filelist.f")
+            return os.path.join(output_dir, f"{self.prefix}filelist.f")
+        
+        # Update the release output dir if path was provided
+        if path is not None:
+            self._release_output_dir = output_dir
         
         # Perform the build
         filelist_path = self._build(
-            output_dir=self._release_output_dir,
+            output_dir=output_dir,
             exclude_foundation_ip=True,   # Exclude foundation IP
         )
         
