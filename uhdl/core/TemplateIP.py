@@ -85,10 +85,12 @@ class TemplateComponent(VComponent):
         It triggers the parent TemplateIP to build the RTL files in the specified directory.
         
         Args:
-            path: The base output directory for the release build
+            path: The base output directory for the release build (e.g., build/npu_dti_logic_topo)
         """
-        # Build using the provided path with TemplateIP name as subdirectory
-        output_path = os.path.join(path, self._parent_template.name)
+        # Go back one level (../) to place TemplateIP build at the same level as wrapper output
+        # Example: build/npu_dti_logic_topo -> build/
+        root_build_dir = os.path.dirname(path)
+        output_path = os.path.join(root_build_dir, self._parent_template.name)
         self._parent_template.release_build(path=output_path)
     
     def _generate_filelist_core(self, prefix=''):
