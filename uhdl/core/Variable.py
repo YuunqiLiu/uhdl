@@ -980,17 +980,43 @@ class Inout(IOSig):
 
     @property
     def verilog_inst(self):
-
-        min_lvl_var = self._inout_connect_list[0]
-        for var in self._inout_connect_list:
-            if var.level_until_root() < min_lvl_var.level_until_root():
-                min_lvl_var = var
+        # For inout port instantiation, we need to find the signal that is 
+        # visible in the parent module (the module that instantiates this component).
+        # The parent module is self's father's father.
         
-        # all signal in same level.
-        # if min_lvl_var.level_until_root() == self._inout_connect_list[0].level_until_root() and len(self._inout_connect_list)>1:
-        if len(self._inout_connect_list)>1:
-            return [".%s(%s)" %(self.name_before_component, min_lvl_var.name_until_component)]
-        # has high level io.
+        self_component = self.father_until(Component.Component)
+        parent_component = self_component.father if self_component else None
+        
+        if len(self._inout_connect_list) > 1:
+            # Find the signal that belongs to the parent module's scope
+            # Priority: 1. parent module's own IO, 2. sibling component's IO
+            target_var = None
+            
+            for var in self._inout_connect_list:
+                var_component = var.father_until(Component.Component)
+                if var_component is parent_component:
+                    # This var belongs to the parent module - best choice
+                    target_var = var
+                    break
+            
+            if target_var is None:
+                # Fallback: find a var that is a sibling (same parent)
+                for var in self._inout_connect_list:
+                    var_component = var.father_until(Component.Component)
+                    if var_component and var_component.father is parent_component and var_component is not self_component:
+                        target_var = var
+                        break
+            
+            if target_var is None:
+                # Last fallback: use the original logic (min level)
+                target_var = self._inout_connect_list[0]
+                for var in self._inout_connect_list:
+                    if var.level_until_root() < target_var.level_until_root():
+                        target_var = var
+            
+            # Use name_before_component because target_var is an IO of parent_component,
+            # and within the parent module, the signal is referenced by its own name.
+            return [".%s(%s)" %(self.name_before_component, target_var.name_before_component)]
         else:
             if self._need_assign is not None:
                 return [".%s(%s)" %(self.name_before_component, self._need_assign[0].name_before_component)]
