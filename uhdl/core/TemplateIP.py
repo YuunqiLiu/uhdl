@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import tempfile
+import hashlib
 import yaml
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -243,17 +244,22 @@ class TemplateIPConfig:
         if self._generated_macro_yaml and os.path.exists(self._generated_macro_yaml):
             return self._generated_macro_yaml
         
-        # Generate a new temporary YAML file
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.yaml',
-            prefix=f'{self.name}_macros_',
-            delete=False,
-            encoding='utf-8'
-        ) as f:
-            yaml.dump(self._macros, f, default_flow_style=False)
-            self._generated_macro_yaml = f.name
+        # Generate YAML content first to compute hash
+        yaml_content = yaml.dump(self._macros, default_flow_style=False)
         
+        # Compute deterministic hash suffix from content (use first 10 chars of hash)
+        content_hash = hashlib.md5(yaml_content.encode('utf-8')).hexdigest()[:10]
+        
+        # Create file with deterministic name in temp directory
+        temp_dir = tempfile.gettempdir()
+        yaml_filename = f'{self.name}_macros_{content_hash}.yaml'
+        yaml_path = os.path.join(temp_dir, yaml_filename)
+        
+        # Write the YAML file
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            f.write(yaml_content)
+        
+        self._generated_macro_yaml = yaml_path
         return self._generated_macro_yaml
 
     def validate(self) -> None:
@@ -635,7 +641,7 @@ class TemplateIP:
             if cli_ok:
                 raise
             raise RuntimeError("Cannot locate ip_builder CLI or local script to run.")
-        subprocess.run([sys.executable, script] + args, check=True)
+        self._run_subprocess_with_error_output([sys.executable, script] + args)
 
     def _find_local_ip_builder(self) -> Optional[str]:
         """Search upwards for a repo-local ip_builder/ip_builder.py script."""
@@ -650,6 +656,29 @@ class TemplateIP:
         if os.path.isfile(candidate):
             return candidate
         return None
+
+    def _run_subprocess_with_error_output(self, cmd: List[str]) -> None:
+        """Run a subprocess command and print stderr/stdout on failure."""
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"\n{'='*60}", file=sys.stderr, flush=True)
+            print(f"[TemplateIP] Command failed with exit code {result.returncode}:", file=sys.stderr, flush=True)
+            print(f"  {' '.join(cmd)}", file=sys.stderr, flush=True)
+            print(f"{'='*60}", file=sys.stderr, flush=True)
+            if result.stdout:
+                print(f"[TemplateIP] stdout:", file=sys.stderr, flush=True)
+                print(result.stdout, file=sys.stderr, flush=True)
+            if result.stderr:
+                print(f"[TemplateIP] stderr:", file=sys.stderr, flush=True)
+                print(result.stderr, file=sys.stderr, flush=True)
+            print(f"{'='*60}\n", file=sys.stderr, flush=True)
+            raise subprocess.CalledProcessError(
+                result.returncode, cmd, result.stdout, result.stderr
+            )
 
    
 class TemplateManager:
