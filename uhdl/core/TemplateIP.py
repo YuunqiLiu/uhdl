@@ -250,17 +250,45 @@ class TemplateIPConfig:
         # Compute deterministic hash suffix from content (use first 10 chars of hash)
         content_hash = hashlib.md5(yaml_content.encode('utf-8')).hexdigest()[:10]
         
-        # Create file with deterministic name in temp directory
-        temp_dir = tempfile.gettempdir()
+        # Create file with deterministic name in a writable temp directory.
+        # Prefer Python temp dir, then fall back to workspace build/temp and user cache.
         yaml_filename = f'{self.name}_macros_{content_hash}.yaml'
-        yaml_path = os.path.join(temp_dir, yaml_filename)
-        
-        # Write the YAML file
-        with open(yaml_path, 'w', encoding='utf-8') as f:
-            f.write(yaml_content)
-        
-        self._generated_macro_yaml = yaml_path
-        return self._generated_macro_yaml
+        candidate_dirs: List[str] = []
+
+        try:
+            candidate_dirs.append(tempfile.gettempdir())
+        except Exception:
+            pass
+
+        candidate_dirs.append(os.path.join(os.getcwd(), "build", "temp"))
+        candidate_dirs.append(os.path.join(os.path.expanduser("~"), ".cache", "templateip"))
+
+        # Deduplicate while preserving order
+        seen = set()
+        ordered_candidates = []
+        for d in candidate_dirs:
+            if d and d not in seen:
+                seen.add(d)
+                ordered_candidates.append(d)
+
+        last_error: Optional[Exception] = None
+        for out_dir in ordered_candidates:
+            try:
+                os.makedirs(out_dir, exist_ok=True)
+                yaml_path = os.path.join(out_dir, yaml_filename)
+                with open(yaml_path, 'w', encoding='utf-8') as f:
+                    f.write(yaml_content)
+                self._generated_macro_yaml = yaml_path
+                return self._generated_macro_yaml
+            except Exception as e:
+                last_error = e
+                continue
+
+        raise RuntimeError(
+            "Failed to create macro YAML in any temporary directory. "
+            f"Tried: {ordered_candidates}. "
+            "Please set TMPDIR to a writable path or pass an explicit macro_yaml path."
+        ) from last_error
 
     def validate(self) -> None:
         """Validate config consistency: exactly one of src_dir/filelist, and requireds."""
