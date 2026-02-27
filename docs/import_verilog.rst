@@ -122,3 +122,66 @@ VComponent does not check any of the input parameters, it just converts all of t
 
 1. configure the verilog compiler slang and generate the AST.
 2. Passing incoming parameter values to the verilog module at instantiation time.
+
+
+Import a module with struct ports
+---------------------------------
+
+UHDL supports importing SystemVerilog modules that use ``typedef struct packed`` ports.
+When a module port's type is a packed struct defined via ``typedef`` in a package,
+VComponent will automatically recognize the struct fields and create ``InputStructIO``
+or ``OutputStructIO`` ports instead of flat bit vectors.
+
+Consider the following SystemVerilog:
+
+.. code-block:: systemverilog
+
+    package mypkg;
+        typedef struct packed {
+            logic [3:0] a;
+            logic signed [7:0] b;
+            logic c;
+        } my_struct_t;
+    endpackage
+
+    module struct_user (
+        input  mypkg::my_struct_t  s_in,
+        output mypkg::my_struct_t  s_out
+    );
+    assign s_out = s_in;
+    endmodule
+
+Importing in UHDL:
+
+.. code-block:: python
+
+    vc = VComponent(file='struct_ports.v', top='struct_user')
+    # vc.s_in  is InputStructIO  with fields a(4), b(8, signed), c(1)
+    # vc.s_out is OutputStructIO with the same struct type
+
+    # Access fields via dot notation:
+    ref_a = vc.s_in.a    # StructFieldRef, width 4
+    ref_b = vc.s_in.b    # StructFieldRef, width 8, signed
+
+**Struct mode control:**
+
+- ``struct_mode='auto'`` (default): Struct typedef ports become ``InputStructIO``/``OutputStructIO``.
+- ``struct_mode='packed'``: All ports become flat ``Input``/``Output`` with the packed bit width (backward compatible).
+
+.. code-block:: python
+
+    # Packed mode: flatten to bit vectors
+    vc = VComponent(file='struct_ports.v', top='struct_user', struct_mode='packed')
+    # vc.s_in is Input(UInt(13)), vc.s_out is Output(UInt(13))
+
+**Type safety:**
+
+Struct connections enforce strict typedef identity. Two struct ports can only be connected
+if they share the same typedef name (e.g., ``mypkg::my_struct_t``). Ports with the same
+bit layout but different typedef names will be rejected.
+
+**Current limitations:**
+
+- Struct InOut ports are not yet supported (planned for a future release).
+- Nested structs and enum/union fields are imported as flat packed vectors.
+- Array-of-struct ports are not yet supported.

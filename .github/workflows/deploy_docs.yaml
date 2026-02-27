@@ -37,23 +37,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v2
   
-      - name: Cache Slang
-        id: cache-slang
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-slang
-        with:
-          path: slang
-          key: ${{ runner.os }}-build-${{ env.cache-name }}
-          restore-keys: |
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
-        
-      - if: ${{ steps.cache-slang.outputs.cache-hit != 'true' }}
-        name: Build Slang
+      - name: Install Dependencies
         run: |
-          source build_slang.sh
-        
+          pip install pyslang
+
       - name: Install Sphinx
         run: |
           pip install sphinx sphinx_rtd_theme sphinx_automodapi
