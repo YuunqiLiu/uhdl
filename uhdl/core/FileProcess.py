@@ -8,15 +8,6 @@ def file_list_dedup(file_list):
     return new_list 
 
 
-def relpath(a,b):
-    pass
-
-
-def check_vfile(func):
-    
-    pass
-
-
 def refresh_directory(path):
     if os.path.exists(path):
         shutil.rmtree(path)
@@ -29,20 +20,12 @@ def create_file(path,text):
     if os.path.exists(path):
         os.remove(path)
 
-
     fo = ExtensibleFileObject(keyword='UHDL')
     fo.write('\n'.join(text))
     fo.write_version('1.0.1')
     fo.save(path=path)
 
-    #with open(path,'w') as fp:
-    #    fp.write('\n'.join(text))
-
-    #fp.close()
-    #fp = open(path,'w')
-    
     return path
 
 if __name__ == "__main__":
-    #ListProcess.relpath('a/b/c','d/e/f')
     create_file('./test.v',['456'])

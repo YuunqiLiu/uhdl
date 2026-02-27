@@ -28,16 +28,12 @@ class HashableTextBlock(object):
         obj.update(str(self.text).encode('utf-8'))
         obj_digest = obj.hexdigest()
         return obj_digest
-        #my_md5 = hashlib.md5()#获取一个MD5的加密算法对象
-        #my_md5.update(str(str_in).encode('utf-8')) #得到MD5消息摘要
-        #my_md5_Digest = my_md5.hexdigest()#以16进制返回消息摘要，32位
 
     def clean(self):
         self.text = ''
 
     def write(self,text):
         self.text += text
-        #print(self.text)
 
 class VersionControlBlock(HashableTextBlock):
 
@@ -48,23 +44,10 @@ class VersionControlBlock(HashableTextBlock):
         res += '%s [%s:%s]\n'       % (self.tail,self.algorithm,self.get_hash())
         return res 
 
-    
-
-
-
-#h = HashableTextBlock(text='233')
-#print(h.wrap_text)
-
-class ParamBox(object):
-
-    def __init__(self):
-        pass
 
 class ExtensibleFileObject(object):
 
-
     def __init__(self,comment_prefix='//',keyword='EFO'):
-        #self.__version_control_blcok = HashableTextBlock()
         self.COMMENT_PREFIX = comment_prefix
         self.KEYWORD        = keyword
         self.__line_prefix    = '%s[%s]' %(self.COMMENT_PREFIX,self.KEYWORD)
@@ -89,14 +72,9 @@ class ExtensibleFileObject(object):
                                         '%s==========================================================================================================================\n'  % self.COMMENT_PREFIX +\
                                         '\n'
 
-        ##self.EDITABLE       = None
-        #self.CONTENT        = None
-        #self.__MD5          = None
-
     @property
     def line_prefix(self):
         return self.__line_prefix
-       # return '%s[%s]' % (self.COMMENT_PREFIX,self.KEYWORD)
 
     @property
     def CONTENT(self):
@@ -105,33 +83,12 @@ class ExtensibleFileObject(object):
     def CONTENT(self,value):
         self.__content_block.text = str(value)
 
-    #@property
-    #def USER_MESSAGE(self):
-    #    return self.__user_message_block.text
-    #@USER_MESSAGE.setter
-    #def USER_MESSAGE(self,value):
-    #    self.__user_message_block.text = str(value)
-
-    #@property
-    #def TOOL_MESSAGE(self):
-    #    return self.__tool_message_block.text
-    #@TOOL_MESSAGE.setter
-    #def TOOL_MESSAGE(self,value):
-    #    self.__tool_message_block.text = str(value)
-
     @property
     def PARAMETER(self):
         return self.__param_block.text
     @PARAMETER.setter
     def PARAMETER(self,value):
         self.__param_block.text = str(value)
-
-    #@property
-    #def USER_MESSAGE(self):
-    #    return self.__version_control_blcok.text
-    #@USER_MESSAGE.setter
-    #def USER_MESSAGE(self,value):
-    #    self.__version_control_blcok.text = str(value)
 
     def write(self,text):
         self.__content_block.write(text)
@@ -142,56 +99,23 @@ class ExtensibleFileObject(object):
     def write_tool_message(self,text):
         self.__tool_message_block.write(text)
 
-
     def get_MD5(self,str_in):
-        my_md5 = hashlib.md5()#获取一个MD5的加密算法对象
-        my_md5.update(str(str_in).encode('utf-8')) #得到MD5消息摘要
-        my_md5_Digest = my_md5.hexdigest()#以16进制返回消息摘要，32位
+        my_md5 = hashlib.md5()
+        my_md5.update(str(str_in).encode('utf-8'))
+        my_md5_Digest = my_md5.hexdigest()
         return my_md5_Digest
-
 
     def load(self):
         pass
 
     def save(self,path='test.v'):
-
-        
         self.write_tool_message('%sWritten by %s in %s' % (self.COMMENT_PREFIX,self.KEYWORD,time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
         self.__key_block.clean()
         self.__key_block.write('%sVersion Control Hash: %s\n' % (self.COMMENT_PREFIX,self.__version_control_block.get_hash()))
         self.__key_block.write('%sContent Hash: %s\n' % (self.COMMENT_PREFIX,self.__content_block.get_hash()))
         self.__key_block.write('%sParameter Hash: %s' % (self.COMMENT_PREFIX,self.__param_block.get_hash()))
-        
 
         with open(path,'w') as f:
-            # f.write(self.__file_explain)
-            # f.write('\n')
-# 
-            # f.write(self.__key_block.wrap_text)
-            # f.write('\n')
-            # f.write(self.__version_control_block.wrap_text)
-            # f.write('\n')
-            # f.write(self.__tool_message_block.wrap_text)
-            # f.write('\n')
-            # f.write(self.__user_message_block.wrap_text)
-            # f.write('\n')
             f.write(self.__content_block.wrap_text)
             f.write('\n')
-            #f.write(self.__param_block.wrap_text)
-            #f.write('\n')
-
-
-
-
-            #f.write(self.__user_message_block.wrap_text)
-            #f.write('\n')
-            #f.write(self.__tool_message_block.wrap_text)
-            #f.write('\n')
-# a = ExtensibleFileObject(keyword='UHDL')
-# a.write('module .....')
-# a.write_version('1.0.1')
-# a.save()
-# 
-# p = ParamBox()
-# print(p.__dict__)

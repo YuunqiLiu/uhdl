@@ -4,14 +4,17 @@ from functools  import reduce
 from operator   import concat
 from copy       import copy
 import string
+from collections import OrderedDict
 from .Root      import Root
-from .          import Component
 from .AreaCalculator import get_area_for_object
 
 from .UHDLException import *
 from .InternalTool  import *
 
-
+from .types import (TypeKernel, TypedConstant,
+                    StructType, StructConstant,
+                    EnumType, EnumConstant,
+                    UnionType, UnionConstant)
 
 def simplified_connection_naming_judgment(lvalue_obj, rvalue_obj):
     lvalue_comp_name = lvalue_obj.father_until_component().name
@@ -29,21 +32,18 @@ def same_module_connection(a, b):
     return True if a.father_until_component() == b.father_until_component() else False
 
 def is_input_port(sig):
-    """Check if a signal is an input-type port (Input or InputStructIO)."""
-    # Forward declaration to avoid circular import
+    """Check if a signal is an input-type port (Input, InputStructIO, InputEnumIO, or InputUnionIO)."""
     try:
-        return isinstance(sig, (Input, InputStructIO))
+        return isinstance(sig, (Input, InputStructIO, InputEnumIO, InputUnionIO))
     except NameError:
-        # Classes not defined yet, fallback to type name check
-        return type(sig).__name__ in ('Input', 'InputStructIO')
+        return type(sig).__name__ in ('Input', 'InputStructIO', 'InputEnumIO', 'InputUnionIO')
 
 def is_output_port(sig):
-    """Check if a signal is an output-type port (Output or OutputStructIO)."""
+    """Check if a signal is an output-type port (Output, OutputStructIO, OutputEnumIO, or OutputUnionIO)."""
     try:
-        return isinstance(sig, (Output, OutputStructIO))
+        return isinstance(sig, (Output, OutputStructIO, OutputEnumIO, OutputUnionIO))
     except NameError:
-        return type(sig).__name__ in ('Output', 'OutputStructIO')
-
+        return type(sig).__name__ in ('Output', 'OutputStructIO', 'OutputEnumIO', 'OutputUnionIO')
 #   Root
 #       Variable
 #       Bundle
@@ -96,11 +96,13 @@ class Variable(Root):
 
     @property
     def name_until_component(self):
-        return self.name_until(Component.Component)
+        from .Component import Component
+        return self.name_until(Component)
 
     @property
     def name_before_component(self):
-        return self.name_before(Component.Component)
+        from .Component import Component
+        return self.name_before(Component)
     
     def __str__(self):
         return "%s - %s(%s)" % (self.name_before(None), self.__class__.__name__, self.attribute)
@@ -129,9 +131,10 @@ class Variable(Root):
 
     # += as circuit assignment
     def __iadd__(self,rvalue):
+        from .Component import Component
         # check whether variable used in Assign belongs to component.
         # rvalue may be expression, so it's no need to check them.
-        if not isinstance(self.father, Component.Component):    
+        if not isinstance(self.father, Component):
             raise_ErrVarNotBelongComponent(self)
         if not isinstance(rvalue,Value):                        
             raise_ErrAssignTypeWrong(self,rvalue)
@@ -143,8 +146,8 @@ class Variable(Root):
         # check io first:
         #TODO: for inout assign
         if isinstance(self, Output) and isinstance(rvalue, Inout):
-            self_module = self.father_until(Component.Component)
-            rvalue_module = rvalue.father_until(Component.Component)
+            self_module = self.father_until(Component)
+            rvalue_module = rvalue.father_until(Component)
             if rvalue_module is not None and (self_module is rvalue_module or self_module is rvalue_module.father):
                 rvalue._need_assign = [self]
             
@@ -163,7 +166,7 @@ class Variable(Root):
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
-        self_module = self.father_until(Component.Component)
+        self_module = self.father_until(Component)
         # Determine the module context of RHS for legality checks.
         # - Pure Expressions have no owning component context (treat as None)
         # - CutExpression may wrap either a Variable/Value (has component) or another Expression (no component)
@@ -174,11 +177,11 @@ class Variable(Root):
                 if isinstance(r_op, Expression) or not hasattr(r_op, 'father_until'):
                     rvalue_module = None
                 else:
-                    rvalue_module = r_op.father_until(Component.Component)
+                    rvalue_module = r_op.father_until(Component)
             else:
                 rvalue_module = None
         else:
-            rvalue_module = rvalue.father_until(Component.Component)
+            rvalue_module = rvalue.father_until(Component)
 
         if isinstance(self, Inout) and isinstance(rvalue, Inout):
             # inout connection, give up all check.
@@ -333,13 +336,10 @@ class Variable(Root):
             #   tmp = (expr);
             #   assign lhs = tmp[h:l];
             # This avoids tools rejecting part-selects on expressions and preserves widened widths.
-            try:
-                from . import Component as _CompMod  # local import to avoid cycles at top
-            except Exception:
-                _CompMod = None
+            from .Component import Component
 
-            if isinstance(rv, CutExpression) and isinstance(rv.op, Expression) and _CompMod is not None:
-                comp = self.father_until(_CompMod)
+            if isinstance(rv, CutExpression) and isinstance(rv.op, Expression):
+                comp = self.father_until(Component)
                 # Build a stable, unique temp name per LHS
                 base_tmp = f"{self.name_before_component}_cut_tmp"
                 tmp_name = base_tmp
@@ -400,9 +400,10 @@ class Bundle(Root):
             super().__setattr__(name, value)
 
     def _setattr_hook(self):
-        component_father = self.father_until(Component.Component)
+        from .Component import Component
+        component_father = self.father_until(Component)
         for value in self._var_list:
-            setattr(component_father, value.name_before(Component.Component), value)
+            setattr(component_father, value.name_before(Component), value)
 
     @property
     def io_list(self) -> list:
@@ -564,7 +565,7 @@ class SingleVar(Variable, Value):
 
     def __init__(self,template):
         super().__init__()
-        if not isinstance(template, Constant): raise ErrAttrTypeWrong(self, template)
+        if not isinstance(template, (Constant, StructConstant, EnumConstant, UnionConstant)): raise ErrAttrTypeWrong(self, template)
         object.__setattr__(self, '_template', template)
         #self.__template = template
 
@@ -765,29 +766,13 @@ class IOSig(WireSig):
                 '' if self.attribute.width==1 else '[%s:0]' %(self.attribute.width-1),
                 self.name_before_component]
 
-class Input(IOSig):
-    '''
-    Input is used to declare an input port for Component in UHDL.
-
-    Input needs a UHDL constant as a template to declare its type. 
-    Its type will be consistent with the constants they use as templates.
-
-    A typical example is
-
-            Input(UInt(32))
-
-    The type of Input in this example will be consistent with UInt(32), 
-    that is, it is a 32-bit unsigned integer.
-    '''
-    #@property
-    #def is_lvalue(self):
-    #    pass
+class InputLikeMixin:
+    """Shared logic for all input-type IO ports (Input, InputStructIO, InputEnumIO, InputUnionIO)."""
 
     @property
     def lstring(self):
-        return self.name_until_component #self.__name
+        return self.name_until_component
 
-    #@property
     def rstring(self, lvalue):
         if lvalue.father_until_component() is self.father_until_component() or \
            lvalue.father_until_component().father is self.father_until_component():
@@ -795,21 +780,11 @@ class Input(IOSig):
         elif self._rvalue is not None:
             return self.name_until_component
         else:
-            return self.name_before_component #self.__name
-        # return self.name_before_component #self.__name?
+            return self.name_before_component
 
     @property
     def _iosig_type_prefix(self):
         return 'input'
-
-
-
-    def reverse(self):
-        return Output(self.attribute)
-
-    def template(self):
-        return Input(self.attribute)
-
 
     @property
     def verilog_inst(self):
@@ -824,53 +799,133 @@ class Input(IOSig):
             elif same_level_connection(self, self._rvalue):
                 rvalue_sig_name = self.name_until_component
         else:
-            if self._rvalue == None :                                               rvalue_sig_name = ''
-            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None:     rvalue_sig_name = self._rvalue.name_before_component # for input unconnect port
-            else:                                                                   rvalue_sig_name = self.name_until_component
-        return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
+            if self._rvalue == None:
+                rvalue_sig_name = ''
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue == None:
+                rvalue_sig_name = self._rvalue.name_before_component
+            else:
+                rvalue_sig_name = self.name_until_component
+        return [".%s(%s)" % (self.name_before_component, rvalue_sig_name)]
 
     @property
     def verilog_outer_def_as_list_io(self):
-        normal_res     = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        #simplified_res = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
-        normal_reg_res = ["reg", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        def simplified_res(): 
-            return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self._rvalue, self)]
+        normal_res, normal_reg_res = self._make_outer_def_res()
 
-        # check whether a io need outer def.
-        # if this is not a point to point connection. connection opt will not be opened.
-        # if not self.single_connection:  
-        #     if self._rvalue == None:                            return None                        
-        #     if low_to_high_connection(self, self._rvalue):      res =  normal_res # None 
-        #     else:                                               res =  normal_res
-        
-        # check whether an io need outer def.
-        # for input , only need to check input's rvalue.
         if isinstance(self._rvalue, IOSig):
-            
-            if same_level_connection(self, self._rvalue): 
-                # if 'u_xbar_req_out0_rdy' in normal_res: 
-                #     print(self._rvalue.father_until_component())
-                #     print(self._rvalue._lvalue_list)
-                if not self._rvalue.single_connection:          res =  normal_res
-                else:                                           res =  simplified_res()
-            elif low_to_high_connection(self, self._rvalue):    res =  None
-            else:                                               res =  normal_res
-        else:                                                   
-            if self._rvalue == None :                                           res =  None
-            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue==None: res =  None # for input unconnect port
-            else:                                                               
-                if self._need_always:                           res =  normal_reg_res
-                else:                                           res =  normal_res
-
-
-        #print(res)
+            if same_level_connection(self, self._rvalue):
+                if not self._rvalue.single_connection:
+                    res = normal_res
+                else:
+                    res = self._make_simplified_res(self._rvalue)
+            elif low_to_high_connection(self, self._rvalue):
+                res = None
+            else:
+                res = normal_res
+        else:
+            if self._rvalue == None:
+                res = None
+            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue == None:
+                res = None
+            else:
+                if self._need_always:
+                    res = normal_reg_res
+                else:
+                    res = normal_res
         return res
 
+    def _make_outer_def_res(self):
+        normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(other_sig, self)]
 
 
+class OutputLikeMixin:
+    """Shared logic for all output-type IO ports (Output, OutputStructIO, OutputEnumIO, OutputUnionIO)."""
 
-class Output(IOSig):
+    @property
+    def lstring(self):
+        return self.name_before_component
+
+    def rstring(self, lvalue):
+        if (lvalue.father_until_component() is self.father_until_component()) and not is_input_port(lvalue):
+            return self.name_before_component
+        else:
+            return self.name_until_component
+
+    @property
+    def _iosig_type_prefix(self):
+        return 'output reg' if self._need_always else 'output'
+
+    @property
+    def verilog_inst(self):
+        if isinstance(self._des_lvalue, IOSig) and self.single_connection:
+            if low_to_high_connection(self, self._des_lvalue):
+                rvalue_sig_name = self._des_lvalue.name_before_component
+            elif same_level_connection(self, self._des_lvalue):
+                rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
+            else:
+                rvalue_sig_name = self.name_until_component
+        else:
+            if self._des_lvalue == None:
+                rvalue_sig_name = ''
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == [] and self.single_connection:
+                rvalue_sig_name = self._des_lvalue.name_before_component
+            else:
+                rvalue_sig_name = self.name_until_component
+        return [".%s(%s)" % (self.name_before_component, rvalue_sig_name)]
+
+    @property
+    def verilog_outer_def_as_list_io(self):
+        normal_res, _ = self._make_outer_def_res()
+
+        if not self.single_connection:
+            return normal_res
+        elif isinstance(self._des_lvalue, IOSig):
+            if same_level_connection(self, self._des_lvalue):
+                return None
+            elif low_to_high_connection(self, self._des_lvalue):
+                return None
+            else:
+                return normal_res
+        else:
+            if self._des_lvalue == None:
+                return None
+            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == []:
+                return None
+            else:
+                return normal_res
+
+    def _make_outer_def_res(self):
+        normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self, other_sig)]
+
+class Input(InputLikeMixin, IOSig):
+    '''
+    Input is used to declare an input port for Component in UHDL.
+
+    Input needs a UHDL constant as a template to declare its type. 
+    Its type will be consistent with the constants they use as templates.
+
+    A typical example is
+
+            Input(UInt(32))
+
+    The type of Input in this example will be consistent with UInt(32), 
+    that is, it is a 32-bit unsigned integer.
+    '''
+    def reverse(self):
+        return Output(self.attribute)
+
+    def template(self):
+        return Input(self.attribute)
+class Output(OutputLikeMixin, IOSig):
     '''
     Output is used to declare an output port for Component in UHDL.
 
@@ -885,79 +940,11 @@ class Output(IOSig):
     that is, it is a 32-bit unsigned integer.
     '''
 
-    # def __init__(self,template):
-    #     super().__init__(template)
-    #     self._inout_connect_list = [self]
-    #@property
-    #def is_lvalue(self):
-    #    pass
-
-    @property
-    def lstring(self):
-        return self.name_before_component #self.__name
-
-    #@property
-    def rstring(self, lvalue):
-        # return self.name_until_component
-        if (lvalue.father_until_component() is self.father_until_component()) and not is_input_port(lvalue):
-            return self.name_before_component
-        else:
-            return self.name_until_component #self.__name
-
-    @property
-    def _iosig_type_prefix(self):
-        return 'output reg' if self._need_always else 'output'
-
     def reverse(self):
         return Input(self.attribute)
 
     def template(self):
         return Output(self.attribute)
-
-
-    @property
-    def verilog_inst(self):
-        if isinstance(self._des_lvalue, IOSig) and self.single_connection:
-            if low_to_high_connection(self, self._des_lvalue): 
-                rvalue_sig_name = self._des_lvalue.name_before_component
-            elif same_level_connection(self, self._des_lvalue):
-                rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
-            else:
-                pass
-            
-        else:
-            if self._des_lvalue==None:                                              rvalue_sig_name = ''
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[] and self.single_connection: 
-                rvalue_sig_name = self._des_lvalue.name_before_component # for output unconnect port
-
-            else:                                                                   
-                rvalue_sig_name = self.name_until_component
-
-        return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
-    
-
-
-    @property
-    def verilog_outer_def_as_list_io(self):
-        normal_res     = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        #simplified_res = ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), simplified_connection_naming_judgment(self,self._des_lvalue)]
-        
-        # check whether a io need outer def.
-        # if this is not a point to point connection. connection opt will not be opened.
-        if not self.single_connection:                              return normal_res
-        # start to check all signle connection cases.
-        # for all var to var case, connection will only define by rvalue.
-        elif isinstance(self._des_lvalue, IOSig):
-            if same_level_connection(self, self._des_lvalue):       return None
-            elif low_to_high_connection(self, self._des_lvalue):    return None
-            else:                                                   return normal_res
-        # for non var-to-var connection, return normal def.
-        # else:                                                       return normal_res
-        else:                                                   
-            if self._des_lvalue==None:                                                                         return None
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list==[]:                               return None # for output unconnect port
-            else:                                                                                              return normal_res
-
 class Inout(IOSig):
 
 
@@ -980,11 +967,12 @@ class Inout(IOSig):
 
     @property
     def verilog_inst(self):
+        from .Component import Component
         # For inout port instantiation, we need to find the signal that is 
         # visible in the parent module (the module that instantiates this component).
         # The parent module is self's father's father.
         
-        self_component = self.father_until(Component.Component)
+        self_component = self.father_until(Component)
         parent_component = self_component.father if self_component else None
         
         if len(self._inout_connect_list) > 1:
@@ -993,7 +981,7 @@ class Inout(IOSig):
             target_var = None
             
             for var in self._inout_connect_list:
-                var_component = var.father_until(Component.Component)
+                var_component = var.father_until(Component)
                 if var_component is parent_component:
                     # This var belongs to the parent module - best choice
                     target_var = var
@@ -1002,7 +990,7 @@ class Inout(IOSig):
             if target_var is None:
                 # Fallback: find a var that is a sibling (same parent)
                 for var in self._inout_connect_list:
-                    var_component = var.father_until(Component.Component)
+                    var_component = var.father_until(Component)
                     if var_component and var_component.father is parent_component and var_component is not self_component:
                         target_var = var
                         break
@@ -1044,35 +1032,116 @@ class Inout(IOSig):
         else:
             return None
 
+class StructFieldRef(Value):
+    """A reference to one field within a StructIO port.
+
+    Acts as an rvalue / lvalue that maps to ``port_name.field_name`` in Verilog
+    and carries the correct per-field attribute (UInt/SInt of field width).
+
+    Created lazily by ``StructIO.__getattr__`` when a field name is accessed.
+    """
+
+    def __init__(self, parent_struct_io, field_name, field_info):
+        super().__init__()
+        self._parent = parent_struct_io
+        self._field_name = field_name
+        self._field_info = field_info
+        # Build attribute from field info
+        w = field_info['width']
+        s = field_info.get('signed', False)
+        self._nested_struct_type = field_info.get('struct_type', None)
+        if self._nested_struct_type is not None:
+            self._attr = StructConstant(self._nested_struct_type)
+        else:
+            self._attr = SInt(w) if s else UInt(w)
+
+    def __getattr__(self, name):
+        """Support nested struct field access: parent.field.subfield."""
+        if name.startswith('_'):
+            raise AttributeError(name)
+        nested = object.__getattribute__(self, '_nested_struct_type')
+        if nested is not None and name in nested.fields:
+            finfo = nested.fields[name]
+            return StructFieldRef(self, name, finfo)
+        raise AttributeError(f"StructFieldRef '{self._field_name}' has no sub-field '{name}'")
+
+    @property
+    def attribute(self):
+        return self._attr
+
+    @property
+    def lstring(self):
+        # For nested refs (parent is also StructFieldRef), chain lstrings
+        if isinstance(self._parent, StructFieldRef):
+            return "%s.%s" % (self._parent.lstring, self._field_name)
+        return "%s.%s" % (self._parent.name_before_component, self._field_name)
+
+    def rstring(self, lvalue):
+        # For nested refs, chain rstrings
+        if isinstance(self._parent, StructFieldRef):
+            return "%s.%s" % (self._parent.rstring(lvalue), self._field_name)
+        return "%s.%s" % (self._parent.rstring(lvalue) if hasattr(self._parent, 'rstring') else self._parent.name_before_component, self._field_name)
+
+    def father_until_component(self):
+        return self._parent.father_until_component()
+
+    def father_until(self, T):
+        """Delegate to parent's father_until for hierarchy resolution."""
+        return self._parent.father_until(T)
+
+    @property
+    def name(self):
+        return "%s_%s" % (self._parent.name if self._parent.name else '', self._field_name)
+
+    @property
+    def full_hier(self):
+        return "%s.%s" % (self._parent.full_hier if hasattr(self._parent, 'full_hier') else str(self._parent), self._field_name)
+
+    def add_lvalue(self, dontcare):
+        pass
+
+
 class StructIO(IOSig):
     """Base class for structured IO ports.
-    
+
     StructIO is a single port with structured fields, treated as a whole unit
     rather than a group of separate signals. It inherits from IOSig like Input/Output.
-    
-    Use InputStructIO for input struct ports and OutputStructIO for output struct ports.
-    
+
+    Now carries a ``StructType`` for strict type identity checking and supports
+    field access via dot notation (``port.field_name`` returns a ``StructFieldRef``).
+
     Attributes:
         _field_order: list of field names in declaration order
         _fields: dict mapping field name to IOSig instance
         _struct_name: optional name of the struct type
+        _struct_type: StructType instance (the type kernel)
     """
 
-    def __init__(self, template, fields=None, struct_name=None, struct_package=None):
+    def __init__(self, template, fields=None, struct_name=None, struct_package=None, struct_type=None):
         """Initialize a StructIO port.
-        
+
         Args:
-            template: Type template (usually a Constant like UInt)
+            template: Type template (Constant like UInt, or StructConstant)
             fields: OrderedDict or list of (name, IOSig) tuples for struct fields
             struct_name: Optional name of the struct typedef (e.g., 'pkg::my_struct_t')
             struct_package: Optional package name if the struct is scoped (e.g., 'pkg')
+            struct_type: Optional StructType instance. If provided, fields/struct_name
+                         are derived from it (unless also explicitly given).
         """
         super().__init__(template)
         self._field_order = []
         self._fields = {}  # name -> IOSig mapping
         self._struct_name = struct_name
         self._struct_package = struct_package
-        
+        self._struct_type = struct_type  # StructType instance
+
+        # Derive from StructType if provided
+        if struct_type is not None:
+            if struct_name is None and struct_type.name:
+                self._struct_name = struct_type.name
+            if struct_package is None and struct_type.package:
+                self._struct_package = struct_type.package
+
         if fields:
             if isinstance(fields, dict):
                 for name, iosig in fields.items():
@@ -1080,7 +1149,7 @@ class StructIO(IOSig):
             elif isinstance(fields, list):
                 for name, iosig in fields:
                     self.add_field(name, iosig)
-    
+
     def add_field(self, name, iosig):
         """Add a field to this struct port."""
         if not isinstance(iosig, IOSig):
@@ -1088,199 +1157,413 @@ class StructIO(IOSig):
         self._fields[name] = iosig
         if name not in self._field_order:
             self._field_order.append(name)
-    
-    @property
-    def _iosig_type_prefix(self):
-        """Return the Verilog port direction keyword. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement _iosig_type_prefix")
-    
-    @property
-    def lstring(self):
-        """Return the left-hand side string for assignments. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement lstring")
-    
-    def rstring(self, lvalue):
-        """Return the right-hand side string for assignments. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement rstring")
-    
-    def reverse(self):
-        """Create a reversed StructIO. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement reverse")
-    
-    def template(self):
-        """Create a template StructIO. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement template")
-    
-    @property
-    def verilog_inst(self):
-        """Generate the instantiation string. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement verilog_inst")
-    
-    @property
-    def verilog_outer_def_as_list_io(self):
-        """Generate the outer definition. Must be overridden by subclasses."""
-        raise NotImplementedError("StructIO subclasses must implement verilog_outer_def_as_list_io")
 
-class InputStructIO(StructIO):
-    """Input struct port - behaves like Input but for structured types."""
-    
+    # ---------- dot-access for field references ----------
+    def __getattr__(self, name):
+        # Avoid recursion on internal attributes
+        if name.startswith('_'):
+            raise AttributeError(name)
+        # Check if it's a struct field
+        _fields = object.__getattribute__(self, '_fields') if '_fields' in self.__dict__ else {}
+        _struct_type = object.__getattribute__(self, '_struct_type') if '_struct_type' in self.__dict__ else None
+        if name in _fields:
+            # Get field info from struct_type if available
+            if _struct_type and name in _struct_type.fields:
+                finfo = _struct_type.fields[name]
+            else:
+                # Build field info from the IOSig
+                field_iosig = _fields[name]
+                finfo = {'width': field_iosig.attribute.width,
+                         'signed': isinstance(field_iosig.attribute, SInt)}
+            return StructFieldRef(self, name, finfo)
+        raise ErrStructFieldNotFound(self, name, list(_fields.keys()))
+
+    @property
+    def struct_type(self):
+        """Return the StructType for this port, or None."""
+        return self._struct_type
+
     @property
     def _iosig_type_prefix(self):
-        return 'input'
-    
+        raise NotImplementedError("StructIO subclasses must implement _iosig_type_prefix")
+
     @property
     def lstring(self):
-        return self.name_until_component
-    
+        raise NotImplementedError("StructIO subclasses must implement lstring")
+
     def rstring(self, lvalue):
-        if lvalue.father_until_component() is self.father_until_component() or \
-           lvalue.father_until_component().father is self.father_until_component():
-            return self.name_before_component
-        elif self._rvalue is not None:
-            return self.name_until_component
+        raise NotImplementedError("StructIO subclasses must implement rstring")
+
+    def reverse(self):
+        raise NotImplementedError("StructIO subclasses must implement reverse")
+
+    def reverse(self):
+        raise NotImplementedError("StructIO subclasses must implement reverse")
+
+    def template(self):
+        raise NotImplementedError("StructIO subclasses must implement template")
+
+    @property
+    def verilog_def(self):
+        """Generate port definition using struct type name."""
+        if self._struct_name:
+            return ['%s %s %s' % (self._iosig_type_prefix, self._struct_name, self.name_before_component)]
         else:
-            return self.name_before_component
+            return super().verilog_def
+
+    @property
+    def verilog_def_as_list(self):
+        if self._struct_name:
+            return [self._iosig_type_prefix, self._struct_name, self.name_before_component]
+        else:
+            return super().verilog_def_as_list
+class InputStructIO(InputLikeMixin, StructIO):
+    """Input struct port - behaves like Input but for structured types."""
     
     def reverse(self):
         """Create an OutputStructIO with reversed fields."""
         reversed_fields = [(name, self._fields[name].reverse()) for name in self._field_order]
-        return OutputStructIO(self.attribute, fields=reversed_fields, struct_name=self._struct_name)
+        return OutputStructIO(self.attribute, fields=reversed_fields, struct_name=self._struct_name, struct_package=self._struct_package, struct_type=self._struct_type)
     
     def template(self):
         """Create a template InputStructIO with same structure."""
         template_fields = [(name, self._fields[name].template()) for name in self._field_order]
-        return InputStructIO(self.attribute, fields=template_fields, struct_name=self._struct_name)
-    
-    @property
-    def verilog_inst(self):
-        """Generate the instantiation string - similar to Input logic."""
-        if isinstance(self._rvalue, IOSig) and self._rvalue.single_connection:
-            if low_to_high_connection(self, self._rvalue):
-                rvalue_sig_name = self._rvalue.name_before_component
-            elif same_level_connection(self, self._rvalue):
-                rvalue_sig_name = simplified_connection_naming_judgment(self._rvalue, self)
-        elif isinstance(self._rvalue, IOSig) and not self._rvalue.single_connection:
-            if low_to_high_connection(self, self._rvalue):
-                rvalue_sig_name = self._rvalue.name_before_component
-            elif same_level_connection(self, self._rvalue):
-                rvalue_sig_name = self.name_until_component
-        else:
-            if self._rvalue == None:
-                rvalue_sig_name = ''
-            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue == None:
-                rvalue_sig_name = self._rvalue.name_before_component
-            else:
-                rvalue_sig_name = self.name_until_component
-        return [".%s(%s)" % (self.name_before_component, rvalue_sig_name)]
-    
-    @property
-    def verilog_outer_def_as_list_io(self):
-        """Generate the outer definition - similar to Input logic."""
-        # Use struct type name if available, otherwise use wire [width]
+        return InputStructIO(self.attribute, fields=template_fields, struct_name=self._struct_name, struct_package=self._struct_package, struct_type=self._struct_type)
+
+    def _make_outer_def_res(self):
         if self._struct_name:
             normal_res = [self._struct_name, '', self.name_until_component]
             normal_reg_res = [self._struct_name, '', self.name_until_component]
         else:
             normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
             normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
-        
-        if isinstance(self._rvalue, IOSig):
-            if same_level_connection(self, self._rvalue):
-                if not self._rvalue.single_connection:
-                    res = normal_res
-                else:
-                    # Use struct type name for simplified connection naming if available
-                    if self._struct_name:
-                        res = [self._struct_name, '', simplified_connection_naming_judgment(self._rvalue, self)]
-                    else:
-                        res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self._rvalue, self)]
-            elif low_to_high_connection(self, self._rvalue):
-                res = None
-            else:
-                res = normal_res
-        else:
-            if self._rvalue == None:
-                res = None
-            elif isinstance(self._rvalue, Wire) and self._rvalue._rvalue == None:
-                res = None
-            else:
-                if self._need_always:
-                    res = normal_reg_res
-                else:
-                    res = normal_res
-        return res
+        return normal_res, normal_reg_res
 
-class OutputStructIO(StructIO):
-    """Output struct port - behaves like Output but for structured types."""
-    
-    @property
-    def _iosig_type_prefix(self):
-        return 'output reg' if self._need_always else 'output'
-    
-    @property
-    def lstring(self):
-        return self.name_before_component
-    
-    def rstring(self, lvalue):
-        if (lvalue.father_until_component() is self.father_until_component()) and not is_input_port(lvalue):
-            return self.name_before_component
+    def _make_simplified_res(self, other_sig):
+        if self._struct_name:
+            return [self._struct_name, '', simplified_connection_naming_judgment(other_sig, self)]
         else:
-            return self.name_until_component
+            return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(other_sig, self)]
+class OutputStructIO(OutputLikeMixin, StructIO):
+    """Output struct port - behaves like Output but for structured types."""
     
     def reverse(self):
         """Create an InputStructIO with reversed fields."""
         reversed_fields = [(name, self._fields[name].reverse()) for name in self._field_order]
-        return InputStructIO(self.attribute, fields=reversed_fields, struct_name=self._struct_name)
+        return InputStructIO(self.attribute, fields=reversed_fields, struct_name=self._struct_name, struct_package=self._struct_package, struct_type=self._struct_type)
     
     def template(self):
         """Create a template OutputStructIO with same structure."""
         template_fields = [(name, self._fields[name].template()) for name in self._field_order]
-        return OutputStructIO(self.attribute, fields=template_fields, struct_name=self._struct_name)
-    
-    @property
-    def verilog_inst(self):
-        """Generate the instantiation string - similar to Output logic."""
-        if isinstance(self._des_lvalue, IOSig) and self.single_connection:
-            if low_to_high_connection(self, self._des_lvalue):
-                rvalue_sig_name = self._des_lvalue.name_before_component
-            elif same_level_connection(self, self._des_lvalue):
-                rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
-            else:
-                rvalue_sig_name = self.name_until_component
-        else:
-            if self._des_lvalue == None:
-                rvalue_sig_name = ''
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == [] and self.single_connection:
-                rvalue_sig_name = self._des_lvalue.name_before_component
-            else:
-                rvalue_sig_name = self.name_until_component
-        return [".%s(%s)" % (self.name_before_component, rvalue_sig_name)]
-    
-    @property
-    def verilog_outer_def_as_list_io(self):
-        """Generate the outer definition - similar to Output logic."""
-        # Use struct type name if available, otherwise use wire [width]
+        return OutputStructIO(self.attribute, fields=template_fields, struct_name=self._struct_name, struct_package=self._struct_package, struct_type=self._struct_type)
+
+    def _make_outer_def_res(self):
         if self._struct_name:
             normal_res = [self._struct_name, '', self.name_until_component]
+            normal_reg_res = [self._struct_name, '', self.name_until_component]
         else:
             normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
-        
-        if not self.single_connection:
-            return normal_res
-        elif isinstance(self._des_lvalue, IOSig):
-            if same_level_connection(self, self._des_lvalue):
-                return None
-            elif low_to_high_connection(self, self._des_lvalue):
-                return None
-            else:
-                return normal_res
+            normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        if self._struct_name:
+            return [self._struct_name, '', simplified_connection_naming_judgment(self, other_sig)]
         else:
-            if self._des_lvalue == None:
-                return None
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == []:
-                return None
+            return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self, other_sig)]
+################################################################################################################
+#
+#   EnumIO – IO port classes for enum types
+#
+################################################################################################################
+
+class EnumIO(IOSig):
+    """Base class for enum-typed IO ports.
+
+    EnumIO is a single port with enum type semantics, treated as a whole unit.
+    It inherits from IOSig like Input/Output.
+
+    Carries an ``EnumType`` for strict type identity checking and supports
+    member access via the enum_type property.
+
+    Attributes:
+        _enum_name: optional name of the enum type
+        _enum_type: EnumType instance (the type kernel)
+        _enum_package: optional package name
+    """
+
+    def __init__(self, template, enum_name=None, enum_package=None, enum_type=None):
+        super().__init__(template)
+        self._enum_name = enum_name
+        self._enum_package = enum_package
+        self._enum_type = enum_type
+
+        if enum_type is not None:
+            if enum_name is None and enum_type.name:
+                self._enum_name = enum_type.name
+            if enum_package is None and enum_type.package:
+                self._enum_package = enum_type.package
+
+    @property
+    def enum_type(self):
+        """Return the EnumType for this port, or None."""
+        return self._enum_type
+
+    @property
+    def verilog_def(self):
+        """Generate port definition using enum type name."""
+        if self._enum_name:
+            return ['%s %s %s' % (self._iosig_type_prefix, self._enum_name, self.name_before_component)]
+        else:
+            return super().verilog_def
+
+    @property
+    def verilog_def_as_list(self):
+        if self._enum_name:
+            return [self._iosig_type_prefix, self._enum_name, self.name_before_component]
+        else:
+            return super().verilog_def_as_list
+
+
+class InputEnumIO(InputLikeMixin, EnumIO):
+    """Input enum port - behaves like Input but for enum types."""
+
+    def reverse(self):
+        return OutputEnumIO(self.attribute, enum_name=self._enum_name,
+                            enum_package=self._enum_package, enum_type=self._enum_type)
+
+    def template(self):
+        return InputEnumIO(self.attribute, enum_name=self._enum_name,
+                           enum_package=self._enum_package, enum_type=self._enum_type)
+
+    def _make_outer_def_res(self):
+        if self._enum_name:
+            normal_res = [self._enum_name, '', self.name_until_component]
+            normal_reg_res = [self._enum_name, '', self.name_until_component]
+        else:
+            normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+            normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        if self._enum_name:
+            return [self._enum_name, '', simplified_connection_naming_judgment(other_sig, self)]
+        else:
+            return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(other_sig, self)]
+
+class OutputEnumIO(OutputLikeMixin, EnumIO):
+    """Output enum port - behaves like Output but for enum types."""
+
+    def reverse(self):
+        return InputEnumIO(self.attribute, enum_name=self._enum_name,
+                           enum_package=self._enum_package, enum_type=self._enum_type)
+
+    def template(self):
+        return OutputEnumIO(self.attribute, enum_name=self._enum_name,
+                            enum_package=self._enum_package, enum_type=self._enum_type)
+
+    def _make_outer_def_res(self):
+        if self._enum_name:
+            normal_res = [self._enum_name, '', self.name_until_component]
+            normal_reg_res = [self._enum_name, '', self.name_until_component]
+        else:
+            normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+            normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        if self._enum_name:
+            return [self._enum_name, '', simplified_connection_naming_judgment(self, other_sig)]
+        else:
+            return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self, other_sig)]
+
+################################################################################################################
+#
+#   UnionIO – IO port classes for packed union types
+#
+################################################################################################################
+
+class UnionFieldRef(Value):
+    """A reference to one field within a UnionIO port.
+
+    Acts as an rvalue / lvalue that maps to ``port_name.field_name`` in Verilog
+    and carries the correct per-field attribute (UInt/SInt of field width).
+
+    Created lazily by ``UnionIO.__getattr__`` when a field name is accessed.
+    """
+
+    def __init__(self, parent_union_io, field_name, field_info):
+        super().__init__()
+        self._parent = parent_union_io
+        self._field_name = field_name
+        self._field_info = field_info
+        w = field_info['width']
+        s = field_info.get('signed', False)
+        self._attr = SInt(w) if s else UInt(w)
+
+    @property
+    def attribute(self):
+        return self._attr
+
+    @property
+    def lstring(self):
+        return "%s.%s" % (self._parent.name_before_component, self._field_name)
+
+    def rstring(self, lvalue):
+        return "%s.%s" % (self._parent.rstring(lvalue) if hasattr(self._parent, 'rstring') else self._parent.name_before_component, self._field_name)
+
+    def father_until_component(self):
+        return self._parent.father_until_component()
+
+    def father_until(self, T):
+        return self._parent.father_until(T)
+
+    @property
+    def name(self):
+        return "%s_%s" % (self._parent.name if self._parent.name else '', self._field_name)
+
+    @property
+    def full_hier(self):
+        return "%s.%s" % (self._parent.full_hier if hasattr(self._parent, 'full_hier') else str(self._parent), self._field_name)
+
+    def add_lvalue(self, dontcare):
+        pass
+
+
+class UnionIO(IOSig):
+    """Base class for union-typed IO ports.
+
+    UnionIO is a single port with union type semantics, treated as a whole unit.
+    It inherits from IOSig like Input/Output.
+
+    Carries a ``UnionType`` for strict type identity checking and supports
+    field access via dot notation (``port.field_name`` returns a ``UnionFieldRef``).
+
+    Attributes:
+        _field_order: list of field names in declaration order
+        _fields: dict mapping field name to IOSig instance
+        _union_name: optional name of the union type
+        _union_type: UnionType instance (the type kernel)
+    """
+
+    def __init__(self, template, fields=None, union_name=None, union_package=None, union_type=None):
+        super().__init__(template)
+        self._field_order = []
+        self._fields = {}
+        self._union_name = union_name
+        self._union_package = union_package
+        self._union_type = union_type
+
+        if union_type is not None:
+            if union_name is None and union_type.name:
+                self._union_name = union_type.name
+            if union_package is None and union_type.package:
+                self._union_package = union_type.package
+
+        if fields:
+            if isinstance(fields, dict):
+                for name, iosig in fields.items():
+                    self.add_field(name, iosig)
+            elif isinstance(fields, list):
+                for name, iosig in fields:
+                    self.add_field(name, iosig)
+
+    def add_field(self, name, iosig):
+        if not isinstance(iosig, IOSig):
+            raise TypeError(f"Field {name} must be an IOSig, got {type(iosig)}")
+        self._fields[name] = iosig
+        if name not in self._field_order:
+            self._field_order.append(name)
+
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
+        _fields = object.__getattribute__(self, '_fields') if '_fields' in self.__dict__ else {}
+        _union_type = object.__getattribute__(self, '_union_type') if '_union_type' in self.__dict__ else None
+        if name in _fields:
+            if _union_type and name in _union_type.fields:
+                finfo = _union_type.fields[name]
             else:
-                return normal_res
+                field_iosig = _fields[name]
+                finfo = {'width': field_iosig.attribute.width,
+                         'signed': isinstance(field_iosig.attribute, SInt)}
+            return UnionFieldRef(self, name, finfo)
+        raise AttributeError(f"UnionIO has no field '{name}'. Available: {list(_fields.keys())}")
+
+    @property
+    def union_type(self):
+        return self._union_type
+
+    @property
+    def verilog_def(self):
+        if self._union_name:
+            return ['%s %s %s' % (self._iosig_type_prefix, self._union_name, self.name_before_component)]
+        else:
+            return super().verilog_def
+
+    @property
+    def verilog_def_as_list(self):
+        if self._union_name:
+            return [self._iosig_type_prefix, self._union_name, self.name_before_component]
+        else:
+            return super().verilog_def_as_list
+
+
+class InputUnionIO(InputLikeMixin, UnionIO):
+    """Input union port - behaves like Input but for packed union types."""
+
+    def reverse(self):
+        reversed_fields = [(name, self._fields[name].reverse()) for name in self._field_order]
+        return OutputUnionIO(self.attribute, fields=reversed_fields, union_name=self._union_name,
+                             union_package=self._union_package, union_type=self._union_type)
+
+    def template(self):
+        template_fields = [(name, self._fields[name].template()) for name in self._field_order]
+        return InputUnionIO(self.attribute, fields=template_fields, union_name=self._union_name,
+                            union_package=self._union_package, union_type=self._union_type)
+
+    def _make_outer_def_res(self):
+        if self._union_name:
+            normal_res = [self._union_name, '', self.name_until_component]
+            normal_reg_res = [self._union_name, '', self.name_until_component]
+        else:
+            normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+            normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        if self._union_name:
+            return [self._union_name, '', simplified_connection_naming_judgment(other_sig, self)]
+        else:
+            return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(other_sig, self)]
+
+class OutputUnionIO(OutputLikeMixin, UnionIO):
+    """Output union port - behaves like Output but for packed union types."""
+
+    def reverse(self):
+        reversed_fields = [(name, self._fields[name].reverse()) for name in self._field_order]
+        return InputUnionIO(self.attribute, fields=reversed_fields, union_name=self._union_name,
+                            union_package=self._union_package, union_type=self._union_type)
+
+    def template(self):
+        template_fields = [(name, self._fields[name].template()) for name in self._field_order]
+        return OutputUnionIO(self.attribute, fields=template_fields, union_name=self._union_name,
+                             union_package=self._union_package, union_type=self._union_type)
+
+    def _make_outer_def_res(self):
+        if self._union_name:
+            normal_res = [self._union_name, '', self.name_until_component]
+            normal_reg_res = [self._union_name, '', self.name_until_component]
+        else:
+            normal_res = ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+            normal_reg_res = ["reg", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), self.name_until_component]
+        return normal_res, normal_reg_res
+
+    def _make_simplified_res(self, other_sig):
+        if self._union_name:
+            return [self._union_name, '', simplified_connection_naming_judgment(self, other_sig)]
+        else:
+            return ["wire", '' if self.attribute.width == 1 else '[%s:0]' % (self.attribute.width - 1), simplified_connection_naming_judgment(self, other_sig)]
 
 class GroupVar(Variable):
 
@@ -1910,13 +2193,10 @@ class CutExpression(Expression):
         #       tmp = expr;
         #       reg <= tmp[h:l];
         #   end
-        try:
-            from . import Component as _CompMod
-        except Exception:
-            _CompMod = None
+        from .Component import Component
 
-        if isinstance(self.op, Expression) and _CompMod is not None:
-            comp = lvalue.father_until(_CompMod)
+        if isinstance(self.op, Expression):
+            comp = lvalue.father_until(Component)
             # Build unique temp name
             base_tmp = f"{lvalue.name_before_component}_bcut_tmp"
             tmp_name = base_tmp
@@ -2458,262 +2738,3 @@ class OrExpression(TwoSameOpU1Expression):
     @property
     def op_str(self):
         return '||'
-
-
-
-
-
-    #     if op1_component.father is op2_component or op2_component.father is op1_component: 
-    #         # input  <= input  or
-    #         # output <= output
-
-
-
-    #         if op1.father_until(Component).father is op2.father:
-    #             son_op = op1
-    #             father_op = op2
-    #         else:
-    #             son_op = op2
-    #             father_op = op1
-
-    #         if isinstance(son_op, Input) and isinstance(father_op, Input):
-    #             son_op += father_op
-    #         elif isinstance(son_op, Output) and isinstance(father_op, Output):
-    #             father_op += son_op
-    #         else:
-    #             raise Exception()
-
-    #     elif op1.father_until(Component).father is op2.father_unril(Component).father or (outer and op1.father_until(Component) is op2.father_unril(Component)): 
-    #         # input <= output
-    #         if isinstance(op1, Input) and isinstance(op2, Output):
-    #             op1 += op2
-    #         elif isinstance(op1, Output) and isinstance(op2, Input):
-    #             op2 += op1
-    #         else:
-    #             raise Exception()
-
-
-    #     elif (not outer) and op1.father_until(Component) is op2.father_unril(Component):  
-    #         # output <= input
-    #         if isinstance(op1, Input) and isinstance(op2, Output):
-    #             op2 += op1
-    #         elif isinstance(op1, Output) and isinstance(op2, Input):
-    #             op1 += op2
-    #         else:
-    #             raise Exception()
-
-    #     else:
-    #         raise Exception('op1 %s and op2 %s can not connect.' % (op1, op2))
-
-
-
-
-
-
-
-        #internal
-        #same_lvl
-        #high_lvl
-        #constant
-        #self_module = self.father_until(Component.Component)
-        #ravlue_module = rvalue.father_until(Component.Component)
-        # self_module = self.father_until(Component.Component)
-        # if isinstance(rvalue,CutExpression):
-        #     rvalue_module = rvalue.op.father_until(Component.Component)
-        # elif isinstance(rvalue,Expression):
-        #     rvalue_module = self_module
-        # else:
-        #     rvalue_module = rvalue.father_until(Component.Component)
-        # # visible and direction check
-        # if self_module is rvalue_module:
-        #     if not isinstance(self,(Reg,Wire,Output,Inout)):
-        #         raise ErrUHDLStr("rvalue(%s) is not a instance of Reg or Wire or Output."%(rvalue))
-        #     pass
-        # elif self_module.father is rvalue_module:
-        #     if not isinstance(self,(Input,Inout)):
-        #         raise ErrUHDLStr("lvalue(%s) is not an output port of submodule.."%(self))
-        # elif self_module is rvalue_module.father:
-        #     if not isinstance(self,(Reg,Wire,Output,Inout)):
-        #         raise ErrUHDLStr("lvalue(%s) is not a instance of Reg or Wire or Output."%(self))
-        #     if not isinstance(rvalue,Output):
-        #         raise ErrUHDLStr("rvalue(%s) is not an output port of submodule."%(rvalue))
-        # elif self_module.father is rvalue_module.father:
-        #     if not isinstance(self,Input):
-        #         raise ErrUHDLStr("lvalue(%s) is not a instance of Input."%(self))
-        #     if not isinstance(rvalue,Output):
-        #         raise ErrUHDLStr("rvalue(%s) is not an a instance of Output."%(rvalue))
-        # return self
-
-
-
-        #else:
-        #    raise ErrUHDL("can't connect two signal cross multi layers")
-    #raise ArithmeticError('Left value attribute/Right value attribute mismatch.')
-
-    #@property
-    #def name(self) -> str:
-    #    from .Component import Component
-    #    return self.name_until_not(Component)
-
-
-    
-
-
-        # if this is not a point to point connection. connection opt will not be opened.
-        #if not self.single_connection:
-        #    return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        
-
-        # start to check all signle connection cases.
-        # for all var to var case, connection will only define by rvalue.
-        # elif isinstance(self._des_lvalue, Variable):
-# 
-        #     #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
-        #     #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
-        #     #    return None
-        #     
-        #     if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-# 
-        #         return ["wire",
-        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #         rvalue_sig_name]
-        #     else:
-        #         return None
-
-        # for value, no need to define any wire.
-        #elif isinstance(self._rvalue, Variable):
-            #return None
-        
-        # for non var-to-var connection, return normal def.
-        #else:
-
-
-            # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-            #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-# 
-            #     return ["wire",
-            #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-            #     rvalue_sig_name]
-
-
-        # check whether a io need outer def.
-
-
-        # if this is not a point to point connection. connection opt will not be opened.
-        # if not self.single_connection:
-        #     return ["wire", '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1), self.name_until_component]
-        # 
-
-        # # start to check all signle connection cases.
-        # # for all var to var case, connection will only define by rvalue.
-        # elif isinstance(self._des_lvalue, Variable):
-
-        #     #if (self.father_until_component().father == self._des_lvalue.father_until_component()) or\
-        #     #   (self._des_lvalue.father_until_component().father == self.father_until_component()):
-        #     #    return None
-        #     
-        #     if self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-
-        #         return ["wire",
-        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #         rvalue_sig_name]
-        #     else:
-        #         return None
-
-        # # for value, no need to define any wire.
-        # elif isinstance(self._rvalue, Variable):
-        #     return None
-        # 
-        # # for non var-to-var connection, return normal def.
-        # else:
-        #     return ["wire",
-        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #         self.name_until_component]
-
-        #     # elif self.father_until_component().father == self._des_lvalue.father_until_component().father and isinstance(self, Output):
-        #     #     rvalue_sig_name = simplified_connection_naming_judgment(self,self._des_lvalue)
-# 
-        #     #     return ["wire",
-        #     #     '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #     #     rvalue_sig_name]
-
-
-        # if not self.single_connection:# and isinstance(self._des_lvalue, IOSig):
-        #     rvalue_sig_name = self.name_until_component
-        # elif low_to_high_connection(self, self._des_lvalue): 
-        #     rvalue_sig_name = self._des_lvalue.name_before_component
-        # elif same_level_connection(self, self._des_lvalue):
-        #     rvalue_sig_name = simplified_connection_naming_judgment(self, self._des_lvalue)
-        # else:
-        #     rvalue_sig_name = self.name_until_component
-        # return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
-
-
-    
-        # lvl_list = [x.level_until_root() for x in self._inout_connect_list]
-        # return [".%s(%s)" %(self.name_before_component, lvl_list)]
-        # return [".%s(%s)" %(self.name_before_component, self._inout_connect_list)]
-        # print(self._inout_connect_list)
-# 
-        # #if not self.single_connection:
-        # #    rvalue_sig_name = self.name_until_component
-        # #rvalue_sig_name = self.name_until_component
-        # #return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
-    # 
-        # if isinstance(self._rvalue, Inout):
-        #     if same_module_connection(self, self._rvalue):
-        #         num = 0
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
-        #     elif same_level_connection(self, self._rvalue):
-        #         num = 1
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self, self._rvalue)
-        #     elif low_to_high_connection(self, self._rvalue) or low_to_high_connection(self._rvalue, self):
-        #         num = 2
-        #         rvalue_sig_name = self._rvalue.name_before_component
-        #     else:
-        #         raise Exception()
-# 
-        # elif isinstance(self._des_lvalue, Inout):
-        #    # print(self, self._des_lvalue)
-        #    
-# 
-        #     if same_module_connection(self, self._des_lvalue):
-        #         num = 3
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
-        #     elif same_level_connection(self, self._des_lvalue):
-        #         num = 4
-        #         rvalue_sig_name = simplified_connection_naming_judgment(self._des_lvalue, self)
-        #     elif low_to_high_connection(self, self._des_lvalue) or low_to_high_connection(self._des_lvalue, self):
-        #         num = 5
-        #         rvalue_sig_name = self.name_before_component
-        #     else:
-        #         raise Exception()
-# 
-        # return [".%s(%s)" %(self.name_before_component, rvalue_sig_name)]
-        # return [".%s(%s) %s %s %s " %(self.name_before_component, rvalue_sig_name,self, self._rvalue, num)]
-
-
-
-        
-        # if isinstance(self, Inout):
-        #     if isinstance(self._rvalue, Inout) and same_level_connection(self,self._rvalue):
-        #         return ["wire",
-        #         '' if self.attribute.width==1 else '[%s:0]' % (self.attribute.width-1),
-        #         simplified_connection_naming_judgment(self,self._rvalue)]
-        #     else:
-        #         return None
-
-    
-
-    # def exclude(self,*exclude_list):
-
-
-    #     res_list = []
-    #     exclude_list = ['%s_%s' % (self.name, item) for item in exclude_list]
-    #     for var in self._var_list:
-    #         if var.name not in exclude_list:
-    #             res_list.append(var)
-    #     return res_list
-
