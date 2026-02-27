@@ -1,251 +1,243 @@
-import json
-import re, os
+import re
+from collections import OrderedDict
 
-from subprocess import Popen, PIPE
+from pyslang import (Driver, CommandLineOptions, SyntaxTree,
+                     Compilation, CompilationOptions, CompilationFlags,
+                     SymbolKind, Bag, ArgumentDirection)
+
 from .Component import Component
-from .Variable  import Wire,IOSig,IOGroup,InputStructIO,OutputStructIO,Variable,Parameter,Reg,Output,Input,Inout,UInt,SInt,AnyConstant
+from .Variable  import (Wire, IOSig, IOGroup, InputStructIO, OutputStructIO,
+                        InputEnumIO, OutputEnumIO, InputUnionIO, OutputUnionIO,
+                        Variable, Parameter, Reg, Output, Input, Inout,
+                        UInt, SInt, AnyConstant, StructType, StructConstant,
+                        EnumType, EnumConstant, UnionType, UnionConstant)
 from .Terminal  import Terminal
 
+
 class VParameter(object):
+    """Wrapper for a pyslang parameter symbol."""
 
-
-    def __init__(self, ast_dict):
-        self.name = ast_dict['name']
-        self.value = ast_dict['value']
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
 
     def create_uhdl_param(self):
         return Parameter(AnyConstant(self.value))
 
-        if self.direction == "Out":
-            if self.signed:
-                return Output(SInt(self.width))
-            else:
-                return Output(UInt(self.width))
-        elif self.direction == "In":
-            if self.signed:
-                return Input(SInt(self.width))
-            else:
-                return Input(UInt(self.width))
-        elif self.direction == "InOut":
-            if self.signed:
-                return Inout(SInt(self.width))
-            else:
-                return Inout(UInt(self.width))
-        else:
-            raise Exception()
-
-
 
 class VPort(object):
+    """Port descriptor built directly from pyslang type symbols.
 
-    def __init__(self, ast_dict, type_aliases=None, struct_mode: str = 'auto'):
-        self.name = ast_dict['name']
-        self.direction = ast_dict['direction']
-        self._type_aliases = type_aliases or {}
+    Replaces the old JSON-based parser with direct pyslang type introspection,
+    eliminating all regex-based type string parsing.
+    """
+
+    def __init__(self, name, direction, port_type, struct_mode: str = 'auto'):
+        self.name = name
+        self.direction = direction          # "In" / "Out" / "InOut"
         self._struct_mode = struct_mode
-        
-        type_string = ast_dict['type']
-        # detect struct types via inline 'struct packed{' or typedef alias
-        self.is_struct = self._is_struct_type(type_string)
-        self.struct_type_name = None  # Store the original struct type name
-        self.struct_package = None    # Store the package name if scoped
-        if self.is_struct:
-            # Extract the struct type name from type_string
-            self.struct_type_name = self._extract_struct_type_name(type_string)
-            # Extract package name if the type is scoped (pkg::type)
-            if self.struct_type_name and '::' in self.struct_type_name:
-                self.struct_package = self.struct_type_name.split('::')[0]
+
+        self.is_struct = False
+        self.is_enum = False
+        self.is_union = False
+        self.struct_type_name = None
+        self.struct_package = None
+        self._struct_type_obj = None
         self.struct_fields = []
-        if self.is_struct and self._struct_mode != 'packed':
-            # try to parse fields for group modeling; fallback to width-only
+        self._enum_type_obj = None
+        self._enum_type_name = None
+        self._enum_package = None
+        self._union_type_obj = None
+        self._union_type_name = None
+        self._union_package = None
+        self._union_fields = []
+        self.width = port_type.bitWidth
+        self.signed = port_type.isSigned
+
+        # Detect actual type (resolve alias)
+        actual_type = port_type
+        if port_type.isAlias:
+            actual_type = port_type.canonicalType
+
+        # ---------- Enum detection ----------
+        if actual_type.isEnum:
+            self.is_enum = True
+            if port_type.isAlias:
+                hier = port_type.hierarchicalPath
+                if '::' in hier:
+                    self._enum_package = hier.split('::')[0]
+                    self._enum_type_name = hier
+                else:
+                    self._enum_type_name = hier
+            # Extract enum members
+            members = OrderedDict()
+            for mem in actual_type:
+                if mem.kind == SymbolKind.EnumValue:
+                    members[mem.name] = self._parse_enum_value(str(mem.value))
+            self._enum_type_obj = EnumType.get_or_create(
+                self._enum_type_name, members, self.width, self.signed, self._enum_package
+            )
+
+        # ---------- Packed Union detection ----------
+        elif actual_type.isPackedUnion:
+            self.is_union = True
+            if port_type.isAlias:
+                hier = port_type.hierarchicalPath
+                if '::' in hier:
+                    self._union_package = hier.split('::')[0]
+                    self._union_type_name = hier
+                else:
+                    self._union_type_name = hier
+            # Extract union fields
+            for field in actual_type:
+                finfo = {
+                    'name': field.name,
+                    'width': field.type.bitWidth,
+                    'signed': field.type.isSigned,
+                }
+                # Detect nested struct/enum in union fields
+                ft = field.type
+                ft_canon = ft.canonicalType if ft.isAlias else ft
+                if ft_canon.isStruct:
+                    nested_st = self._build_struct_type_from_pyslang(ft, ft_canon)
+                    finfo['struct_type'] = nested_st
+                self._union_fields.append(finfo)
+            # Build UnionType
+            field_info = OrderedDict()
+            for f in self._union_fields:
+                fi = {'width': f['width'], 'signed': f['signed']}
+                if 'struct_type' in f:
+                    fi['struct_type'] = f['struct_type']
+                field_info[f['name']] = fi
+            self._union_type_obj = UnionType.get_or_create(
+                self._union_type_name, field_info, self._union_package
+            )
+
+        # ---------- Struct detection ----------
+        elif actual_type.isStruct:
+            self.is_struct = True
+            # Extract struct name and package from the typedef alias
+            if port_type.isAlias:
+                hier = port_type.hierarchicalPath
+                if '::' in hier:
+                    self.struct_package = hier.split('::')[0]
+                    self.struct_type_name = hier
+                else:
+                    self.struct_type_name = hier
+            # Extract field information with nested type support
+            for field in actual_type:
+                finfo = {
+                    'name': field.name,
+                    'width': field.type.bitWidth,
+                    'signed': field.type.isSigned,
+                }
+                # Detect nested struct fields
+                ft = field.type
+                ft_canon = ft.canonicalType if ft.isAlias else ft
+                if ft_canon.isStruct:
+                    nested_st = self._build_struct_type_from_pyslang(ft, ft_canon)
+                    finfo['struct_type'] = nested_st
+                self.struct_fields.append(finfo)
+            # Build or retrieve StructType
+            field_info = OrderedDict()
+            for f in self.struct_fields:
+                fi = {'width': f['width'], 'signed': f['signed']}
+                if 'struct_type' in f:
+                    fi['struct_type'] = f['struct_type']
+                field_info[f['name']] = fi
+            self._struct_type_obj = StructType.get_or_create(
+                self.struct_type_name, field_info, self.struct_package
+            )
+
+    @staticmethod
+    def _parse_enum_value(val_str):
+        """Parse pyslang enum value string like "2'b0" or "-4'sd2" to int."""
+        import re
+        # Match patterns like: 2'b01, 3'h7, 32'd42, -4'sd2
+        m = re.match(r"(-?\d+)'[sS]?([dDbBhHoO])(.*)", val_str)
+        if m:
+            sign = -1 if m.group(0).startswith('-') else 1
+            base_char = m.group(2).lower()
+            digits = m.group(3).strip()
+            bases = {'b': 2, 'o': 8, 'd': 10, 'h': 16}
+            base = bases.get(base_char, 10)
             try:
-                self.struct_fields = self._parse_struct_fields(type_string)
-            except Exception:
-                self.struct_fields = []
-        self.width = self.get_width(type_string)
+                return sign * int(digits, base)
+            except ValueError:
+                return 0
+        # Fallback: try direct int parse
+        try:
+            return int(val_str)
+        except ValueError:
+            return 0
 
-        sign_res = re.search('signed',type_string)
-        if sign_res:
-            self.signed = True
-        else:
-            self.signed = False
-
-    def parse_type(self, type_string):
-        type_string_list = list(type_string)
-        parse_res = list()
-        item = list()
-        stack = list()
-        op_log = list()
-        start = 0
-        for i,c in enumerate(type_string):
-            if c == '{':
-                stack.append(i)
-                type_string_list[start:i+1] = ['' for i in range(i-start+1)]
-                op_log.append([i, '{'])
-                item.clear()
-                start = i+1
-            elif c == '}':
-                start = stack.pop()
-                iter_res = self.parse_type(''.join(type_string_list[start+1:i]))
-                if iter_res != '':
-                    parse_res.extend(iter_res)
-                    type_string_list[start:i+1] = ['' for i in range(i-start+1)]
-                op_log.append([i, '}'])
-                item.clear()
-                start = i+1
-            elif c == ';':
-                if not op_log or op_log[-1][1] != '}':
-                    parse_res.append(''.join(item))
-                op_log.append([i, ';'])
-                type_string_list[start:i+1] = ['' for i in range(i-start+1)]
-                item.clear()
-                start = i+1
+    @staticmethod
+    def _build_struct_type_from_pyslang(alias_type, canon_type):
+        """Build a StructType from pyslang types for nested struct fields."""
+        nested_name = None
+        nested_pkg = None
+        if alias_type.isAlias:
+            hier = alias_type.hierarchicalPath
+            if '::' in hier:
+                nested_pkg = hier.split('::')[0]
+                nested_name = hier
             else:
-                item.append(c)
-        if item and (not op_log or op_log[-1][1] != '}'):
-            parse_res.append(''.join(item))
-        return parse_res
-
-    def get_width(self, type_string):
-        # If this is a struct type, prefer summing parsed field widths
-        if getattr(self, 'is_struct', False):
-            fields = getattr(self, 'struct_fields', None)
-            if not fields:
-                # parse ad-hoc in case struct_mode prevented earlier parsing
-                try:
-                    fields = self._parse_struct_fields(type_string)
-                except Exception:
-                    fields = None
-            if fields:
-                return sum(int(f.get('width', 1)) for f in fields)
-        # Fallback: sum vector widths for simple types
-        width = 0
-        type_list = self.parse_type(type_string)
-        for t in type_list:
-            width += self.get_vector_width(t)
-        return width
-
-    def get_enum_width(self, type_string):
-        width = re.search(r"\S+=(\d+)'[bodh]\d+[,]*", type_string)
-        return int(width.groups()[0])
-
-    # def get_struct_width(self, type_string):
-    #     width = 0
-    #     vectors = re.split(  r'struct packed{[^{]*}\S+ \S+;', type_string)
-    #     structs = re.findall(r'struct packed{([^{]*)}\S+ \S+;', type_string)
-    #     # print(vectors)
-    #     # print(structs)
-    #     for vec in vectors:
-    #         if vec:
-    #             vec_split = vec.split(';')
-    #             for v in vec_split:
-    #                 if v:
-    #                     width += self.get_vector_width(v)
-    #     for st in structs:
-    #         if st:
-    #             width += self.get_struct_width(st)
-    #     return width
-
-    def get_vector_width(self, type_string):
-        if '=' in type_string:
-            return self.get_enum_width(type_string)
-        else:
-            width_res = re.search(r'\[([0-9]+):([0-9]+)\]', type_string)
-            if width_res:
-                high = int(width_res.groups()[0])
-                low = int(width_res.groups()[1])
-                return high-low+1
-            else:
-                return 1
-
-    def _is_struct_type(self, type_string: str) -> bool:
-        if 'struct packed' in type_string:
-            return True
-        # typedef alias case like pkg::my_struct_t or my_struct_t
-        base = type_string.strip()
-        # strip vector ranges
-        base = re.sub(r'\[[^\]]+\]', '', base)
-        # strip extra spaces
-        base = re.sub(r'\s+', ' ', base).strip()
-        # only a bare typename contains '::' or identifier
-        if '::' in base or base.isidentifier():
-            target = self._type_aliases.get(base)
-            if isinstance(target, str) and 'struct packed' in target:
-                return True
-        return False
-
-    def _extract_struct_type_name(self, type_string: str) -> str:
-        """Extract the struct type name from a type string.
-        
-        For typedef like 'lwnoc_lp_req_signal_t' or 'pkg::struct_t', returns the type name.
-        For inline 'struct packed{...}', returns None.
-        """
-        # Strip vector ranges first
-        base = type_string.strip()
-        base = re.sub(r'\[[^\]]+\]', '', base)
-        base = re.sub(r'\s+', ' ', base).strip()
-        
-        # If inline struct, no type name
-        if 'struct packed' in type_string:
-            return None
-        
-        # typedef case: just the identifier (with :: if scoped)
-        if '::' in base or base.isidentifier():
-            return base
-        
-        return None
-
-    def _parse_struct_fields(self, type_string: str):
-        # inline struct
-        target = None
-        if 'struct packed' in type_string:
-            target = type_string
-        else:
-            base = re.sub(r'\[[^\]]+\]', '', type_string).strip()
-            base = re.sub(r'\s+', ' ', base)
-            target = self._type_aliases.get(base)
-        if not target:
-            return []
-        # extract body: struct packed{...}
-        m = re.search(r'struct\s+packed\s*\{([^}]*)\}', target)
-        if not m:
-            return []
-        body = m.group(1)
-        # split by ';' and filter empties
-        decls = [d.strip() for d in body.split(';') if d.strip()]
-        fields = []
-        for d in decls:
-            # d like: logic [3:0] a  OR  pkg::enum_t state  OR  logic b
-            parts = d.split()
-            if not parts:
-                continue
-            name = parts[-1]
-            ts = d[: d.rfind(name)].strip()
-            signed = bool(re.search(r'\bsigned\b', ts))
-            # width from vector or typedef/enum
-            w = 1
-            vec = re.search(r'\[([0-9]+):([0-9]+)\]', ts)
-            if vec:
-                hi, lo = int(vec.group(1)), int(vec.group(2))
-                w = hi - lo + 1
-            else:
-                # typedef width via alias -> may use $bits registry in future
-                alias_target = self._type_aliases.get(ts)
-                if alias_target:
-                    # best-effort parse enum width: look for N'b
-                    m2 = re.search(r"(\d+)'[bodh]", alias_target)
-                    if m2:
-                        w = int(m2.group(1))
-            fields.append({'name': name, 'width': w, 'signed': signed})
-        return fields
+                nested_name = hier
+        nested_fields = OrderedDict()
+        for sf in canon_type:
+            sft = sf.type
+            sft_canon = sft.canonicalType if sft.isAlias else sft
+            fi = {'width': sft.bitWidth, 'signed': sft.isSigned}
+            # Recursive: nested struct within nested struct
+            if sft_canon.isStruct:
+                fi['struct_type'] = VPort._build_struct_type_from_pyslang(sft, sft_canon)
+            nested_fields[sf.name] = fi
+        return StructType.get_or_create(nested_name, nested_fields, nested_pkg)
 
     def create_uhdl_port(self):
-        # struct -> InputStructIO/OutputStructIO if enabled and fields parsed
-        if getattr(self, 'is_struct', False) and self._struct_mode != 'packed' and self.struct_fields:
-            # Calculate total width of all fields
-            total_width = sum(f['width'] for f in self.struct_fields)
-            
-            # Create field list
+        """Create the appropriate UHDL port object from parsed port data."""
+
+        # ---------- Enum port ----------
+        if self.is_enum and self._struct_mode != 'packed':
+            template = EnumConstant(self._enum_type_obj)
+            if self.direction == 'Out':
+                return OutputEnumIO(template, enum_name=self._enum_type_name,
+                                   enum_package=self._enum_package, enum_type=self._enum_type_obj)
+            elif self.direction == 'In':
+                return InputEnumIO(template, enum_name=self._enum_type_name,
+                                  enum_package=self._enum_package, enum_type=self._enum_type_obj)
+            else:
+                return InputEnumIO(template, enum_name=self._enum_type_name,
+                                  enum_package=self._enum_package, enum_type=self._enum_type_obj)
+
+        # ---------- Union port ----------
+        if self.is_union and self._struct_mode != 'packed':
+            fields = []
+            for f in self._union_fields:
+                width = f['width']
+                signed = f['signed']
+                if self.direction == 'Out':
+                    sig = Output(SInt(width)) if signed else Output(UInt(width))
+                elif self.direction == 'In':
+                    sig = Input(SInt(width)) if signed else Input(UInt(width))
+                elif self.direction == 'InOut':
+                    sig = Inout(SInt(width)) if signed else Inout(UInt(width))
+                else:
+                    sig = Input(UInt(width))
+                fields.append((f['name'], sig))
+            template = UnionConstant(self._union_type_obj)
+            if self.direction == 'Out':
+                return OutputUnionIO(template, fields=fields, union_name=self._union_type_name,
+                                    union_package=self._union_package, union_type=self._union_type_obj)
+            elif self.direction == 'In':
+                return InputUnionIO(template, fields=fields, union_name=self._union_type_name,
+                                   union_package=self._union_package, union_type=self._union_type_obj)
+            else:
+                return InputUnionIO(template, fields=fields, union_name=self._union_type_name,
+                                   union_package=self._union_package, union_type=self._union_type_obj)
+
+        # ---------- Struct port ----------
+        if self.is_struct and self._struct_mode != 'packed' and self.struct_fields:
             fields = []
             for f in self.struct_fields:
                 width = f['width']
@@ -259,153 +251,95 @@ class VPort(object):
                 else:
                     sig = Input(UInt(width))
                 fields.append((f['name'], sig))
-            
-            # Create InputStructIO or OutputStructIO with total width as template
-            # Pass the struct_type_name and struct_package if available
-            struct_name = getattr(self, 'struct_type_name', None)
-            struct_package = getattr(self, 'struct_package', None)
+            template = StructConstant(self._struct_type_obj)
+            struct_name = self.struct_type_name
+            struct_package = self.struct_package
             if self.direction == 'Out':
-                return OutputStructIO(UInt(total_width), fields=fields, struct_name=struct_name, struct_package=struct_package)
+                return OutputStructIO(template, fields=fields, struct_name=struct_name,
+                                      struct_package=struct_package, struct_type=self._struct_type_obj)
             elif self.direction == 'In':
-                return InputStructIO(UInt(total_width), fields=fields, struct_name=struct_name, struct_package=struct_package)
+                return InputStructIO(template, fields=fields, struct_name=struct_name,
+                                     struct_package=struct_package, struct_type=self._struct_type_obj)
             else:
-                # InOut not supported for struct yet, fallback to InputStructIO
-                return InputStructIO(UInt(total_width), fields=fields, struct_name=struct_name, struct_package=struct_package)
-        if self.direction == "Out":
-            if self.signed:
-                return Output(SInt(self.width))
-            else:
-                return Output(UInt(self.width))
-        elif self.direction == "In":
-            if self.signed:
-                return Input(SInt(self.width))
-            else:
-                return Input(UInt(self.width))
-        elif self.direction == "InOut":
-            if self.signed:
-                return Inout(SInt(self.width))
-            else:
-                return Inout(UInt(self.width))
-        else:
-            raise Exception()
+                return InputStructIO(template, fields=fields, struct_name=struct_name,
+                                     struct_package=struct_package, struct_type=self._struct_type_obj)
 
+        # ---------- Non-composite port ----------
+        if self.direction == "Out":
+            return Output(SInt(self.width)) if self.signed else Output(UInt(self.width))
+        elif self.direction == "In":
+            return Input(SInt(self.width)) if self.signed else Input(UInt(self.width))
+        elif self.direction == "InOut":
+            return Inout(SInt(self.width)) if self.signed else Inout(UInt(self.width))
+        else:
+            raise Exception(f"Unknown port direction: {self.direction}")
 
 
 class VComponent(Component):
-
 
     def __init__(self, file=None, top=None, instance=None, slang_cmd='slang', slang_opts='--ignore-unknown-modules', struct_mode: str = 'auto', **kwargs):
         super().__init__()
         self.enable_filelist_generation = False
         self._module_name = top
         self._struct_mode = struct_mode
-        ast_json = "%s.%s.ast.json" %(top, instance)
 
-        # Try slang
-        p = Popen(f'{slang_cmd} --version', shell=True, stdout=PIPE, stderr=PIPE)
-        _out, _err = p.communicate()
-        if p.returncode != 0:
-            raise Exception(f'Cannot call slang to import verilog. stderr: {(_err or b"").decode(errors="ignore").strip()}')
-
-
-        # Spell the parameter into the format needed by slang
-        param_config = ''
-        for k, v in kwargs.items():
-            param_config = param_config + '-G %s=%s ' % (k,v)
-
-
-        # Call slang
+        # Build slang command line for pyslang Driver
+        # Handle file source: .f files use -f flag, others are passed directly
         if str(file).endswith('.f'):
             source = f'-f {file}'
         else:
-            source = file
-        
-        cmd = f'{slang_cmd} {slang_opts} {source} -ast-json {ast_json} -top {top} {param_config}'
-        p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
-        _out, _err = p.communicate()
-        if p.returncode != 0:
-            raise Exception(f'Slang failed to parse design. stderr: {(_err or b"").decode(errors="ignore").strip()}')
+            source = str(file)
 
+        # Build parameter overrides in slang -G format
+        param_args = ''
+        for k, v in kwargs.items():
+            param_args += f'-G {k}={v} '
 
-        # Parse AST
-        self.parse_ast(ast_json, top)
+        cmd = f'slang {slang_opts} {source} --top {top} {param_args}'.strip()
 
+        # Parse and compile using pyslang Driver
+        driver = Driver()
+        driver.addStandardArgs()
+        ok = driver.parseCommandLine(cmd, CommandLineOptions())
+        if not ok:
+            raise Exception(f'Slang failed to parse command line: {cmd}')
+        driver.processOptions()
+        driver.parseAllSources()
+        comp = driver.createCompilation()
 
-        # delete slang output
-        os.remove(ast_json)
+        # Find top instance and extract ports/parameters
+        root = comp.getRoot()
+        top_inst = None
+        for inst in root.topInstances:
+            if inst.name == top:
+                top_inst = inst
+                break
 
+        if top_inst is None:
+            # If only one top instance, use it regardless of name
+            instances = list(root.topInstances)
+            if len(instances) == 1:
+                top_inst = instances[0]
+            else:
+                raise Exception(f"Top instance '{top}' not found in compilation")
 
-    def parse_ast(self, file, top_name):
-        # parse json
-        with open(file,'r') as f:
-            data = json.loads(f.read())
+        self._vport_list = []
+        self._vparam_list = []
 
-        # get top instance (support legacy and newer slang JSON shapes)
-        top = None
-        members = None
-        if isinstance(data, dict):
-            if 'members' in data and isinstance(data['members'], list):
-                members = data['members']
-            elif 'design' in data and isinstance(data['design'], dict) and isinstance(data['design'].get('members'), list):
-                members = data['design']['members']
-        if members is None:
-            raise KeyError("Invalid AST JSON: cannot find 'members' at top or under 'design'.")
-        for member in members:
-            if member.get('name') == top_name:
-                # some slang versions place instance body at 'body'
-                top = member.get('body') or member
-        if top is None:
-            raise Exception(f"Top instance '{top_name}' not found in AST JSON")
-
-        parameter_list = []
-        port_list = []
-        # Build type alias registry: map qualified/unqualified to target string
-        type_aliases = {}
-
-        # Walk all root members to collect TypeAlias with package context
-        def collect_aliases(node, pkg=None):
-            if isinstance(node, dict):
-                kind = node.get('kind')
-                name = node.get('name')
-                if kind == 'Package':
-                    for m in node.get('members', []):
-                        collect_aliases(m, pkg=name)
-                elif kind == 'TypeAlias':
-                    target = node.get('target')
-                    if name and target:
-                        qname = f"{pkg}::{name}" if pkg else name
-                        type_aliases[qname] = target
-                        # also map unqualified (best-effort)
-                        type_aliases[name] = target
-                else:
-                    for m in node.get('members', []) if isinstance(node.get('members'), list) else []:
-                        collect_aliases(m, pkg)
-        # gather from either top-level 'design' or 'members'
-        roots = []
-        if isinstance(data, dict) and 'design' in data and isinstance(data['design'], dict):
-            roots = [data['design']]
-        else:
-            roots = [data]
-        for r in roots:
-            for m in r.get('members', []) if isinstance(r.get('members'), list) else []:
-                collect_aliases(m, None)
-
-        for member in top['members']:
-            if member['kind'] == 'Parameter' and not member['isLocal']:
-                parameter_list.append(member)
-            if member['kind'] == 'Port':
-                port_list.append(member)
-
-        self._vport_list = [VPort(x, type_aliases=type_aliases, struct_mode=self._struct_mode) for x in port_list]
-        self._vparam_list = [VParameter(x) for x in parameter_list]
+        for member in top_inst.body:
+            if member.kind == SymbolKind.Port:
+                direction = member.direction.name  # "In", "Out", "InOut"
+                vport = VPort(member.name, direction, member.type, struct_mode=self._struct_mode)
+                self._vport_list.append(vport)
+            elif member.kind == SymbolKind.Parameter and not member.isLocalParam:
+                vparam = VParameter(member.name, str(member.value))
+                self._vparam_list.append(vparam)
 
         for vport in self._vport_list:
             self.create(vport.name, vport.create_uhdl_port())
 
         for vparam in self._vparam_list:
-            #print(vparam.name)
-            res = self.create(vparam.name, vparam.create_uhdl_param())
-            #print(res)
+            self.create(vparam.name, vparam.create_uhdl_param())
 
     def _run_lint_single_lvl(self, is_top=False):
         Terminal.lint_info('Start to check VComponent module %s.' % self.module_name)
@@ -416,7 +350,6 @@ class VComponent(Component):
             for lvalue in self.input_list:
                 if lvalue.rvalue is None:
                     Terminal.lint_unconnect(lvalue)
-
 
 
 

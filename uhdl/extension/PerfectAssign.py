@@ -106,52 +106,64 @@ def single_assign(op1, op2):
         single_assign_core(op1, op2)
 
 
+def _is_input_like(op):
+    """Check if op is Input, InputStructIO, InputEnumIO, or InputUnionIO."""
+    return isinstance(op, (Input, InputStructIO, InputEnumIO, InputUnionIO))
+
+def _is_output_like(op):
+    """Check if op is Output, OutputStructIO, OutputEnumIO, or OutputUnionIO."""
+    return isinstance(op, (Output, OutputStructIO, OutputEnumIO, OutputUnionIO))
+
+def _is_io_like(op):
+    """Check if op is any Input/Output variant including Struct/Enum/Union IO."""
+    return isinstance(op, (Input, Output, InputStructIO, OutputStructIO, InputEnumIO, OutputEnumIO, InputUnionIO, OutputUnionIO))
+
 def single_assign_core(op1, op2):
     if isinstance(op1, Inout) and isinstance(op2, Inout):
         if op1 in op2._inout_connect_list:  pass
         else:                               op1 += op2
 
-    elif isinstance(op1, (Input, Output)) and isinstance(op2, (Input, Output)):
-        if isinstance(op1, Input) and op1.rvalue == op2:        pass
-        elif isinstance(op1, Output) and op2.rvalue == op1:     pass
+    elif _is_io_like(op1) and _is_io_like(op2):
+        if _is_input_like(op1) and op1.rvalue == op2:        pass
+        elif _is_output_like(op1) and op2.rvalue == op1:     pass
         elif op1.father_until(Component) is op2.father_until(Component):
-            if isinstance(op1, Input) and isinstance(op2, Output):                          op1 += op2 
-            elif isinstance(op1, Output) and isinstance(op2, Input):                        op2 += op1 
+            if _is_input_like(op1) and _is_output_like(op2):                                op1 += op2 
+            elif _is_output_like(op1) and _is_input_like(op2):                              op2 += op1 
             else:                                                                           Terminal.error("%s and %s has same direction , %s"% (op1.full_hier, op2.full_hier, get_log_info()))
         else:                                                                               SmartAssign(op1, op2)
     
-    elif isinstance(op1, (Input, Output)):
-        if op1._rvalue != None and isinstance(op1, Input) and op1.rvalue.__dict__ == op2.__dict__ or \
-           op2._rvalue != None and isinstance(op1, Output) and op2._rvalue.__dict__  == op1.__dict__ :
+    elif _is_io_like(op1):
+        if op1._rvalue != None and _is_input_like(op1) and op1.rvalue.__dict__ == op2.__dict__ or \
+           op2._rvalue != None and _is_output_like(op1) and op2._rvalue.__dict__  == op1.__dict__ :
             pass
         else:
             op1_component = op1.father_until(Component)
             if isinstance(op1_component, VComponent):
-                if isinstance(op1, Input):
+                if _is_input_like(op1):
                     op1 += op2
                 else:
                     op2 += op1
             elif isinstance(op1_component, Component):
-                if isinstance(op1, Input):
+                if _is_input_like(op1):
                     op2 += op1
                 else:
                     op1 += op2
             else:
                 Terminal.warning("Hierachy Error, there is a bug with %s and %s, %s"% (op1.name, op2.name, get_log_info()))
         
-    elif isinstance(op2, (Input, Output)):
-        if op2._rvalue != None and isinstance(op2, Input) and op2.rvalue.__dict__ == op1.__dict__ or \
-           op1._rvalue != None and isinstance(op2, Output) and op1.rvalue.__dict__ == op2.__dict__:
+    elif _is_io_like(op2):
+        if op2._rvalue != None and _is_input_like(op2) and op2.rvalue.__dict__ == op1.__dict__ or \
+           op1._rvalue != None and _is_output_like(op2) and op1.rvalue.__dict__ == op2.__dict__:
             pass
         else:
             op2_component = op2.father_until(Component)
             if isinstance(op2_component, VComponent):
-                if isinstance(op2, Input):
+                if _is_input_like(op2):
                     op2 += op1
                 else:
                     op1 += op2
             elif isinstance(op2_component, Component):
-                if isinstance(op2, Input):
+                if _is_input_like(op2):
                     op1 += op2
                 else:
                     op2 += op1 

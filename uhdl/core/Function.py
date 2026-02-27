@@ -13,18 +13,22 @@ def _smart_assign_core(op1, op2, outer=False):
     op1_component = op1.father_until(Component)
     op2_component = op2.father_until(Component)
 
-    # Import StructIO types here to avoid circular imports
-    from .Variable import InputStructIO, OutputStructIO
+    # Import Enum/Union IO types along with StructIO
+    from .Variable import InputStructIO, OutputStructIO, InputEnumIO, OutputEnumIO, InputUnionIO, OutputUnionIO
     
-    # Check if either operand is a valid IO type (including StructIO)
-    valid_io_types = (Input, Output, Inout, InputStructIO, OutputStructIO)
+    # Define type groups for direction checks
+    _input_types = (Input, InputStructIO, InputEnumIO, InputUnionIO)
+    _output_types = (Output, OutputStructIO, OutputEnumIO, OutputUnionIO)
+    
+    # Check if either operand is a valid IO type (including Struct/Enum/Union IO)
+    valid_io_types = (Input, Output, Inout, InputStructIO, OutputStructIO, InputEnumIO, OutputEnumIO, InputUnionIO, OutputUnionIO)
     
     if (not isinstance(op1, valid_io_types)) or (not isinstance(op2, valid_io_types)):
-        raise ErrUHDLStr("smart assign only used for IO connection, at least one of op1 %s and op2 %s should be Input, Output, Inout, InputStructIO, or OutputStructIO." % (op1, op2))
+        raise ErrUHDLStr("smart assign only used for IO connection, at least one of op1 %s and op2 %s should be Input, Output, Inout, or a Struct/Enum/Union IO variant." % (op1, op2))
     
     
     
-    if isinstance(op1, (Input, Output, InputStructIO, OutputStructIO)) and isinstance(op2, (Input, Output, InputStructIO, OutputStructIO)):
+    if isinstance(op1, (Input, Output, InputStructIO, OutputStructIO, InputEnumIO, OutputEnumIO, InputUnionIO, OutputUnionIO)) and isinstance(op2, (Input, Output, InputStructIO, OutputStructIO, InputEnumIO, OutputEnumIO, InputUnionIO, OutputUnionIO)):
         if op1_component.father is op2_component:
             # op1 in low level
             #    ----------------------
@@ -38,16 +42,16 @@ def _smart_assign_core(op1, op2, outer=False):
             #    ----------------------
             #
             #   case1:
-            #       op1 is Input/InputStructIO, op1 should be lhs.
+            #       op1 is Input/InputStructIO/InputEnumIO/InputUnionIO, op1 should be lhs.
             #   case2:
-            #       op1 is Output/OutputStructIO, op1 should be rhs.
+            #       op1 is Output/OutputStructIO/OutputEnumIO/OutputUnionIO, op1 should be rhs.
             #
-            if isinstance(op1, (Input, InputStructIO)):
+            if isinstance(op1, _input_types):
                 op1 += op2
-            elif isinstance(op1, (Output, OutputStructIO)):
+            elif isinstance(op1, _output_types):
                 op2 += op1
             else:
-                raise ErrUHDLStr("op1 %s's father Component is in op2 %s's father Component, so op1 should be Input/InputStructIO or Output/OutputStructIO." % (op1, op2))
+                raise ErrUHDLStr("op1 %s's father Component is in op2 %s's father Component, so op1 should be an input-like or output-like IO." % (op1, op2))
 
         elif op2_component.father is op1_component:
             # op2 in low level
@@ -62,16 +66,16 @@ def _smart_assign_core(op1, op2, outer=False):
             #    ----------------------
             #
             #   case1:
-            #       op2 is Input/InputStructIO, op2 should be lhs.
+            #       op2 is Input/InputStructIO/InputEnumIO/InputUnionIO, op2 should be lhs.
             #   case2:
-            #       op2 is Output/OutputStructIO, op2 should be rhs.
+            #       op2 is Output/OutputStructIO/OutputEnumIO/OutputUnionIO, op2 should be rhs.
             #
-            if isinstance(op2, (Input, InputStructIO)):
+            if isinstance(op2, _input_types):
                 op2 += op1
-            elif isinstance(op2, (Output, OutputStructIO)):
+            elif isinstance(op2, _output_types):
                 op1 += op2
             else:
-                raise ErrUHDLStr("op2 %s's father Component is in op1 %s's father Component, so op2 should be Input/InputStructIO or Output/OutputStructIO." % (op2, op1))
+                raise ErrUHDLStr("op2 %s's father Component is in op1 %s's father Component, so op2 should be an input-like or output-like IO." % (op2, op1))
 
         elif op1_component is op2_component:
             if outer:
@@ -83,9 +87,9 @@ def _smart_assign_core(op1, op2, outer=False):
                 #  | ------------------- |
                 #  |                     |
                 #  -----------------------
-                if isinstance(op1, (Input, InputStructIO)) and isinstance(op2, (Output, OutputStructIO)):
+                if isinstance(op1, _input_types) and isinstance(op2, _output_types):
                     op1 += op2
-                elif isinstance(op2, (Input, InputStructIO)) and isinstance(op1, (Output, OutputStructIO)):
+                elif isinstance(op2, _input_types) and isinstance(op1, _output_types):
                     op2 += op1
                 else:
                     raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
@@ -97,9 +101,9 @@ def _smart_assign_core(op1, op2, outer=False):
                 #    -(op1)-------(op2)-
                 #    |                 |
                 #    -------------------
-                if isinstance(op1, (Input, InputStructIO)) and isinstance(op2, (Output, OutputStructIO)):
+                if isinstance(op1, _input_types) and isinstance(op2, _output_types):
                     op2 += op1
-                elif isinstance(op2, (Input, InputStructIO)) and isinstance(op1, (Output, OutputStructIO)):
+                elif isinstance(op2, _input_types) and isinstance(op1, _output_types):
                     op1 += op2
                 else:
                     raise ErrUHDLStr("op1 %s and op2 %s have same father Component, so op1 and op2 should have different direction." % (op1, op2))
@@ -111,9 +115,9 @@ def _smart_assign_core(op1, op2, outer=False):
             #    |           (op1)-   -(op2)           |
             #    |                |   |                |
             #    ------------------   ------------------
-            if isinstance(op1, (Input, InputStructIO)) and isinstance(op2, (Output, OutputStructIO)):
+            if isinstance(op1, _input_types) and isinstance(op2, _output_types):
                 op1 += op2
-            elif isinstance(op2, (Input, InputStructIO)) and isinstance(op1, (Output, OutputStructIO)):
+            elif isinstance(op2, _input_types) and isinstance(op1, _output_types):
                 op2 += op1
             else:
                 raise ErrUHDLStr("op1 %s's father Component and op2 %s's father Component are in same Component, so op1 and op2 should have different direction." % (op1, op2))
