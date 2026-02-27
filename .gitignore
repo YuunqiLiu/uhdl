@@ -6,3 +6,4 @@ test_build
 UHDL.log
 case/Test
 .pytest_cache/
+Test/
