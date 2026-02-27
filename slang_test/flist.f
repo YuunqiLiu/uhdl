@@ -1,1 +1,0 @@
-/home/liuyunqi/tree/uhdl/slang_test/test.v
