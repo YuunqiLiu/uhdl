@@ -365,9 +365,17 @@ class Variable(Root):
 
             # Default simple assign path
             if sig_name == None:
-                return ['assign ' + str(self.lstring) + ' = ' + str(self._rvalue.rstring(self)) + ';']
+                lhs_str = str(self.lstring)
+                rhs_str = str(self._rvalue.rstring(self))
+                if lhs_str == rhs_str:
+                    return []
+                return ['assign ' + lhs_str + ' = ' + rhs_str + ';']
             else:
-                return ['assign ' + str(self.lstring) + ' = ' + str(sig_name) + ';']
+                lhs_str = str(self.lstring)
+                rhs_str = str(sig_name)
+                if lhs_str == rhs_str:
+                    return []
+                return ['assign ' + lhs_str + ' = ' + rhs_str + ';']
 
 class Bundle(Root):
 
@@ -871,7 +879,7 @@ class OutputLikeMixin:
         else:
             if self._des_lvalue == None:
                 rvalue_sig_name = ''
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == [] and self.single_connection:
+            elif isinstance(self.lvalue, Wire) and self.single_connection:
                 rvalue_sig_name = self._des_lvalue.name_before_component
             else:
                 rvalue_sig_name = self.name_until_component
@@ -880,6 +888,13 @@ class OutputLikeMixin:
     @property
     def verilog_outer_def_as_list_io(self):
         normal_res, _ = self._make_outer_def_res()
+        parent_component = self.father_until_component().father
+        outer_name = self.name_until_component
+
+        if parent_component is not None and hasattr(parent_component, outer_name):
+            parent_sig = getattr(parent_component, outer_name)
+            if isinstance(parent_sig, Variable) and getattr(parent_sig, 'attribute', None) == self.attribute:
+                return None
 
         if not self.single_connection:
             return normal_res
@@ -893,7 +908,7 @@ class OutputLikeMixin:
         else:
             if self._des_lvalue == None:
                 return None
-            elif isinstance(self.lvalue, Wire) and self.lvalue._lvalue_list == []:
+            elif isinstance(self.lvalue, Wire) and self.single_connection:
                 return None
             else:
                 return normal_res
