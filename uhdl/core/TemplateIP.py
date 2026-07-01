@@ -499,31 +499,6 @@ class TemplateIP:
         
         return filelist_path
     
-    @staticmethod
-    def _extract_foundation_lines(filelist_path: str) -> List[str]:
-        """Extract raw lines inside `ifndef EXCLUDE_FOUNDATION_IP blocks from a source filelist."""
-        foundation_lines: List[str] = []
-        in_block = False
-        nesting = 0
-        with open(filelist_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                stripped = line.strip()
-                if stripped == '`ifndef EXCLUDE_FOUNDATION_IP':
-                    in_block = True
-                    nesting += 1
-                    continue
-                if in_block:
-                    if stripped.startswith('`ifdef') or stripped.startswith('`ifndef'):
-                        nesting += 1
-                    elif stripped == '`endif':
-                        nesting -= 1
-                        if nesting == 0:
-                            in_block = False
-                        continue
-                    if stripped and not stripped.startswith('//'):
-                        foundation_lines.append(stripped)
-        return foundation_lines
-
     def release_build(self, path: Optional[str] = None) -> str:
         """
         Build in release directory.
@@ -555,15 +530,6 @@ class TemplateIP:
             output_dir=output_dir,
             exclude_foundation_ip=True,   # Exclude foundation IP
         )
-        
-        # Append foundation IP references back to the release filelist
-        if self.filelist:
-            foundation_lines = self._extract_foundation_lines(self.filelist)
-            if foundation_lines:
-                with open(filelist_path, 'a', encoding='utf-8') as f:
-                    f.write('\n// Foundation IP references (original paths)\n')
-                    for line in foundation_lines:
-                        f.write(line + '\n')
         
         # Mark as completed
         self._release_build_completed = True
@@ -849,4 +815,3 @@ class TemplateManager:
     def list_names(self) -> List[str]:
         """Get a list of all registered TemplateIP names."""
         return list(TemplateManager._registry.keys())
-
