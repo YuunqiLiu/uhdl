@@ -160,9 +160,11 @@ class Variable(Root):
         if self._rvalue != None:
             existing_driver = self._rvalue.full_hier if hasattr(self._rvalue, 'full_hier') else str(self._rvalue)
             new_driver = rvalue.full_hier if hasattr(rvalue, 'full_hier') else str(rvalue)
-            Terminal.error(f'Error: {self.full_hier} has multi-driver\n'
-                          f'  Existing driver: {existing_driver}\n'
-                          f'  New driver:      {new_driver}')
+            if rvalue is self._rvalue:
+                return self          # re-connecting the same driver is a no-op
+            raise ErrUHDLStr(f'{self.full_hier} already has a driver; a signal can only be assigned once with +=.\n'
+                             f'  Existing driver: {existing_driver}\n'
+                             f'  New driver:      {new_driver}')
         object.__setattr__(self, '_rvalue', rvalue)
         rvalue.add_lvalue(self)
 
@@ -1953,8 +1955,35 @@ class Parameter(SingleVar):
 #
 ################################################################################################################
 
+def _temp_wire_scope(lvalue):
+    '''Component in which a helper wire for an assignment to `lvalue` must live.
+    A sub-component Input is driven from the parent, so the wire goes there.'''
+    from .Component import Component
+    comp = lvalue.father_until(Component)
+    if isinstance(lvalue, Input) and comp is not None and isinstance(comp.father, Component):
+        comp = comp.father
+    return comp
+
+
 class AlwaysCombExpression(Expression):
-    pass   
+    '''Case/When chains render as an always @(*) block. Used directly as an
+    assignment source they keep doing that; used inside another expression
+    (e.g. as a when() condition or an operand) they are materialised into a
+    helper wire <lvalue>_comb_tmp[_n] declared in the right module.'''
+
+    def rstring(self, lvalue) -> str:
+        comp = _temp_wire_scope(lvalue)
+        base = '%s_comb_tmp' % lvalue.name_before_component
+        name, idx = base, 0
+        while hasattr(comp, name):
+            exist = getattr(comp, name)
+            if isinstance(exist, Wire) and exist.rvalue is self:
+                return exist.name_before_component
+            idx += 1
+            name = '%s_%d' % (base, idx)
+        tmp = comp.create(name, Wire(self.attribute))
+        tmp += self
+        return tmp.name_before_component
 
 class CaseExpression(AlwaysCombExpression):
 
@@ -2012,6 +2041,11 @@ class CaseExpression(AlwaysCombExpression):
         return self.__attr
 
     def bstring(self, lvalue, assign_method) -> str:
+        if assign_method == '=' and self.__default is None and \
+                len(self.__case_pair) < (1 << self.__select.attribute.width):
+            raise ErrUHDLStr('Combinational Case driving "%s" covers %d of %d select values and has no '
+                             'default: it would infer a latch. Pass a default.' %
+                             (lvalue.name_before_component, len(self.__case_pair), 1 << self.__select.attribute.width))
         str_list = ['case(%s)' % self.__select.rstring(lvalue)]
 
         for k,v in self.__case_pair:
@@ -2137,6 +2171,9 @@ class WhenExpression(AlwaysCombExpression):
         return self._attribute
 
     def bstring(self,lvalue,assign_method) -> str:
+        if assign_method == '=' and not self._has_otherwise:
+            raise ErrUHDLStr('Combinational when-chain driving "%s" has no otherwise(): it would infer '
+                             'a latch. Add .otherwise(value), or drive a Reg instead.' % lvalue.name_before_component)
         str_list = []
         for index,(condition,action) in enumerate(zip(self._condition_list,self._action_list)):
             if_block = action.bstring(lvalue,assign_method)
@@ -2211,7 +2248,7 @@ class CutExpression(Expression):
         from .Component import Component
 
         if isinstance(self.op, Expression):
-            comp = lvalue.father_until(Component)
+            comp = _temp_wire_scope(lvalue)
             # Build unique temp name
             base_tmp = f"{lvalue.name_before_component}_bcut_tmp"
             tmp_name = base_tmp

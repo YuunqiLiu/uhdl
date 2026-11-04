@@ -475,7 +475,16 @@ class Component(Root):
         return str_list
 
     def _ensure_temp_wires_for_cuts(self):
-        """Pre-create temporary wires for cut expressions to ensure they're declared before use."""
+        """Pre-create helper wires (Cut temps, inline Case/When temps) so they are
+        declared before use. Rendering can create new wires whose own assignment
+        creates more, so repeat until the set of internal signals is stable."""
+        for _ in range(64):
+            before = len(self.inter_sig_list)
+            self._ensure_temp_wires_once()
+            if len(self.inter_sig_list) == before:
+                return
+
+    def _ensure_temp_wires_once(self):
         # Pre-generate all assignments to trigger temporary wire creation
         temp_assignments = []
         
@@ -553,7 +562,9 @@ class Component(Root):
             FileProcess.create_file(path, texts[name])
             paths.append(path)
         if filelist:
-            FileProcess.create_file(os.path.join(out_dir, filelist_name), paths)
+            # plain text: tools read every non-comment line of a .f as a file name
+            with open(os.path.join(out_dir, filelist_name), 'w') as f:
+                f.write(''.join(p + '\n' for p in paths))
         return paths
 
     def mark_unused(self, *sigs):

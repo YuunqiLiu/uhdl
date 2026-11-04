@@ -249,3 +249,66 @@ def test_no_log_file_by_default(tmp_path):
                                         env.get('PYTHONPATH', '').split(os.pathsep))
     subprocess.run([sys.executable, '-c', 'import uhdl'], cwd=tmp_path, env=env, check=True)
     assert not (tmp_path / 'UHDL.log').exists()
+
+
+# ---------------------------------------------------------------- latch rejection / inline Case
+def test_comb_when_without_otherwise_is_rejected():
+    class L(Component):
+        def circuit(self):
+            self.c = Input(UInt(1)); self.x = Input(UInt(4)); self.y = Output(UInt(4))
+            self.y += when(self.c).then(self.x)
+    with pytest.raises(ErrUHDLStr, match='latch'):
+        L().verilog_def
+
+
+def test_comb_incomplete_case_is_rejected():
+    class L(Component):
+        def circuit(self):
+            self.s = Input(UInt(2)); self.y = Output(UInt(1))
+            self.y += Case(self.s, {UInt(2, 0): UInt(1, 1)}, None)
+    with pytest.raises(ErrUHDLStr, match='latch'):
+        L().verilog_def
+
+
+def test_reg_when_without_otherwise_still_holds():
+    class R(Component):
+        def circuit(self):
+            self.clk = Input(UInt(1)); self.rst_n = Input(UInt(1)); self.c = Input(UInt(1))
+            self.r = Reg(UInt(2, 0), self.clk, self.rst_n); self.r += when(self.c).then(UInt(2, 3))
+            self.y = Output(UInt(2)); self.y += self.r
+    assert 'if(c) r <= 2\'b11;' in '\n'.join(R().verilog_def)
+
+
+@needs_verilator
+def test_inline_case_is_materialised(tmp_path):
+    class I(Component):
+        MODULE_NAME = 'inl'
+        def circuit(self):
+            self.s = Input(UInt(2)); self.v = Input(UInt(4)); self.a = Input(UInt(3)); self.b = Input(UInt(3))
+            self.y = Output(UInt(3))
+            cond = Case(self.s, {UInt(2, i): self.v[i] for i in range(4)}, UInt(1, 0))
+            self.y += when(cond).then(self.a).otherwise(self.b)        # Case used as a condition
+    paths = I().generate(tmp_path)
+    text = open(paths[0]).read()
+    assert 'y_comb_tmp' in text
+    assert lint(paths, 'inl') == []
+
+
+@needs_verilator
+def test_llm_guide_example_is_lint_clean(tmp_path):
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = dict(os.environ, PYTHONPATH=here)
+    subprocess.run([sys.executable, os.path.join(here, 'docs', 'llm_example', 'gen.py'), '--out', str(tmp_path)],
+                   env=env, check=True, capture_output=True)
+    files = (tmp_path / 'filelist.f').read_text().split()
+    assert lint(files, 'hist') == []
+
+
+def test_second_driver_is_rejected():
+    class M(Component):
+        def circuit(self):
+            self.a = Input(UInt(1)); self.b = Input(UInt(1)); self.y = Output(UInt(1))
+            self.y += self.a
+            self.y += self.b
+    with pytest.raises(ErrUHDLStr, match='already has a driver'):
+        M()
