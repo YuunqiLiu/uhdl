@@ -1,6 +1,46 @@
 from .Variable import *
 
 
+def _is_uint_const(v):
+    return isinstance(v, UInt)
+
+
+def _fold_compare(opL, opR, kind):
+    '''Return UInt(1, x) when a comparison against a constant is always true/false
+    for the variable's width (e.g. 3'b111 >= ptr). Emitting such compares makes
+    Verilator report CMPCONST/UNSIGNED, so they are folded here.'''
+    if not hasattr(opL, 'attribute') or not hasattr(opR, 'attribute') or opL.attribute != opR.attribute:
+        return None     # let the expression raise its usual type/width error
+    if _is_uint_const(opL) and _is_uint_const(opR):
+        a, b = opL.value, opR.value
+        res = {'ge': a >= b, 'le': a <= b, 'gt': a > b, 'lt': a < b}[kind]
+        return UInt(1, int(res))
+    if _is_uint_const(opR) and not _is_uint_const(opL) and isinstance(opL.attribute, UInt):
+        top, c = (1 << opL.attribute.width) - 1, opR.value
+        if kind == 'ge' and c == 0:   return UInt(1, 1)
+        if kind == 'lt' and c == 0:   return UInt(1, 0)
+        if kind == 'le' and c == top: return UInt(1, 1)
+        if kind == 'gt' and c == top: return UInt(1, 0)
+    if _is_uint_const(opL) and not _is_uint_const(opR) and isinstance(opR.attribute, UInt):
+        top, c = (1 << opR.attribute.width) - 1, opL.value
+        if kind == 'le' and c == 0:   return UInt(1, 1)
+        if kind == 'gt' and c == 0:   return UInt(1, 0)
+        if kind == 'ge' and c == top: return UInt(1, 1)
+        if kind == 'lt' and c == top: return UInt(1, 0)
+    return None
+
+
+def WrapAdd(A, B):
+    '''A + B with the result truncated to the operand width (modulo 2**width).
+    Use this for counters and pointers instead of Cut(A + B, w-1, 0).'''
+    return WrapAddExpression(A, B)
+
+
+def WrapSub(A, B):
+    '''A - B with the result truncated to the operand width (modulo 2**width).'''
+    return WrapSubExpression(A, B)
+
+
 def Case(select, casepair, default):
     """
     Case is used to construct a parallel selection circuit,and the input of this function is
@@ -46,6 +86,13 @@ def Case(select, casepair, default):
     default and the second value of tuple in casepair list mus have the sam attributss, that is, all UInt(v) or SInt(v).
     
     """
+    if default is None:
+        n_keys = len(casepair)
+        if n_keys < (1 << select.attribute.width):
+            from .Terminal import Terminal
+            Terminal.warning('Case on %d-bit select covers %d of %d values and has no default: '
+                             'combinational use will infer a latch. Pass a default.' %
+                             (select.attribute.width, n_keys, 1 << select.attribute.width))
     return CaseExpression(select, casepair, default)
 
 
@@ -152,6 +199,8 @@ def Combine(*rhs_list):
     
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    if len(rhs_list) == 1:
+        return rhs_list[0]
     return CombineExpression(*rhs_list)
 
 def Inverse(I):
@@ -535,6 +584,9 @@ def LessEqual(A,B):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    folded = _fold_compare(A, B, 'le')
+    if folded is not None:
+        return folded
     return LessEqualExpression(A,B)
 
 
@@ -558,6 +610,9 @@ def GreaterEqual(lhs,rhs):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    folded = _fold_compare(lhs, rhs, 'ge')
+    if folded is not None:
+        return folded
     return GreaterEqualExpression(lhs,rhs)
 
 
@@ -581,6 +636,9 @@ def Less(opL,opR):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    folded = _fold_compare(opL, opR, 'lt')
+    if folded is not None:
+        return folded
     return LessExpression(opL,opR)
 
 
@@ -604,6 +662,9 @@ def Greater(opL,opR):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    folded = _fold_compare(opL, opR, 'gt')
+    if folded is not None:
+        return folded
     return GreaterExpression(opL,opR)
 
 

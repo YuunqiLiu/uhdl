@@ -18,7 +18,11 @@ AREA_CALCULATORS = {
     
     # Arithmetic Expression types
     'AddExpression'     : lambda expr: expr.attribute.width * 4.0,  # Carry lookahead adder: ~4 gates per bit (including group-level carry logic)
-    'SubExpression'     : lambda expr: expr.attribute.width * 4.0,  # Subtractor: CLA + inverter + carry logic (~4.5 gates per bit)
+    'SubExpression'     : lambda expr: expr.attribute.width * 4.0,
+    'WrapAddExpression' : lambda expr: expr.attribute.width * 4.0,  # same adder, carry dropped
+    'WrapSubExpression' : lambda expr: expr.attribute.width * 4.0,
+    'Mem'               : lambda mem: mem.attribute.width * mem.depth * 1,  # storage bits, like Reg
+    'MemReadExpression' : lambda expr: expr.attribute.width * expr.mem.depth,  # depth:1 read mux per bit  # Subtractor: CLA + inverter + carry logic (~4.5 gates per bit)
     'MulExpression'     : lambda expr: expr.attribute.width ** 2 * 0.8,  # Booth multiplier: ~0.8 gates per bit² (partial product reduction + booth encoding)
     
     # Logical Expression types - operate on entire vectors and produce 1-bit result

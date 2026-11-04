@@ -5,23 +5,25 @@ class TerminalClass(object):
     def __init__(self):
         self.logger = logging.getLogger('UHDL')
         self.logger.setLevel(logging.DEBUG)
-        fpath = "UHDL.log"
-
-        if os.path.exists(fpath):
-            os.remove(fpath)
-
-        fh = logging.FileHandler(fpath)
-        fh.setLevel(logging.DEBUG)
+        # Log file: set UHDL_LOG=<path> to enable (UHDL_LOG=UHDL.log restores the
+        # old behaviour). By default nothing is written to the working directory.
+        fpath = os.environ.get('UHDL_LOG', '')
+        fh = None
+        if fpath:
+            if os.path.exists(fpath):
+                os.remove(fpath)
+            fh = logging.FileHandler(fpath)
+            fh.setLevel(logging.DEBUG)
 
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG)
 
         formatter = logging.Formatter("[%(levelname)s] %(message)s")
         ch.setFormatter(formatter)
-        fh.setFormatter(formatter)
-
         self.logger.addHandler(ch)
-        self.logger.addHandler(fh)
+        if fh is not None:
+            fh.setFormatter(formatter)
+            self.logger.addHandler(fh)
 
 
     def info(self, *args):

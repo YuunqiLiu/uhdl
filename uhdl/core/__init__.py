@@ -10,7 +10,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'UnionType','UnionConstant','UnionFieldRef',
             'And','Or','Greater','Less','GreaterEqual','LessEqual','NotEqual','Equal',
             'BitXnor','BitXor','BitAnd','BitOr',
-            'Add','Sub','Mul',
+            'Add','Sub','Mul','WrapAdd','WrapSub','Mem',
             'SelfXnor','SelfXor','SelfAnd','SelfOr','Inverse','Not',
             'Combine','BitXnorList','BitXorList','BitOrList','BitAndList','OrList','AndList',
 
@@ -32,7 +32,8 @@ from .Variable      import EnumType,EnumConstant
 from .Variable      import UnionType,UnionConstant,UnionFieldRef
 from .Operator      import And,Or,Greater,Less,GreaterEqual,LessEqual,NotEqual,Equal
 from .Operator      import BitXnor,BitXor,BitAnd,BitOr
-from .Operator      import Add,Sub,Mul
+from .Operator      import Add,Sub,Mul,WrapAdd,WrapSub
+from .Variable      import Mem
 from .Operator      import SelfXnor,SelfXor,SelfAnd,SelfOr,Inverse,Not
 from .Operator      import Combine,BitXnorList,BitXorList,BitOrList,BitAndList,OrList,AndList
 from .Operator      import Case,Cut,When,EmptyWhen,Fanout

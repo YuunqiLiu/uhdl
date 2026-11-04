@@ -4,7 +4,7 @@ from functools          import reduce
 from collections.abc    import Iterable
 from .Terminal          import Terminal
 from .Root              import Root
-from .Variable          import Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,InputStructIO,OutputStructIO,InputEnumIO,OutputEnumIO,InputUnionIO,OutputUnionIO
+from .Variable          import Mem,Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,InputStructIO,OutputStructIO,InputEnumIO,OutputEnumIO,InputUnionIO,OutputUnionIO
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
@@ -79,6 +79,8 @@ class Component(Root):
         self._lint                  = None
         self.output_dir             = '.'
         self._module_name_prefix    = ''
+        self._module_name_override  = None
+        self._unused_seq            = 0
         self._sub_instance_list     = []  # List to store all circuit instances belonging to this component
         self.circuit()
 
@@ -106,8 +108,21 @@ class Component(Root):
     def module_name_prefix(self):
         return self._module_name_prefix if self.father is None else self.father.module_name_prefix
 
+    def set_module_name(self, name):
+        '''Use exactly this module name instead of <Class>_<params>.
+        A class can also set MODULE_NAME = 'name'. generate() raises an error
+        if two different modules end up with the same name.'''
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', name):
+            raise ValueError('Invalid Verilog module name: %r' % (name,))
+        self._module_name_override = name
+        return self
+
     @property
     def module_name(self):
+        override = getattr(self, '_module_name_override', None) or getattr(type(self), 'MODULE_NAME', None)
+        if override:
+            prefix = self.module_name_prefix
+            return '%s_%s' % (prefix, override) if prefix else override
         # This scheme attempts to unwrap any data type into a readable unique string, and form the instantiation name from this string
         return (self.module_name_prefix + '_' + type(self).__name__+'_'+self.PARAM.UHDL_MODU_NAME_POST_FIX).rstrip('_').lstrip('_')
 
@@ -288,7 +303,7 @@ class Component(Root):
 
     @property
     def inter_sig_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,))]
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,Mem))]
 
     @property
     def input_list(self) -> list:
@@ -333,7 +348,7 @@ class Component(Root):
 
     @property
     def lvalue_list(self) -> list:
-        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,Output,OutputStructIO,OutputEnumIO,OutputUnionIO))]
+        return [self.__dict__[k] for k in self.__dict__ if isinstance(self.__dict__[k],(Wire,Reg,Mem,Output,OutputStructIO,OutputEnumIO,OutputUnionIO))]
     
     @property
     def outer_lvalue_list(self) -> list:
@@ -499,6 +514,63 @@ class Component(Root):
         self._create_this_vfile(path)
         for c in self.component_list:
             c._create_all_vfile(path)
+
+    def generate(self, out_dir, filelist=True, clean=False, filelist_name='filelist.f'):
+        '''Write every UHDL-generated module of this design as <out_dir>/<module>.v
+        (flat, one file per module, sub-modules first) and, by default,
+        <out_dir>/filelist.f with absolute paths. Existing files in out_dir are
+        kept unless clean=True. Raises ErrUHDLStr if two different modules share
+        a name. Returns the list of written .v paths.'''
+        from .UHDLException import ErrUHDLStr
+        out_dir = os.path.abspath(out_dir)
+        if clean:
+            FileProcess.refresh_directory(out_dir)
+        else:
+            os.makedirs(out_dir, exist_ok=True)
+
+        texts, order = {}, []
+
+        def walk(comp):
+            for sub in comp.component_list:
+                walk(sub)
+            if type(comp)._create_this_vfile is not Component._create_this_vfile:
+                comp._create_this_vfile(out_dir)      # VComponent / TemplateComponent keep their own handling
+                return
+            text = comp.verilog_def
+            name = comp.module_name
+            if name in texts:
+                if texts[name] != text:
+                    raise ErrUHDLStr('Two different modules are both named "%s". Give them distinct '
+                                     'names with set_module_name()/MODULE_NAME.' % name)
+                return
+            texts[name] = text
+            order.append(name)
+
+        walk(self)
+        paths = []
+        for name in order:
+            path = os.path.join(out_dir, '%s.v' % name)
+            FileProcess.create_file(path, texts[name])
+            paths.append(path)
+        if filelist:
+            FileProcess.create_file(os.path.join(out_dir, filelist_name), paths)
+        return paths
+
+    def mark_unused(self, *sigs):
+        '''Tell lint that these signals are intentionally unused (e.g. unused
+        input ports or dropped carry bits). Creates a wire named
+        uhdl_unused_<n> driven by them; Verilator ignores *unused* signals
+        and synthesis removes the wire.'''
+        if not sigs:
+            return None
+        from .Operator import Combine
+        width = sum(x.attribute.width for x in sigs)
+        from .Variable import UInt as _UInt
+        name = 'uhdl_unused_%d' % self._unused_seq
+        self._unused_seq += 1
+        w = self.create(name, Wire(_UInt(width)))
+        w += Combine(*sigs)
+        return w
 
     def generate_verilog(self,iteration=False):
         FileProcess.refresh_directory(self.output_path)

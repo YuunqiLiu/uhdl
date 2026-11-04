@@ -2218,7 +2218,10 @@ class CutExpression(Expression):
             idx = 0
             while hasattr(comp, tmp_name):
                 exist = getattr(comp, tmp_name)
-                if isinstance(exist, Wire) and getattr(exist, 'attribute', None) == self.op.attribute:
+                # Reuse only the temp wire that is driven by this very expression.
+                # verilog_def renders assignments twice, so the same Cut must find
+                # its own wire again, while a different Cut of the same width must not.
+                if isinstance(exist, Wire) and exist.rvalue is self.op:
                     tmp_wire = exist
                     break
                 idx += 1
@@ -2753,3 +2756,162 @@ class OrExpression(TwoSameOpU1Expression):
     @property
     def op_str(self):
         return '||'
+
+
+################################################################################################################
+#
+#   Wrapping arithmetic (result keeps the operand width, carry/borrow is dropped)
+#
+################################################################################################################
+
+class WrapAddExpression(TwoSameOpExpression):
+    '''a + b modulo 2**width. Emitted as {(a + b)}: a concatenation operand is
+    self-determined in Verilog, so the carry is dropped even inside a wider
+    expression and no WIDTH/UNUSED lint warnings are produced.'''
+
+    @property
+    def attribute(self):
+        return self.opL.attribute
+
+    @property
+    def op_name(self):
+        return 'WrapAdd(+)'
+
+    @property
+    def op_str(self):
+        return '+'
+
+    def rstring(self, lvalue) -> str:
+        return '{(%s + %s)}' % (self.opL.rstring(lvalue), self.opR.rstring(lvalue))
+
+
+class WrapSubExpression(TwoSameOpExpression):
+    '''a - b modulo 2**width, emitted as {(a - b)}.'''
+
+    @property
+    def attribute(self):
+        return self.opL.attribute
+
+    @property
+    def op_name(self):
+        return 'WrapSub(-)'
+
+    @property
+    def op_str(self):
+        return '-'
+
+    def rstring(self, lvalue) -> str:
+        return '{(%s - %s)}' % (self.opL.rstring(lvalue), self.opR.rstring(lvalue))
+
+
+################################################################################################################
+#
+#   Memory array
+#
+################################################################################################################
+
+class Mem(Variable):
+    '''
+    A memory array: DEPTH words of the template's width, no reset.
+
+        mem = Mem(UInt(8), 5, self.clk)      # reg [7:0] mem [0:4];
+        mem.write(we, waddr, wdata)          # always @(posedge clk) if (we) mem[waddr] <= wdata;
+        rd  = mem.read(raddr)                # combinational (asynchronous) read: mem[raddr]
+
+    Synthesis tools infer RAM or flops from this; it is much smaller than DEPTH
+    separate Regs with reset plus a Case read mux. Address signals must be at
+    least clog2(DEPTH) bits wide. Each call to write() adds a write port; later
+    ports win when they write the same address in the same cycle.
+    '''
+
+    def __init__(self, template, depth: int, clk: 'SingleVar', clk_active_neg: bool = False):
+        super().__init__()
+        if not isinstance(template, Constant):
+            raise ErrAttrTypeWrong(self, template)
+        if not isinstance(depth, int) or depth < 1:
+            raise ErrUHDLStr('Mem depth must be a positive int, got %r' % (depth,))
+        object.__setattr__(self, '_template', template)
+        object.__setattr__(self, '_depth', depth)
+        object.__setattr__(self, '_aclk', clk)
+        object.__setattr__(self, '_clk_active_neg', clk_active_neg)
+        object.__setattr__(self, '_write_ports', [])
+        clk.add_lvalue(self)
+
+    @property
+    def attribute(self):
+        return self._template
+
+    @property
+    def depth(self):
+        return self._depth
+
+    @property
+    def addr_width(self):
+        return max(1, (self._depth - 1).bit_length())
+
+    def _check_addr(self, addr):
+        if addr.attribute.width < self.addr_width:
+            raise ErrUHDLStr('Mem %s needs an address of at least %d bits, got %d.' %
+                             (self.name, self.addr_width, addr.attribute.width))
+
+    def write(self, en, addr, data):
+        if en.attribute.width != 1:
+            raise ErrUHDLStr('Mem.write enable must be 1 bit, got %d.' % en.attribute.width)
+        self._check_addr(addr)
+        if data.attribute != self._template:
+            raise ErrAttrMismatch('Mem.write data must match the Mem word type.', data.attribute, self._template)
+        for v in (en, addr, data):
+            v.add_lvalue(self)
+        self._write_ports.append((en, addr, data))
+        return self
+
+    def read(self, addr):
+        self._check_addr(addr)
+        return MemReadExpression(self, addr)
+
+    @property
+    def verilog_def(self):
+        return ['reg [%s:0] %s [0:%s]' % (self._template.width - 1, self.name_before_component, self._depth - 1)]
+
+    @property
+    def verilog_def_as_list(self):
+        return ['reg', '[%s:0]' % (self._template.width - 1), '%s [0:%s]' % (self.name_before_component, self._depth - 1)]
+
+    @property
+    def verilog_assignment(self):
+        if not self._write_ports:
+            return []
+        edge = 'negedge' if self._clk_active_neg else 'posedge'
+        str_list = ['always @(%s %s) begin' % (edge, self._aclk.rstring(self))]
+        for en, addr, data in self._write_ports:
+            str_list.append('    if(%s) %s[%s] <= %s;' % (en.rstring(self), self.name_before_component,
+                                                        addr.rstring(self), data.rstring(self)))
+        str_list.append('end')
+        return str_list
+
+    def get_area(self) -> float:
+        return get_area_for_object(self)
+
+
+class MemReadExpression(Expression):
+
+    def __init__(self, mem: Mem, addr):
+        super().__init__()
+        self.check_rvalue(addr)
+        self.mem = mem
+        self.addr = addr
+
+    @property
+    def fanin_list(self):
+        return [self.addr]
+
+    @property
+    def attribute(self):
+        return self.mem.attribute
+
+    @property
+    def op_name(self):
+        return 'MemRead'
+
+    def rstring(self, lvalue) -> str:
+        return '%s[%s]' % (self.mem.name_before_component, self.addr.rstring(lvalue))
