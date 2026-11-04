@@ -312,3 +312,24 @@ def test_second_driver_is_rejected():
             self.y += self.b
     with pytest.raises(ErrUHDLStr, match='already has a driver'):
         M()
+
+
+@needs_verilator
+def test_child_output_into_parent_wire(tmp_path):
+    class Child(Component):
+        MODULE_NAME = 'child'
+        def circuit(self):
+            self.a = Input(UInt(2)); self.y = Output(UInt(2)); self.y += self.a
+
+    class Top(Component):
+        MODULE_NAME = 'top'
+        def circuit(self):
+            self.a = Input(UInt(2)); self.o = Output(UInt(2)); self.o2 = Output(UInt(2))
+            self.c = Child(); self.c.a += self.a
+            self.w = Wire(UInt(2)); self.w += self.c.y           # single load: bound directly
+            self.o += self.w
+            self.d = Child(); self.d.a += self.a
+            self.v = Wire(UInt(2)); self.v += self.d.y           # wire with two loads
+            self.o2 += self.v & self.w
+    paths = Top().generate(tmp_path)
+    assert lint(paths, 'top') == []

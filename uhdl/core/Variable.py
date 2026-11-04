@@ -303,11 +303,12 @@ class Variable(Root):
              (isinstance(self, Wire) and is_output_port(self._rvalue)):
                 if is_input_port(self) and self._rvalue._rvalue==None:
                     return [] # for input unconnect port
+                elif isinstance(self, Wire) and self._rvalue.single_connection:
+                    # The sub-component output is bound straight to this wire in the
+                    # instance (.y(w), see Output.verilog_inst), so no assign is needed.
+                    return []
                 elif isinstance(self, Wire) and self._lvalue_list==[]:
-                    if self._rvalue.single_connection:
-                        return [] # for output unconnect port
-                    else:
-                         Terminal.error('output %s has unconnect port, but connect to other signal'% self._rvalue.full_hier)
+                    Terminal.error('output %s has unconnect port, but connect to other signal'% self._rvalue.full_hier)
                 else:
                     pass
         
