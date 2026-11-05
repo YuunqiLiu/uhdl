@@ -53,7 +53,7 @@ class TestVariable(TestValue):
     
 
     def SingleVarTest(self,op):
-        self.ErrAttrTypeWrongTest(op,1)
+        self.ErrAttrTypeWrongTest(op,'1')    # an int is short for UInt(int)
         op(UInt(1))
 
 
@@ -67,7 +67,7 @@ class TestVariable(TestValue):
 
     def test_Reg(self):
         # wrong attribute type
-        self.ErrAttrTypeWrongTest(lambda tpl: Reg(tpl, Wire(UInt(1))), 1)
+        self.ErrAttrTypeWrongTest(lambda tpl: Reg(tpl, Wire(UInt(1))), '1')
         # wrong flag types
         self.WaitException(ErrNeedBool, lambda: Reg(UInt(8), Wire(UInt(1)), Wire(UInt(1)), async_rst="x"))
         self.WaitException(ErrNeedBool, lambda: Reg(UInt(8), Wire(UInt(1)), Wire(UInt(1)), rst_active_low=123))
@@ -100,7 +100,7 @@ class TestVariable(TestValue):
 
     def test_Wire(self):
         # wrong attribute type
-        self.ErrAttrTypeWrongTest(Wire, 1)
+        self.ErrAttrTypeWrongTest(Wire, '1')
         # minimal component to check def keyword switching
         class C(Component):
             def circuit(self):
@@ -304,9 +304,11 @@ class TestExpression(TestValue):
         sh2 = a >> UInt(3, 2)
         self.assertEqual(sh1.attribute, UInt(8))
         self.assertEqual(sh2.attribute, UInt(8))
-        # wrong type (int) should raise type error via operator overload
-        self.ErrExpInTypeWrongTest(lambda x, y: x << y, a, 1)
-        self.ErrExpInTypeWrongTest(lambda x, y: x >> y, a, 1)
+        # an int shift amount takes the operand's width
+        self.assertEqual((a << 1).opR.attribute, UInt(8))
+        self.assertEqual((a >> 2).attribute, UInt(8))
+        # a non-value shift amount is still a type error
+        self.ErrExpInTypeWrongTest(lambda x, y: x << y, a, '1')
 
     def test_AndList_actual(self):
         # AndList returns UInt(1) regardless of operand widths/types (but all must be Value)

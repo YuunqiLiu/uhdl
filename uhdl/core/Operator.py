@@ -1,4 +1,5 @@
 from .Variable import *
+from .Variable import _coerce_pair, _lit, _known_attr
 
 
 def _is_uint_const(v):
@@ -28,6 +29,46 @@ def _fold_compare(opL, opR, kind):
         if kind == 'ge' and c == top: return UInt(1, 1)
         if kind == 'lt' and c == top: return UInt(1, 0)
     return None
+
+
+def Cat(*items):
+    '''Concatenate LSB first: Cat(a, b, c) == Combine(c, b, a), so item i of a
+    per-index list lands at bits [i*w +: w]. Also takes one list: Cat(lst).'''
+    if len(items) == 1 and isinstance(items[0], (list, tuple)):
+        items = items[0]
+    if len(items) == 0:
+        raise ErrUHDLStr('Cat() needs at least one value.')
+    return Combine(*reversed(list(items)))
+
+
+def If(cond, a, b):
+    '''Two-way mux: a when cond is 1, else b. Same as when(cond).then(a).otherwise(b).'''
+    return WhenExpression().when(cond).then(a).otherwise(b)
+
+
+def Mux(sel, values):
+    '''Index a list with a signal: values[sel]. Values may be signals or ints.
+    If the list does not cover every select value, out-of-range selects give 0.'''
+    values = list(values)
+    w = sel.attribute.width
+    if not values:
+        raise ErrUHDLStr('Mux() needs at least one value.')
+    if len(values) > (1 << w):
+        raise ErrUHDLStr('Mux: %d values, but a %d-bit select reaches only %d of them.' % (len(values), w, 1 << w))
+    pairs = [(UInt(w, i), v) for i, v in enumerate(values)]
+    return CaseExpression(sel, pairs, None if len(values) == (1 << w) else 0)
+
+
+def Priority(pairs, default):
+    '''Priority mux from a list of (condition, value): the first true condition wins,
+    otherwise default. Same as an EmptyWhen() chain built in a loop.'''
+    pairs = list(pairs)
+    if not pairs:
+        return default
+    ch = WhenExpression()
+    for c, v in pairs:
+        ch.when(c).then(v)
+    return ch.otherwise(default)
 
 
 def WrapAdd(A, B):
@@ -584,6 +625,7 @@ def LessEqual(A,B):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    A, B = _coerce_pair(A, B, 'LessEqual')
     folded = _fold_compare(A, B, 'le')
     if folded is not None:
         return folded
@@ -610,6 +652,7 @@ def GreaterEqual(lhs,rhs):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    lhs, rhs = _coerce_pair(lhs, rhs, 'GreaterEqual')
     folded = _fold_compare(lhs, rhs, 'ge')
     if folded is not None:
         return folded
@@ -636,6 +679,7 @@ def Less(opL,opR):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    opL, opR = _coerce_pair(opL, opR, 'Less')
     folded = _fold_compare(opL, opR, 'lt')
     if folded is not None:
         return folded
@@ -662,6 +706,7 @@ def Greater(opL,opR):
  
     This function requires its input to have the same type of attributes, that is, all UInt or SInt.
     '''
+    opL, opR = _coerce_pair(opL, opR, 'Greater')
     folded = _fold_compare(opL, opR, 'gt')
     if folded is not None:
         return folded

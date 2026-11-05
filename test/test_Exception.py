@@ -44,7 +44,7 @@ def test_ErrAssignTypeWrong():
     try:
         c = Component()
         c.var = Wire(UInt(1))
-        c.var += 1               # an error, Wire(UInt(1)) shoud be assigned by Wire(UInt(1))
+        c.var += '1'             # an error: a str is not a value (plain ints are allowed literals)
     except exception_type       as e: pass
     except Exception            as e: raise Exception('Expect a %s.But get \n\t%s:%s' % (IT.GetClsNameFromCls(exception_type),IT.GetClsNameFromObj(e),e))
     else                            : raise Exception('Expect a %s.But not get any Exception.' % IT.GetClsNameFromCls(exception_type))

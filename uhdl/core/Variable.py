@@ -16,6 +16,61 @@ from .types import (TypeKernel, TypedConstant,
                     EnumType, EnumConstant,
                     UnionType, UnionConstant)
 
+################################################################################################################
+#
+#   Integer literals: a Python int takes the width of the signal it meets
+#
+################################################################################################################
+
+def _known_attr(v):
+    """Attribute of v, or None if v is a Python int or an int-only When/Case chain
+    whose width is not decided yet."""
+    if isinstance(v, int):
+        return None
+    if isinstance(v, AlwaysCombExpression) and v._pending_attr():
+        return None
+    return v.attribute
+
+
+def _lit(v, attr, where='value'):
+    """Give a Python int (or an int-only When/Case chain) the type `attr`.
+    The int must fit; it is never truncated. Other values pass through."""
+    if isinstance(v, int):
+        if not isinstance(attr, UInt):
+            raise ErrUHDLStr('Integer %d used where a %s is expected (%s): only unsigned contexts take plain '
+                             'ints. Write %s(width, value).' % (v, attr, where, type(attr).__name__))
+        if v < 0 or v >= (1 << attr.width):
+            raise ErrUHDLStr('Integer %d does not fit in %d bits (%s). Widen the other operand, or use '
+                             'WrapSub for modulo arithmetic.' % (v, attr.width, where))
+        return UInt(attr.width, int(v))
+    if isinstance(v, AlwaysCombExpression) and v._pending_attr():
+        v._resolve(attr)
+    return v
+
+
+class _OpLabel:
+    def __init__(self, name):
+        self.op_name = name
+
+
+def _coerce_pair(opL, opR, what):
+    """Give an int operand the attribute of the other operand."""
+    if not all(isinstance(v, (int, ValueRoot)) for v in (opL, opR)):
+        return opL, opR                 # not values at all: check_rvalue reports the type error
+    la, ra = _known_attr(opL), _known_attr(opR)
+    if isinstance(opL, int) and isinstance(opR, int):
+        raise ErrExpInTypeWrong('Both operands are Python ints; at least one must be a signal or a sized '
+                                'constant such as UInt(w, v).', _OpLabel(what), opL)
+    if la is None and ra is None:
+        raise ErrUHDLStr('%s: neither operand has a width (got %r and %r). At least one must be a signal '
+                         'or a sized constant such as UInt(w, v).' % (what, opL, opR))
+    if la is None:
+        opL = _lit(opL, ra, what)
+    if ra is None:
+        opR = _lit(opR, la, what)
+    return opL, opR
+
+
 def simplified_connection_naming_judgment(lvalue_obj, rvalue_obj):
     lvalue_comp_name = lvalue_obj.father_until_component().name
     rvalue_comp_name = rvalue_obj.father_until_component().name
@@ -136,6 +191,8 @@ class Variable(Root):
         # rvalue may be expression, so it's no need to check them.
         if not isinstance(self.father, Component):
             raise_ErrVarNotBelongComponent(self)
+        if isinstance(rvalue, (int, AlwaysCombExpression)) and isinstance(self, Value) and _known_attr(rvalue) is None:
+            rvalue = _lit(rvalue, self.attribute, 'assignment to %s' % self.name)
         if not isinstance(rvalue,Value):                        
             raise_ErrAssignTypeWrong(self,rvalue)
         if self.attribute != rvalue.attribute:  
@@ -520,6 +577,40 @@ class Value(ValueRoot):
         return RightShift(self, rhs)
 
 
+    # Comparisons are methods, not operators: UHDL objects are kept in lists and
+    # dicts by identity, so overloading == / < would break membership and sorting.
+    def eq(self, rhs):
+        from .Operator import Equal
+        return Equal(self, rhs)
+
+    def ne(self, rhs):
+        from .Operator import NotEqual
+        return NotEqual(self, rhs)
+
+    def lt(self, rhs):
+        from .Operator import Less
+        return Less(self, rhs)
+
+    def le(self, rhs):
+        from .Operator import LessEqual
+        return LessEqual(self, rhs)
+
+    def gt(self, rhs):
+        from .Operator import Greater
+        return Greater(self, rhs)
+
+    def ge(self, rhs):
+        from .Operator import GreaterEqual
+        return GreaterEqual(self, rhs)
+
+    def split(self, n):
+        '''Cut into n equal fields, LSB field first: x.split(4)[i] == x[(i+1)*k-1 : i*k].'''
+        w = self.attribute.width
+        if not isinstance(n, int) or n <= 0 or w % n:
+            raise ErrUHDLStr('split(%r): width %d is not a multiple of %r.' % (n, w, n))
+        k = w // n
+        return [self[(i + 1) * k - 1:i * k] for i in range(n)]
+
     # Redefining comparison-related operators can lead to logical abnormalities such as sorting
 
     # def __lt__(self,rhs):
@@ -576,6 +667,8 @@ class SingleVar(Variable, Value):
 
     def __init__(self,template):
         super().__init__()
+        if isinstance(template, int) and not isinstance(template, bool) and not isinstance(self, Parameter):
+            template = UInt(template)           # Input(8) is short for Input(UInt(8))
         if not isinstance(template, (Constant, StructConstant, EnumConstant, UnionConstant)): raise ErrAttrTypeWrong(self, template)
         object.__setattr__(self, '_template', template)
         #self.__template = template
@@ -1970,7 +2063,17 @@ class AlwaysCombExpression(Expression):
     '''Case/When chains render as an always @(*) block. Used directly as an
     assignment source they keep doing that; used inside another expression
     (e.g. as a when() condition or an operand) they are materialised into a
-    helper wire <lvalue>_comb_tmp[_n] declared in the right module.'''
+    helper wire <lvalue>_comb_tmp[_n] declared in the right module.
+
+    Their values may be Python ints. The chain's width then comes from its
+    first sized value, or, if every value is an int, from wherever the chain
+    is used (the assigned signal, or the other operand).'''
+
+    def _pending_attr(self):
+        return False
+
+    def _resolve(self, attr):
+        pass
 
     def rstring(self, lvalue) -> str:
         comp = _temp_wire_scope(lvalue)
@@ -1995,28 +2098,41 @@ class CaseExpression(AlwaysCombExpression):
         self.__attr      = None
 
         # Convert dict input to list of tuples if needed
-        if isinstance(case_pair, dict):
-            self.__case_pair = list(case_pair.items())
-        else:
-            self.__case_pair = case_pair
+        pairs = list(case_pair.items()) if isinstance(case_pair, dict) else list(case_pair)
 
         self.check_rvalue(select)
-
-        if default is not None:
-            self.check_rvalue(default)
-            self.__attr = default.attribute
-
-        for k,v in self.__case_pair:
+        fixed = []
+        for k, v in pairs:
+            k = _lit(k, select.attribute, 'Case key')
             self.check_rvalue(k)
-            self.check_rvalue(v)
             if k.attribute != select.attribute:
-                raise ErrAttrMismatch('All key in case_pair must have the same attribute select signal.', self.__select, *self.__case_key)
-            if self.__attr is not None and v.attribute != self.__attr:  
-                if self.__default is None:
-                    raise ErrAttrMismatch('All value in case_pair must have same attribute.', *self.__case_value)
-                else:
-                    raise ErrAttrMismatch('All value in case_pair must have same attribute.', *self.__case_value, self.__default)
-            self.__attr = v.attribute 
+                raise ErrAttrMismatch('All key in case_pair must have the same attribute select signal.', select, k)
+            fixed.append((k, v))
+        self.__case_pair = fixed
+
+        known = [v for v in self.__case_value + ([default] if default is not None else []) if _known_attr(v) is not None]
+        for v in known:
+            self.check_rvalue(v)
+            if self.__attr is None:
+                self.__attr = v.attribute
+            elif v.attribute != self.__attr:
+                raise ErrAttrMismatch('All value in case_pair must have same attribute.', *known)
+        if self.__attr is not None:
+            self._resolve(self.__attr)
+
+    def _pending_attr(self):
+        return self.__attr is None
+
+    def _resolve(self, attr):
+        def fix(v):
+            if _known_attr(v) is None:
+                v = _lit(v, attr, 'Case value')
+                self.check_rvalue(v)
+            return v
+        self.__attr = attr
+        self.__case_pair = [(k, fix(v)) for k, v in self.__case_pair]
+        if self.__default is not None:
+            self.__default = fix(self.__default)
 
     @property
     def __case_key(self):
@@ -2110,46 +2226,54 @@ class WhenExpression(AlwaysCombExpression):
 
     def then(self,val:Value):
         '''
-        Then is used to continue filling information into the complex selection circuit constructed by "When" and "EmptyWhen". 
-        The input of Then is 
-            
-            rhs I - UInt/SInt(i)
-            
-        which represents the output result of the selection circuit when the condition specified by "When" before "Then" is satisfied. 
-        
-        All output results specified by "Then" and "Otherwise" must have the same attributes.
+        Then gives the value selected when the condition of the preceding "when" holds.
+        All values given by "then" and "otherwise" must have the same attribute.
+        A Python int is allowed and takes the chain's width.
         '''
         # operate struck check
         if self._next_is_when == True      : raise ErrWhenExpOperateWrong('In when expressions, "then" can only follow "when".')
-        # input value check
-        self.check_rvalue(val)
-        if self._attribute == None         : self._attribute = val.attribute
-        if self.attribute != val.attribute : raise ErrAttrMismatch('In a When expression, all variables declared by "then" and "otherwise" must have the same attribute.',*self._action_list,self._otherwise_action)
-
+        val = self._take(val)               # may rebuild _action_list, so append after
         self._next_is_when = True
         self._action_list.append(val)
         return self
+
+    def _take(self, val):
+        if _known_attr(val) is None:
+            if self._attribute is not None:
+                val = _lit(val, self._attribute, 'when value')
+                self.check_rvalue(val)
+            return val                      # decided later by _resolve()
+        self.check_rvalue(val)
+        if self._attribute is None:
+            self._resolve(val.attribute)
+        elif self._attribute != val.attribute:
+            raise ErrAttrMismatch('In a When expression, all variables declared by "then" and "otherwise" must have the same attribute.', self._attribute, val.attribute)
+        return val
+
+    def _pending_attr(self):
+        return self._attribute is None and (bool(self._action_list) or self._has_otherwise)
+
+    def _resolve(self, attr):
+        def fix(v):
+            if _known_attr(v) is None:
+                v = _lit(v, attr, 'when value')
+                self.check_rvalue(v)
+            return v
+        self._attribute = attr
+        self._action_list = [fix(v) for v in self._action_list]
+        if self._has_otherwise:
+            self._otherwise_action = fix(self._otherwise_action)
 
     Then = then
     
     def otherwise(self,val: Value):
         '''
-        Otherwise is used to continue filling information into the complex selection circuit constructed by "When" and "EmptyWhen". 
-        The input of Otherwise is 
-            
-            rhs I - UInt/SInt(i)
-            
-        which represents the default result selected by the selection circuit when all the conditions specified by "When" are not established.
-        
-        All output results specified by "Then" and "Otherwise" must have the same attributes.
+        Otherwise gives the value selected when no "when" condition holds.
+        It must have the same attribute as the "then" values; a Python int is allowed.
         '''
         # operate struct check
         if self._has_otherwise == True      : raise ErrWhenExpOperateWrong('A when expression can only have one "otherwise".')
-        # input value check
-        self.check_rvalue(val)
-        if self._attribute == None          : self._attribute = val.attribute
-        if self.attribute != val.attribute  : raise ErrAttrMismatch('In a When expression, all variables declared by "then" and "otherwise" must have the same attribute.',*self._action_list,self._otherwise_action)
-
+        val = self._take(val)
         self._has_otherwise    = True
         self._otherwise_action = val
         return self
@@ -2545,6 +2669,7 @@ class TwoOpExpression(Expression):
 
     def __init__(self,opL:Value,opR:Value):
         super().__init__()
+        opL, opR = _coerce_pair(opL, opR, type(self).__name__)
         self.check_rvalue(opL)
         self.check_rvalue(opR)
         self.opL = opL
@@ -2571,6 +2696,7 @@ class TwoSameOpExpression(TwoOpExpression):
 
     def __init__(self,opL,opR):
         super().__init__(opL,opR)
+        opL, opR = self.opL, self.opR       # ints were sized by TwoOpExpression
         if opL.attribute != opR.attribute: raise ErrAttrMismatch('Can not "%s" Values with different attributes.' % self.op_name,opL.attribute,opR.attribute)
 
 class LeftShift(TwoOpExpression):
@@ -2893,6 +3019,8 @@ class Mem(Variable):
                              (self.name, self.addr_width, addr.attribute.width))
 
     def write(self, en, addr, data):
+        addr = _lit(addr, UInt(self.addr_width), 'Mem address')
+        data = _lit(data, self._template, 'Mem write data')
         if en.attribute.width != 1:
             raise ErrUHDLStr('Mem.write enable must be 1 bit, got %d.' % en.attribute.width)
         self._check_addr(addr)
@@ -2904,8 +3032,13 @@ class Mem(Variable):
         return self
 
     def read(self, addr):
+        addr = _lit(addr, UInt(self.addr_width), 'Mem address')
         self._check_addr(addr)
         return MemReadExpression(self, addr)
+
+    def __getitem__(self, addr):
+        '''mem[addr] is mem.read(addr).'''
+        return self.read(addr)
 
     @property
     def verilog_def(self):

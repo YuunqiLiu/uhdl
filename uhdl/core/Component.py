@@ -5,6 +5,8 @@ from collections.abc    import Iterable
 from .Terminal          import Terminal
 from .Root              import Root
 from .Variable          import Mem,Wire,IOSig,IOGroup,Variable,Parameter,Reg,Output,Input,Inout,InputStructIO,OutputStructIO,InputEnumIO,OutputEnumIO,InputUnionIO,OutputUnionIO
+from .Variable          import Constant, UInt
+from .UHDLException     import ErrUHDLStr
 from .                  import FileProcess
 
 from .CustConfig        import ComponentConfig
@@ -96,6 +98,75 @@ class Component(Root):
     def create(self, name, val):
         setattr(self, name, val)
         return getattr(self, name)
+
+    # ------------------------------------------------------------------
+    # Compact declarations: name, type and driver in one call
+    # ------------------------------------------------------------------
+    _NO_ARG = object()
+
+    def domain(self, clk, rst=None, **reg_opts):
+        '''Set the default clock (and reset) for self.reg() / self.mem() below.
+        reg_opts are passed to Reg: async_rst, rst_active_low, clk_active_neg.
+        Call it again to switch domains for the declarations that follow.'''
+        object.__setattr__(self, '_uhdl_domain', (clk, rst, dict(reg_opts)))
+        return self
+
+    def _domain_clk(self, what, clk):
+        if clk is not None:
+            return clk
+        d = self.__dict__.get('_uhdl_domain')
+        if d is None:
+            raise ErrUHDLStr('%s: no clock given and no default clock; call self.domain(clk, rst_n) first, '
+                             'or pass clk=.' % what)
+        return d[0]
+
+    def _check_new_name(self, name):
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name):
+            raise ErrUHDLStr('Invalid signal name %r.' % (name,))
+        if name in self.__dict__:
+            raise ErrUHDLStr('%s already has a member named "%s".' % (type(self).__name__, name))
+
+    def wire(self, name, expr, width=None):
+        '''Declare a Wire, name it and drive it: w = self.wire('sum', a & b).
+        The width comes from expr; pass width= when expr is a plain int or an
+        int-only Mux/when chain.'''
+        from .Variable import _lit, _known_attr, Wire
+        self._check_new_name(name)
+        if width is not None:
+            expr = _lit(expr, UInt(width), 'wire %s' % name)
+        attr = _known_attr(expr)
+        if attr is None:
+            raise ErrUHDLStr('wire "%s": cannot infer a width from %r; pass width=.' % (name, expr))
+        if width is not None and attr.width != width:
+            raise ErrUHDLStr('wire "%s": width=%d but the expression is %d bits.' % (name, width, attr.width))
+        w = self.create(name, Wire(attr))
+        w += expr
+        return w
+
+    def reg(self, name, width, init=0, clk=None, rst=_NO_ARG, **reg_opts):
+        '''Declare a Reg on the default domain: r = self.reg('cnt', 4) (reset value 0).
+        width may also be a constant template such as SInt(8, -1). Drive it with +=.'''
+        from .Variable import Reg
+        self._check_new_name(name)
+        clk = self._domain_clk('reg "%s"' % name, clk)
+        d = self.__dict__.get('_uhdl_domain')
+        if rst is Component._NO_ARG:
+            rst = d[1] if d is not None and d[0] is clk else None
+        opts = dict(d[2]) if d is not None and d[0] is clk else {}
+        opts.update(reg_opts)
+        template = width if isinstance(width, Constant) else UInt(width, init)
+        return self.create(name, Reg(template, clk, rst, **opts))
+
+    def mem(self, name, width, depth, clk=None):
+        '''Declare a Mem on the default clock: m = self.mem('ram', 8, 16).
+        Write with m.write(en, addr, data); read with m[addr].'''
+        from .Variable import Mem
+        self._check_new_name(name)
+        clk = self._domain_clk('mem "%s"' % name, clk)
+        d = self.__dict__.get('_uhdl_domain')
+        neg = bool(d and d[0] is clk and d[2].get('clk_active_neg', False))
+        template = width if isinstance(width, Constant) else UInt(width)
+        return self.create(name, Mem(template, depth, clk, clk_active_neg=neg))
 
     @property
     def PARAM(self):
