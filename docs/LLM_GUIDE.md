@@ -79,6 +79,26 @@ ptr += when(adv).then(If(ptr.eq(D - 1), 0, WrapAdd(ptr, 1)))   # wrap at D, any 
 ```
 - The first true condition wins. A register needs no `otherwise`; when nothing matches it keeps its value.
 
+### Control logic: when-blocks and state machines
+When one condition drives several signals, write it once as a block. Inside blocks, assign with `<<=`:
+```python
+st = s.fsm('st', ['IDLE', 'WAIT', 'RESP'])       # state reg in the current domain, resets to IDLE
+with st.state('IDLE'):
+    with s.when(req):
+        st.goto('WAIT')
+        addr <<= req_addr
+        busy <<= 1
+with st.state('RESP'):
+    with s.when(ack):
+        st.goto('IDLE')
+        busy <<= 0
+with s.when(err):
+    busy <<= 0                                   # a later assignment wins over an earlier one
+```
+- `with s.when(c):`, `with s.elsewhen(c):`, `with s.otherwise():` nest freely. `fsm.is_('WAIT')` is the 1-bit "in state" test.
+- A register that no block assigns keeps its value. A wire or output assigned in blocks needs a default first, written outside the blocks (`o <<= 0`). Without one, UHDL raises an error, because the result would be a latch.
+- A signal is driven either with `+=` or with `<<=`, not both.
+
 ## 7. Sub-components
 ```python
 class SatInc(Component):
@@ -96,6 +116,28 @@ nxt = s.wire('nxt', s.inc.y)       # read the child's output
 s.create(f'u_{i}', SatInc(6))      # computed instance names, e.g. in a loop
 ```
 - A child class with `__init__` arguments gets them as a module-name suffix (`SatInc_W_6`), so different configurations stay apart. Identical instances are written once.
+- **Clock and reset follow you.** A child's `clk` / `rst_n` inputs that you leave unconnected are connected to the `s.domain(...)` that was active when you attached the child. To use another clock, connect both `clk` and `rst_n` yourself. Connecting only one of them is an error.
+
+## 7a. Structs, streams and partial assignment
+```python
+Flit = Struct(last=1, dst=TW, data=PW)           # first field = top bits; Flit.width
+v = s.wire('v', Flit.pack(last=1, dst=d, data=x))
+Flit(v).dst                                      # a field of any Flit-wide signal or expression
+
+src = s.stream_in('ep0_in', Flit, domain=clk)    # ports ep0_in_vld, ep0_in_rdy (output), ep0_in_last, ep0_in_dst, ep0_in_data
+dst = s.stream_out('ep0_out', Flit, domain=clk)
+dst += src                                       # vld and payload forward, rdy back
+src.fire                                         # vld & rdy
+src.field('dst')                                 # one payload field
+
+lane = Stream.of(s.core, 'l_in', Flit, lane=e)   # lane e of a child's flat vectors l_in_vld[E], l_in_dst[E*TW], ...
+lane += src
+
+s.bus[7:4] += hi                                 # drive part of a signal; all parts together must cover
+s.bus[3:0] += lo                                 # every bit exactly once
+```
+- `Stream.of(comp, prefix, payload)` uses ports `<prefix>_vld`, `<prefix>_rdy`, and either one `<prefix>_<field>` per Struct field or `<prefix>_data`.
+- `s.input(name, w, domain=)` and `s.output(name, w, domain=)` declare ports with computed names, e.g. `s.input(f'clk_d{k}', 1)`.
 
 ## 8. Several clocks
 - Every `s.reg` / `s.mem` belongs to the clock it was declared with (`s.domain(clk, rst)` or `clk=`). Call `s.domain(...)` again to switch.
@@ -109,12 +151,15 @@ s.create(f'u_{i}', SatInc(6))      # computed instance names, e.g. in a loop
 | `AsyncFifo(W, D)` | a stream; D a power of 2 | `wclk`, `wrst_n`, `w_vld`, `w_rdy`, `w_data`, `rclk`, `rrst_n`, `r_vld`, `r_rdy`, `r_data` |
 
 ```python
-s.sync = CdcSync(); s.sync.clk += s.clk_b; s.sync.rst_n += s.rstb_n
-s.sync.d += flag_a                 # flag_a: a reg (or port) of clock a, no logic in between
-s.bus = CdcBus(16)
-s.bus.src_clk += s.clk_a; s.bus.src_rst_n += s.rsta_n; s.bus.src_data += cnt_a
-s.bus.dst_clk += s.clk_b; s.bus.dst_rst_n += s.rstb_n
+s.domain(s.clk_b, s.rstb_n)
+s.sync = CdcSync()                                     # clk/rst_n follow the current domain (b)
+s.sync.d += flag_a                                     # flag_a: a reg (or port) of clock a, no logic in between
+s.bus = CdcBus(16, src=(s.clk_a, s.rsta_n), dst=(s.clk_b, s.rstb_n))
+s.bus.src_data += cnt_a
 cnt_in_b = s.bus.dst_data
+s.f = AsyncFifo(Flit, 4, w=(s.clk_a, s.rsta_n), r=(s.clk_b, s.rstb_n))
+s.f.w += src_a                                         # .w and .r are Streams
+dst_b += s.f.r
 ```
 - `generate()` runs `check_cdc()` and raises an error for:
   - a crossing outside these cells;
@@ -130,6 +175,7 @@ UHDL raises an error, instead of emitting bad Verilog, for:
 - **Mem misuse:** an address too narrow for the depth, or write data of the wrong width.
 - **Name collisions:** `s.wire`/`s.reg`/`s.mem` with a name already used in the component or a Verilog/SV keyword, and two different modules with one name in `generate()`.
 - **Clock-domain crossings** outside the CDC cells (section 8).
+- **Partial drivers** that leave bits undriven or drive a bit twice, a `clk`/`rst_n` pair connected only halfway, and a combinational signal assigned only inside when-blocks.
 
 What you still have to handle:
 - **Unused signals** (Verilator UNUSED): ports required by a spec but not used, bits you drop on purpose. Call `s.mark_unused(sig, ...)`.
