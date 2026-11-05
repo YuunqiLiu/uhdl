@@ -1,109 +1,125 @@
 # UHDL guide for LLM agents
 
-This guide is for language models and people writing hardware in UHDL. Everything in it has been run on branch `lwnoc_rewrite`. The complete example is `docs/llm_example/gen.py`: a histogram counter that uses a sub-component, Mem, WrapAdd and Case. The test suite generates it and runs `verilator -Wall` lint on the result.
+This guide is for language models and people writing hardware in UHDL. Everything in it has been run on branch `lwnoc_rewrite`. The complete example is `docs/llm_example/gen.py`: a histogram counter that uses a sub-component, Mem, Mux, If and Cat. The test suite generates it and runs `verilator -Wall` lint on the result.
+
+Write new code in the compact style shown here. The older long form (`Wire(UInt(8))` plus `self.create(...)`, `UInt(w, v)` for every constant, `Equal(a, b)`) still works and is what existing lwnoc code uses, but do not mix the two in one file.
 
 ## 1. Mental model
 - A design is a Python object graph, and UHDL turns it into Verilog-2001.
-- **Elaboration time is Python.** Loops, tables, `if` and math run in Python and decide the circuit's structure.
-- **Run time is hardware.** Only UHDL objects (Input, Wire, Reg, Mem, expressions) become logic.
-- A module's parameters are fixed when it is generated. The Verilog it emits has no `parameter`. Generate once for each configuration.
+- **Elaboration time is Python.** Loops, lists, `if` and math run in Python and decide the circuit's structure.
+- **Run time is hardware.** Only UHDL objects (Input, wire, reg, mem, expressions) become logic.
+- A module's parameters are fixed when it is generated; the Verilog has no `parameter`. Generate once per configuration.
 - **Each signal has exactly one driver**, written `sig += expr`. A second `+=` on the same signal is an error.
 
 ## 2. Skeleton
 ```python
-from uhdl import *          # Component, Input, Output, Wire, Reg, Mem, UInt, when, Case, ...
+from uhdl import *
 
-def build(N, W):            # parameters come from the closure
+def build(N, W):                       # parameters come from the closure
     class my_top(Component):
-        MODULE_NAME = 'my_top'                 # exact Verilog module name
-        def circuit(self):                     # Component.__init__ calls circuit()
-            self.clk   = Input(UInt(1))
-            self.rst_n = Input(UInt(1))
+        MODULE_NAME = 'my_top'         # exact Verilog module name
+        def circuit(s):                # Component.__init__ calls circuit(); `s` is just a short `self`
+            s.clk, s.rst_n = Input(1), Input(1)
+            s.din, s.dout = Input(N * W), Output(W)
+            s.domain(s.clk, s.rst_n)   # default clock and async active-low reset for s.reg / s.mem
             ...
     return my_top()
 
-paths = build(4, 8).generate('out_dir')        # out_dir/<module>.v per module + out_dir/filelist.f
+paths = build(4, 8).generate('out_dir')   # out_dir/<module>.v per module + out_dir/filelist.f
 ```
-- Running Python: `PYTHONPATH=<uhdl checkout> python gen.py ...`
-- Use `generate(out_dir)`, not `generate_verilog()`. It writes the files flat into out_dir, keeps any existing files there, writes `filelist.f` with absolute paths, and raises an error if two different modules end up with the same name.
-- To set the module name at runtime instead, call `comp.set_module_name('name')`.
+- Run as `PYTHONPATH=<uhdl checkout> python gen.py ...`.
+- Use `generate(out_dir)`. It writes the files flat into out_dir, keeps other files there, writes `filelist.f` with absolute paths, and raises an error if two different modules get the same name.
+- `comp.set_module_name('name')` sets the module name at runtime instead of `MODULE_NAME`.
 
-## 3. Sub-components
+## 3. Declarations
+| Write | Meaning |
+|---|---|
+| `s.a = Input(8)`, `s.y = Output(8)` | Ports, in assignment order. `Input(8)` is short for `Input(UInt(8))`. |
+| `x = s.wire('x', expr)` | Declare a wire named `x`, drive it with `expr`. **The width comes from `expr`.** |
+| `x = s.wire('x', Mux(sel, [1, 2, 3]), width=2)` | `width=` is needed only when every value is a plain int. |
+| `r = s.reg('cnt', 4)` / `s.reg('cnt', 4, init=5)` | Flop on the default domain, reset to `init` (default 0). Drive it with `r += ...`. |
+| `m = s.mem('ram', 8, 16)` | `reg [7:0] ram [0:15]`, no reset. `m.write(en, addr, data)` adds a write port; `m[addr]` is a combinational read. |
+| `s.domain(clk, rst, async_rst=False)` | Change the default domain (or its reset style) for the declarations that follow. `s.reg(..., clk=other)` uses another clock. |
+
+- Names are what you see in the Verilog. Build per-index names with f-strings: `s.wire(f'req_{o}_{i}', ...)`.
+- Keep the returned objects in Python lists (`cnt = [s.reg(f'cnt_{i}', 4) for i in range(N)]`); you do not need to read them back through `s`.
+
+## 4. Values and widths
+- **Signals must match widths exactly.** There is no implicit extension or truncation between signals. Zero-extend with `Cat(x, UInt(k, 0))`; truncate with `x[h:l]`.
+- **Plain Python ints take the width of the signal they meet**: `cnt.eq(3)`, `ptr.lt(D)`, `WrapAdd(p, 1)`, `.then(0)`, `r += 0`, `m.write(we, 2, 7)`. The int must fit in that width, or UHDL raises an error. It is never truncated. Negative ints are rejected.
+- An int needs a signal next to it: `Equal(1, 2)` is an error. For a sized constant on its own, write `UInt(w, v)`.
+
+## 5. Expressions
+| Write | Verilog |
+|---|---|
+| `a & b`, `a \| b`, `a ^ b`, `~a` | Bitwise. On 1-bit signals these are the logical and/or/not. |
+| `a.eq(b)`, `.ne`, `.lt`, `.le`, `.gt`, `.ge` | Comparisons, 1-bit result. The `==`/`<` operators are **not** overloaded; always use these methods. |
+| `WrapAdd(a, b)`, `WrapSub(a, b)` | `a + b` / `a - b` keeping the operand width (counters, pointers). |
+| `a + b`, `a - b` | One bit wider than the operands. |
+| `And(a, b, ...)`, `Or(*lst)`, `Not(a)` | Logical reductions of several 1-bit values. |
+| `SelfOr(x)`, `SelfAnd(x)`, `SelfXor(x)` | `\|x`, `&x`, `^x`. |
+| `x[h:l]`, `x[i]` | Slices, high index first. |
+| `x.split(n)` | List of n equal fields, LSB field first: `s.in_data.split(N)[i]` is `in_data[i*W +: W]`. |
+| `Cat(lst)` or `Cat(a, b, c)` | Concatenate **LSB first**: item 0 lands in the low bits. `Cat(lst)` is the inverse of `split`. |
+| `Combine(a, b, c)` | `{a, b, c}`, MSB first (Verilog order). Use it for packing fields, e.g. `Combine(tgt, data, last)`. |
+| `If(c, a, b)` | `c ? a : b`. |
+| `Mux(sel, lst)` | `lst[sel]`. Values may be signals or ints. Select values past the end of the list give 0. |
+| `Priority([(c0, v0), (c1, v1)], d)` | First true condition wins, else `d`. Good for chains built in loops. |
+| `when(c0).then(v0).when(c1).then(v1).otherwise(d)` | Same as Priority, written inline. |
+| `Case(sel, {0: v0, 1: v1}, default)` | Parallel case with explicit keys; keys may be ints. |
+
+Any of these may be nested inside others; UHDL creates helper wires where Verilog needs them.
+
+## 6. Registers
+```python
+cnt = s.reg('cnt', CW)
+cnt += when(push & ~pop).then(WrapAdd(cnt, 1)) \
+       .when(pop & ~push).then(WrapSub(cnt, 1))      # no match -> holds its value
+ptr += when(adv).then(If(ptr.eq(D - 1), 0, WrapAdd(ptr, 1)))   # wrap at D, any D
+```
+- The first true condition wins. A register needs no `otherwise`; when nothing matches it keeps its value.
+
+## 7. Sub-components
 ```python
 class SatInc(Component):
     def __init__(self, W):
         self.W = W                 # set attributes BEFORE super().__init__(), which calls circuit()
         super().__init__()
-    def circuit(self):
-        self.a = Input(UInt(self.W)); self.y = Output(UInt(self.W)); ...
+    def circuit(s):
+        s.a, s.y = Input(s.W), Output(s.W)
+        s.y += If(SelfAnd(s.a), s.a, WrapAdd(s.a, 1))
 
 # inside the parent's circuit():
-self.inc = SatInc(6)               # instance name = attribute name ("inc")
-self.inc.a += self.cur             # drive the child's input from the parent
-self.x     += self.inc.y           # read the child's output
-self.create('u_%d' % i, SatInc(6)) # dynamically named instances, e.g. in a loop
+s.inc = SatInc(6)                  # instance name = attribute name ("inc")
+s.inc.a += cur                     # drive the child's input
+nxt = s.wire('nxt', s.inc.y)       # read the child's output
+s.create(f'u_{i}', SatInc(6))      # computed instance names, e.g. in a loop
 ```
-- If a child class has `__init__` arguments, its module name gets them as a suffix (`SatInc_W_6`). That keeps different configurations apart automatically.
-- If two instances of the same configuration produce identical Verilog, `generate()` writes it once.
+- A child class with `__init__` arguments gets them as a module-name suffix (`SatInc_W_6`), so different configurations stay apart. Identical instances are written once.
 
-## 4. Signals and values
-| Construct | Meaning |
-|---|---|
-| `Input(UInt(w))` / `Output(UInt(w))` | Ports. Their order in the module follows the order of assignment in `circuit()`. |
-| `Wire(UInt(w))` | Combinational net |
-| `Reg(UInt(w, rst), clk, rst_n)` | Flop with asynchronous active-low reset to `rst`. Other options are in the Reg docstring. |
-| `Mem(UInt(w), depth, clk)` | `reg [w-1:0] m [0:depth-1]`, no reset. `m.write(en, addr, data)` adds a write port; `m.read(addr)` is a combinational read. |
-| `UInt(w, v)` | Constant |
-| `self.create(name, obj)` | Attach a signal or instance under a computed name |
-
-## 5. Expressions
-- **Widths must match exactly.** Every `+=`, comparison and bitwise operator requires equal widths, and there is no implicit extension. To zero-extend, write `Combine(UInt(k, 0), x)`. To truncate, write `x[h:l]`.
-- **Arithmetic:**
-  - `a + b` and `a - b` give a result **one bit wider** than the operands.
-  - For counters and pointers use `WrapAdd(a, b)` and `WrapSub(a, b)`. They keep the operand width and emit `{(a + b)}`, which produces no lint warnings.
-  - `a * b` is also available.
-- **Bitwise:** `a & b`, `a | b`, `a ^ b`, `~a`.
-- **Logical (1-bit results):** `And(a, b, ...)`, `Or(...)`, `Not(a)`.
-- **Comparisons:** `Equal`, `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual`. A comparison whose result is constant for the operand width, such as `GreaterEqual(UInt(3,7), p)`, is folded to a constant automatically.
-- **Reductions:** `SelfOr(x)` (`|x`), `SelfAnd`, `SelfXor`.
-- **Slices:** `x[h:l]` with the high index first, `x[i]`.
-- **Concatenation:** `Combine(a, b, c)` gives `{a, b, c}`, so the first argument becomes the MSBs. A single argument is allowed.
-- **Muxes:**
-  - `when(c1).then(v1).when(c2).then(v2).otherwise(v3)` is a priority mux.
-  - `Case(sel, {UInt(k,0): v0, ...}, default)` is a parallel mux. The keys must be UInt values of the same width as `sel`.
-  - Either may be used inside other expressions; UHDL creates a helper wire for it.
-  - For a when-chain built in a loop, use `ch = EmptyWhen()`, then `ch.when(c).then(v)` repeatedly, then `ch.otherwise(d)`.
-
-## 6. Registers
-```python
-self.cnt += when(inc).then(WrapAdd(self.cnt, UInt(W, 1))) \
-            .when(dec).then(WrapSub(self.cnt, UInt(W, 1)))     # no match -> holds its value
-```
-- The first condition that is true wins. A register needs no `otherwise`; when nothing matches it keeps its value.
-
-## 7. What UHDL guarantees and what you still own
+## 8. What UHDL guarantees and what you still own
 UHDL raises an error, instead of emitting bad Verilog, for:
-- **Width mismatches** in assignments and operators.
+- **Width mismatches** between signals, and ints that do not fit.
 - **Multiple drivers** on one signal.
-- **Latches:** a combinational when-chain without `otherwise`, or a combinational `Case` with no default that does not cover every select value.
+- **Latches:** a combinational when-chain without `otherwise`, or a combinational `Case` that has no default and does not cover every select value. (`Mux` and `If` always cover every case.)
 - **Mem misuse:** an address too narrow for the depth, or write data of the wrong width.
-- **Name collisions** between different modules in `generate()`.
+- **Name collisions:** `s.wire`/`s.reg`/`s.mem` with a name already used in the component, and two different modules with one name in `generate()`.
 
 What you still have to handle:
-- **Unused signals** (Verilator UNUSED). Examples are ports required by a spec but not used by your logic, or a carry you drop on purpose. Call `self.mark_unused(sig, ...)`.
-- **Undriven outputs.** Every Output and Wire you declare must be driven.
+- **Unused signals** (Verilator UNUSED): ports required by a spec but not used, bits you drop on purpose. Call `s.mark_unused(sig, ...)`.
+- **Undriven outputs.** Every Output you declare must be driven.
 - **Functional correctness.** Write a testbench. UHDL emits plain Verilog, so you can simulate it with `verilator --binary --timing tb.sv -f out/filelist.f`.
 
-## 8. Checking your output
+## 9. Checking your output
 ```bash
 python gen.py --out out ...
 verilator --lint-only -Wall --top-module <top> -f out/filelist.f      # expect no %Warning lines
 yosys -q -p "read_verilog $(tr '\n' ' ' < out/filelist.f); synth -top <top>; check -assert"
 ```
-- To look at the Verilog for one component without writing files: `print('\n'.join(comp.verilog_def))`.
+- To look at one component's Verilog without writing files: `print('\n'.join(comp.verilog_def))`.
 - UHDL writes no log file unless you set `UHDL_LOG=<path>`.
 
-## 9. Known limitations
-- The output is Verilog-2001. There are no SystemVerilog interfaces in the output, and parameters are not kept, because everything is elaborated.
+## 10. Known limitations
+- The output is Verilog-2001, with no SystemVerilog interfaces. Parameters are not kept, because everything is elaborated.
 - Constants are emitted in binary.
 - `VComponent` (importing hand-written SV) and `TemplateIP` use their own output handling. `generate()` hands those components to it, and their files are not listed in `filelist.f`.
