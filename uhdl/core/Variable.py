@@ -539,6 +539,17 @@ class Value(ValueRoot):
 
     def __getitem__(self, s:slice):
         if isinstance(s, slice):
+            h, l = s.start, s.stop
+        elif isinstance(s, int):
+            h, l = s, s
+        else:
+            raise Exception()
+        if isinstance(self, CutExpression) and isinstance(h, int) and isinstance(l, int) \
+                and 0 <= l <= h < self.attribute.width:
+            # a slice of a slice is one slice of the original: x[7:4][1:0] == x[5:4].
+            # Keeps x.split(n)[i][..] from creating a helper wire with unused bits.
+            return CutExpression(self.op, self.lbound + h, self.lbound + l)
+        if isinstance(s, slice):
             return CutExpression(self, s.start, s.stop)
         elif isinstance(s, int):
             return CutExpression(self, s, s)

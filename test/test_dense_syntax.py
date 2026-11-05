@@ -169,3 +169,19 @@ def test_mux_width_argument():
     assert "default : " in '\n'.join(_comp(body).verilog_def)
     with pytest.raises(ErrUHDLStr, match='does not fit'):
         _comp(lambda s: Mux(s.a[1:0], [3], width=1))
+
+
+@needs_verilator
+def test_slice_of_split_field_is_one_slice(tmp_path):
+    class T(Component):
+        MODULE_NAME = 'cutcut'
+        def circuit(s):
+            s.a = Input(8); s.o = Output(1); s.p = Output(2)
+            f = s.a.split(2)[1]
+            s.o += f[3]
+            s.p += f[1:0]
+            s.mark_unused(s.a[3:0], s.a[6])
+    text = '\n'.join(T().verilog_def)
+    assert 'assign o = a[7:7];' in text or 'assign o = a[7];' in text
+    assert 'cut_tmp' not in text
+    assert lint(T().generate(str(tmp_path / 'o')), 'cutcut') == []
