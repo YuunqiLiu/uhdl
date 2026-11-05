@@ -36,7 +36,7 @@ paths = build(4, 8).generate('out_dir')   # out_dir/<module>.v per module + out_
 |---|---|
 | `s.a = Input(8)`, `s.y = Output(8)` | Ports, in assignment order. `Input(8)` is short for `Input(UInt(8))`. |
 | `x = s.wire('x', expr)` | Declare a wire named `x`, drive it with `expr`. **The width comes from `expr`.** |
-| `x = s.wire('x', Mux(sel, [1, 2, 3]), width=2)` | `width=` is needed only when every value is a plain int. |
+| `x = s.wire('x', Mux(sel, [1, 2, 3]), width=2)` | `width=` is needed only when every value is a plain int. `Mux(sel, [1, 2, 3], width=2)` works too. |
 | `r = s.reg('cnt', 4)` / `s.reg('cnt', 4, init=5)` | Flop on the default domain, reset to `init` (default 0). Drive it with `r += ...`. |
 | `m = s.mem('ram', 8, 16)` | `reg [7:0] ram [0:15]`, no reset. `m.write(en, addr, data)` adds a write port; `m[addr]` is a combinational read. |
 | `s.domain(clk, rst, async_rst=False)` | Change the default domain (or its reset style) for the declarations that follow. `s.reg(..., clk=other)` uses another clock. |

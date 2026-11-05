@@ -46,10 +46,13 @@ def If(cond, a, b):
     return WhenExpression().when(cond).then(a).otherwise(b)
 
 
-def Mux(sel, values):
+def Mux(sel, values, width=None):
     '''Index a list with a signal: values[sel]. Values may be signals or ints.
-    If the list does not cover every select value, out-of-range selects give 0.'''
+    If the list does not cover every select value, out-of-range selects give 0.
+    width= sizes an all-int list here instead of where the Mux is used.'''
     values = list(values)
+    if width is not None:
+        values = [_lit(v, UInt(width), 'Mux value') for v in values]
     w = sel.attribute.width
     if not values:
         raise ErrUHDLStr('Mux() needs at least one value.')

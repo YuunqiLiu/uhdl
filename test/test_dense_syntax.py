@@ -161,3 +161,11 @@ def test_old_style_still_works():
             self.r += when(Equal(self.a, UInt(4, 3))).then(UInt(4, 0)).otherwise(self.a)
             self.o += self.r
     assert "if((a == 4'b11)) r <= 4'b0;" in '\n'.join(Old().verilog_def)
+
+
+def test_mux_width_argument():
+    def body(s):
+        s.o += Cat(Mux(s.a[1:0], [1, 0, 1], width=1), s.a[2:0])
+    assert "default : " in '\n'.join(_comp(body).verilog_def)
+    with pytest.raises(ErrUHDLStr, match='does not fit'):
+        _comp(lambda s: Mux(s.a[1:0], [3], width=1))
