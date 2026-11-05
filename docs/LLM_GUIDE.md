@@ -97,20 +97,46 @@ s.create(f'u_{i}', SatInc(6))      # computed instance names, e.g. in a loop
 ```
 - A child class with `__init__` arguments gets them as a module-name suffix (`SatInc_W_6`), so different configurations stay apart. Identical instances are written once.
 
-## 8. What UHDL guarantees and what you still own
+## 8. Several clocks
+- Every `s.reg` / `s.mem` belongs to the clock it was declared with (`s.domain(clk, rst)` or `clk=`). Call `s.domain(...)` again to switch.
+- Give top-level ports their clock: `s.din = Input(8, domain=s.clk_a)`, `s.q = Output(1, domain=s.clk_b)`. Unannotated ports are not checked.
+- A signal may cross from one clock domain to another only through a CDC cell:
+
+| Cell | Use for | Ports |
+|---|---|---|
+| `CdcSync()` | one bit (a level, a flag) | `clk`, `rst_n` (destination), `d`, `q` |
+| `CdcBus(W)` | a multi-bit value that changes now and then (a counter, a status word). `dst_data` is always a value `src_data` had. | `src_clk`, `src_rst_n`, `src_data`, `dst_clk`, `dst_rst_n`, `dst_data` |
+| `AsyncFifo(W, D)` | a stream; D a power of 2 | `wclk`, `wrst_n`, `w_vld`, `w_rdy`, `w_data`, `rclk`, `rrst_n`, `r_vld`, `r_rdy`, `r_data` |
+
+```python
+s.sync = CdcSync(); s.sync.clk += s.clk_b; s.sync.rst_n += s.rstb_n
+s.sync.d += flag_a                 # flag_a: a reg (or port) of clock a, no logic in between
+s.bus = CdcBus(16)
+s.bus.src_clk += s.clk_a; s.bus.src_rst_n += s.rsta_n; s.bus.src_data += cnt_a
+s.bus.dst_clk += s.clk_b; s.bus.dst_rst_n += s.rstb_n
+cnt_in_b = s.bus.dst_data
+```
+- `generate()` runs `check_cdc()` and raises an error for:
+  - a crossing outside these cells;
+  - logic in front of a `CdcSync`;
+  - two `CdcSync` from the same source domain whose outputs meet in one destination register (reconvergence). Combine such bits in the source domain first and sync once, or send them as one value with `CdcBus`.
+- `comp.check_cdc()` returns the same list without generating.
+
+## 9. What UHDL guarantees and what you still own
 UHDL raises an error, instead of emitting bad Verilog, for:
 - **Width mismatches** between signals, and ints that do not fit.
 - **Multiple drivers** on one signal.
 - **Latches:** a combinational when-chain without `otherwise`, or a combinational `Case` that has no default and does not cover every select value. (`Mux` and `If` always cover every case.)
 - **Mem misuse:** an address too narrow for the depth, or write data of the wrong width.
-- **Name collisions:** `s.wire`/`s.reg`/`s.mem` with a name already used in the component, and two different modules with one name in `generate()`.
+- **Name collisions:** `s.wire`/`s.reg`/`s.mem` with a name already used in the component or a Verilog/SV keyword, and two different modules with one name in `generate()`.
+- **Clock-domain crossings** outside the CDC cells (section 8).
 
 What you still have to handle:
 - **Unused signals** (Verilator UNUSED): ports required by a spec but not used, bits you drop on purpose. Call `s.mark_unused(sig, ...)`.
 - **Undriven outputs.** Every Output you declare must be driven.
 - **Functional correctness.** Write a testbench. UHDL emits plain Verilog, so you can simulate it with `verilator --binary --timing tb.sv -f out/filelist.f`.
 
-## 9. Checking your output
+## 10. Checking your output
 ```bash
 python gen.py --out out ...
 verilator --lint-only -Wall --top-module <top> -f out/filelist.f      # expect no %Warning lines
@@ -119,7 +145,7 @@ yosys -q -p "read_verilog $(tr '\n' ' ' < out/filelist.f); synth -top <top>; che
 - To look at one component's Verilog without writing files: `print('\n'.join(comp.verilog_def))`.
 - UHDL writes no log file unless you set `UHDL_LOG=<path>`.
 
-## 10. Known limitations
+## 11. Known limitations
 - The output is Verilog-2001, with no SystemVerilog interfaces. Parameters are not kept, because everything is elaborated.
 - Constants are emitted in binary.
 - `VComponent` (importing hand-written SV) and `TemplateIP` use their own output handling. `generate()` hands those components to it, and their files are not listed in `filelist.f`.
