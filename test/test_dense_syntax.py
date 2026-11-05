@@ -185,3 +185,8 @@ def test_slice_of_split_field_is_one_slice(tmp_path):
     assert 'assign o = a[7:7];' in text or 'assign o = a[7];' in text
     assert 'cut_tmp' not in text
     assert lint(T().generate(str(tmp_path / 'o')), 'cutcut') == []
+
+
+def test_keyword_names_rejected():
+    with pytest.raises(ErrUHDLStr, match='keyword'):
+        _comp(lambda s: s.wire('dist', s.a))

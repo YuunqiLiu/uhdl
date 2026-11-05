@@ -676,8 +676,9 @@ class Value(ValueRoot):
 
 class SingleVar(Variable, Value):
 
-    def __init__(self,template):
+    def __init__(self,template,domain=None):
         super().__init__()
+        object.__setattr__(self, '_cdc_domain', domain)   # clock of this port, for check_cdc()
         if isinstance(template, int) and not isinstance(template, bool) and not isinstance(self, Parameter):
             template = UInt(template)           # Input(8) is short for Input(UInt(8))
         if not isinstance(template, (Constant, StructConstant, EnumConstant, UnionConstant)): raise ErrAttrTypeWrong(self, template)
@@ -3030,6 +3031,7 @@ class Mem(Variable):
                              (self.name, self.addr_width, addr.attribute.width))
 
     def write(self, en, addr, data):
+        en = _lit(en, UInt(1), 'Mem write enable')
         addr = _lit(addr, UInt(self.addr_width), 'Mem address')
         data = _lit(data, self._template, 'Mem write data')
         if en.attribute.width != 1:

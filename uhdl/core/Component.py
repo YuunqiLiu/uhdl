@@ -68,6 +68,9 @@ class PARAM_CONTAINER(object):
 
 
 
+_HDL_KEYWORDS = frozenset('''alias always always_comb always_ff always_latch and assert assign assume automatic before begin bind bins binsof bit break buf bufif0 bufif1 byte case casex casez cell chandle checker class clocking cmos config const constraint context continue cover covergroup coverpoint cross deassign default defparam design disable dist do edge else end endcase endchecker endclass endclocking endconfig endfunction endgenerate endgroup endinterface endmodule endpackage endprimitive endprogram endproperty endspecify endsequence endtable endtask enum event eventually expect export extends extern final first_match for force foreach forever fork forkjoin function generate genvar global highz0 highz1 if iff ifnone ignore_bins illegal_bins implements implies import incdir include initial inout input inside instance int integer interconnect interface intersect join join_any join_none large let liblist library local localparam logic longint macromodule matches medium modport module nand negedge nettype new nexttime nmos nor noshowcancelled not notif0 notif1 null or output package packed parameter pmos posedge primitive priority program property protected pull0 pull1 pulldown pullup pulsestyle_ondetect pulsestyle_onevent pure rand randc randcase randsequence rcmos real realtime ref reg reject_on release repeat restrict return rnmos rpmos rtran rtranif0 rtranif1 s_always s_eventually s_nexttime s_until s_until_with scalared sequence shortint shortreal showcancelled signed small soft solve specify specparam static string strong strong0 strong1 struct super supply0 supply1 sync_accept_on sync_reject_on table tagged task this throughout time timeprecision timeunit tran tranif0 tranif1 tri tri0 tri1 triand trior trireg type typedef union unique unique0 unsigned until until_with untyped use uwire var vectored virtual void wait wait_order wand weak weak0 weak1 while wildcard wire with within wor xnor xor'''.split())
+
+
 class Component(Root):
 
     def __init__(self):
@@ -125,6 +128,8 @@ class Component(Root):
             raise ErrUHDLStr('Invalid signal name %r.' % (name,))
         if name in self.__dict__:
             raise ErrUHDLStr('%s already has a member named "%s".' % (type(self).__name__, name))
+        if name in _HDL_KEYWORDS:
+            raise ErrUHDLStr('"%s" is a Verilog/SystemVerilog keyword and cannot be a signal name.' % name)
 
     def wire(self, name, expr, width=None):
         '''Declare a Wire, name it and drive it: w = self.wire('sum', a & b).
@@ -595,13 +600,23 @@ class Component(Root):
         for c in self.component_list:
             c._create_all_vfile(path)
 
-    def generate(self, out_dir, filelist=True, clean=False, filelist_name='filelist.f'):
+    def check_cdc(self):
+        '''Return the clock-domain-crossing violations of this design (see uhdl.core.Cdc).'''
+        from .Cdc import check_cdc
+        return check_cdc(self)
+
+    def generate(self, out_dir, filelist=True, clean=False, filelist_name='filelist.f', cdc_check=True):
         '''Write every UHDL-generated module of this design as <out_dir>/<module>.v
         (flat, one file per module, sub-modules first) and, by default,
         <out_dir>/filelist.f with absolute paths. Existing files in out_dir are
         kept unless clean=True. Raises ErrUHDLStr if two different modules share
-        a name. Returns the list of written .v paths.'''
+        a name, or (unless cdc_check=False) if the design has an unsynchronized
+        clock-domain crossing. Returns the list of written .v paths.'''
         from .UHDLException import ErrUHDLStr
+        if cdc_check:
+            v = self.check_cdc()
+            if v:
+                raise ErrUHDLStr('%d clock-domain crossing violation(s):\n  ' % len(v) + '\n  '.join(v))
         out_dir = os.path.abspath(out_dir)
         if clean:
             FileProcess.refresh_directory(out_dir)
