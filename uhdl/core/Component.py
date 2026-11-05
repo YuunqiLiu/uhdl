@@ -1,4 +1,4 @@
-import os, inspect, re
+import os, inspect, re, contextlib
 from operator           import concat
 from functools          import reduce
 from collections.abc    import Iterable
@@ -62,10 +62,50 @@ class PARAM_CONTAINER(object):
                 else:
                     seq = 0
                     UHDL_GLOBAL_PARAM_DICT[ID] = 0
-                res = res + '_' + type(item) + str(seq)
+                res = res + '_' + type(item).__name__ + str(seq)
         res = res + '_E'
         return res
 
+
+
+def _ranges(bits):
+    out, i = [], 0
+    while i < len(bits):
+        j = i
+        while j + 1 < len(bits) and bits[j + 1] == bits[j] + 1:
+            j += 1
+        out.append(str(bits[i]) if i == j else '%d..%d' % (bits[i], bits[j]))
+        i = j + 1
+    return ', '.join(out)
+
+
+def _width_of(w):
+    return w.width if hasattr(w, 'fields') and hasattr(w, 'width') else w
+
+
+class _Fsm:
+    def __init__(self, comp, name, states, init):
+        if len(set(states)) != len(states) or not states:
+            raise ErrUHDLStr('fsm %s: states must be a non-empty list of distinct names.' % name)
+        self.comp, self.states = comp, states
+        self.code = {n: i for i, n in enumerate(states)}
+        w = max(1, (len(states) - 1).bit_length())
+        self.reg = comp.reg(name, w, init=self.code[init if init is not None else states[0]])
+
+    def _c(self, n):
+        if n not in self.code:
+            raise ErrUHDLStr('fsm has no state "%s"; states are %s.' % (n, ', '.join(self.states)))
+        return self.code[n]
+
+    def is_(self, n):
+        return self.reg.eq(self._c(n))
+
+    def state(self, n):
+        """`with fsm.state('IDLE'):` - the block applies while in that state."""
+        return self.comp.when(self.is_(n))
+
+    def goto(self, n):
+        self.reg <<= self._c(n)
 
 
 _HDL_KEYWORDS = frozenset('''alias always always_comb always_ff always_latch and assert assign assume automatic before begin bind bins binsof bit break buf bufif0 bufif1 byte case casex casez cell chandle checker class clocking cmos config const constraint context continue cover covergroup coverpoint cross deassign default defparam design disable dist do edge else end endcase endchecker endclass endclocking endconfig endfunction endgenerate endgroup endinterface endmodule endpackage endprimitive endprogram endproperty endspecify endsequence endtable endtask enum event eventually expect export extends extern final first_match for force foreach forever fork forkjoin function generate genvar global highz0 highz1 if iff ifnone ignore_bins illegal_bins implements implies import incdir include initial inout input inside instance int integer interconnect interface intersect join join_any join_none large let liblist library local localparam logic longint macromodule matches medium modport module nand negedge nettype new nexttime nmos nor noshowcancelled not notif0 notif1 null or output package packed parameter pmos posedge primitive priority program property protected pull0 pull1 pulldown pullup pulsestyle_ondetect pulsestyle_onevent pure rand randc randcase randsequence rcmos real realtime ref reg reject_on release repeat restrict return rnmos rpmos rtran rtranif0 rtranif1 s_always s_eventually s_nexttime s_until s_until_with scalared sequence shortint shortreal showcancelled signed small soft solve specify specparam static string strong strong0 strong1 struct super supply0 supply1 sync_accept_on sync_reject_on table tagged task this throughout time timeprecision timeunit tran tranif0 tranif1 tri tri0 tri1 triand trior trireg type typedef union unique unique0 unsigned until until_with untyped use uwire var vectored virtual void wait wait_order wand weak weak0 weak1 while wildcard wire with within wor xnor xor'''.split())
@@ -88,6 +128,7 @@ class Component(Root):
         self._unused_seq            = 0
         self._sub_instance_list     = []  # List to store all circuit instances belonging to this component
         self.circuit()
+        self._uhdl_finalize()
 
 
     def circuit(self):
@@ -101,6 +142,187 @@ class Component(Root):
     def create(self, name, val):
         setattr(self, name, val)
         return getattr(self, name)
+
+    # ------------------------------------------------------------------
+    # Attaching to a parent: implicit clock/reset, connections given at construction
+    # ------------------------------------------------------------------
+    CLOCK_PORTS = (('clk', 'rst_n'),)
+
+    def _setattr_hook(self):
+        father = self.father
+        if not isinstance(father, Component):
+            return
+        object.__setattr__(self, '_uhdl_attach_domain', father.__dict__.get('_uhdl_domain'))
+        pend = self.__dict__.get('_uhdl_attach_connects')
+        if pend:
+            object.__setattr__(self, '_uhdl_attach_connects', [])
+            for port, sig in pend:
+                p = getattr(self, port)
+                p += sig
+
+    def _connect_on_attach(self, port, sig):
+        '''Connect input `port` of this component to `sig` once it is placed in a parent.'''
+        if sig is None:
+            return
+        self.__dict__.setdefault('_uhdl_attach_connects', []).append((port, sig))
+
+    def _uhdl_finalize(self):
+        '''Run after circuit(): implicit clocks, joined slice drivers, when-blocks.'''
+        # 1. clock/reset of children that were left unconnected follow the domain active at attach time
+        for child in self.component_list:
+            dom = child.__dict__.get('_uhdl_attach_domain')
+            for cname, rname in getattr(type(child), 'CLOCK_PORTS', ()):
+                c, r = child.__dict__.get(cname), child.__dict__.get(rname)
+                if not isinstance(c, Input):
+                    continue
+                c_open = c._rvalue is None
+                r_open = isinstance(r, Input) and r._rvalue is None
+                if isinstance(r, Input) and c_open != r_open:
+                    raise ErrUHDLStr('%s: %s is connected but %s is not. Connect both, or neither to let '
+                                     'them follow s.domain().' % (child.full_hier, rname if c_open else cname,
+                                                                  cname if c_open else rname))
+                if c_open and dom:
+                    c += dom[0]
+                    if r_open:
+                        if dom[1] is None:
+                            raise ErrUHDLStr('%s.%s follows s.domain(), which has no reset.' % (child.full_hier, rname))
+                        r += dom[1]
+        # 2. signals driven slice by slice
+        parts = self.__dict__.pop('_uhdl_parts', None)
+        if parts:
+            from .Operator import Combine
+            for target, lst in parts.values():
+                w = target.attribute.width
+                lst = sorted(lst, key=lambda t: -t[1])
+                bits = [0] * w
+                for h, l, _ in lst:
+                    for b in range(l, h + 1):
+                        bits[b] += 1
+                over = [b for b in range(w) if bits[b] > 1]
+                hole = [b for b in range(w) if bits[b] == 0]
+                if over or hole:
+                    raise ErrUHDLStr('%s is driven slice by slice, but %s.' % (target.full_hier, '; '.join(
+                        x for x in ('bits %s are driven twice' % _ranges(over) if over else '',
+                                    'bits %s are not driven' % _ranges(hole) if hole else '') if x)))
+                vals = [v for _, _, v in lst]
+                target += vals[0] if len(vals) == 1 else Combine(*vals)
+        # 3. when-blocks
+        blk = self.__dict__.pop('_uhdl_blk', None)
+        if blk:
+            if blk['stack']:
+                raise ErrUHDLStr('A `with s.when(...)` block was not closed.')
+            from .Variable import WhenExpression
+            for target, recs in blk['records'].values():
+                last_u = max((i for i, (c, _) in enumerate(recs) if c is None), default=None)
+                default = recs[last_u][1] if last_u is not None else None
+                conds = recs[last_u + 1:] if last_u is not None else recs
+                if not conds:
+                    target += default
+                    continue
+                if default is None and not isinstance(target, Reg):
+                    raise ErrUHDLStr('%s is only assigned inside when-blocks, so it would be a latch. Give it a '
+                                     'default first: `%s <<= value` outside the blocks.' % (target.full_hier, target.name))
+                ch = WhenExpression()
+                for c, v in reversed(conds):                # the last assignment wins
+                    ch.when(c).then(v)
+                if default is not None:
+                    ch.otherwise(default)
+                target += ch
+
+    def _add_part(self, target, h, l, value):
+        d = self.__dict__.setdefault('_uhdl_parts', {})
+        d.setdefault(id(target), (target, []))[1].append((h, l, value))
+
+    # ------------------------------------------------------------------
+    # when-blocks:  with s.when(c): a <<= x; b <<= y
+    # ------------------------------------------------------------------
+    def _blk(self):
+        return self.__dict__.setdefault('_uhdl_blk', {'stack': [], 'last': {}, 'records': {}})
+
+    def _blk_assign(self, target, value):
+        b = self._blk()
+        cond = b['stack'][-1] if b['stack'] else None
+        if type(value).__name__ in ('StructView', '_FieldsView'):
+            value = value.bits
+        b['records'].setdefault(id(target), (target, []))[1].append((cond, value))
+
+    @contextlib.contextmanager
+    def _blk_enter(self, kind, cond):
+        from .Operator import Or
+        b = self._blk()
+        depth = len(b['stack'])
+        prev = b['last'].get(depth)
+        if kind != 'otherwise':
+            if not hasattr(cond, 'attribute') or cond.attribute.width != 1:
+                raise ErrUHDLStr('s.%s() needs a 1-bit condition.' % kind)
+        if kind == 'when':
+            chain, local = [cond], cond
+        elif prev is None:
+            raise ErrUHDLStr('s.%s() must directly follow a s.when()/s.elsewhen() block at the same level.' % kind)
+        elif kind == 'elsewhen':
+            chain, local = prev + [cond], cond & ~Or(*prev)
+        else:
+            chain, local = None, ~Or(*prev)
+        total = local if depth == 0 else b['stack'][-1] & local
+        for d in [d for d in b['last'] if d >= depth]:
+            del b['last'][d]
+        b['stack'].append(total)
+        try:
+            yield
+        finally:
+            b['stack'].pop()
+            for d in [d for d in b['last'] if d > depth]:
+                del b['last'][d]
+            if chain is not None:
+                b['last'][depth] = chain
+
+    def when(self, cond):
+        '''`with s.when(c):` - assignments with <<= inside apply when c is 1.'''
+        return self._blk_enter('when', cond)
+
+    def elsewhen(self, cond):
+        return self._blk_enter('elsewhen', cond)
+
+    def otherwise(self):
+        return self._blk_enter('otherwise', None)
+
+    def fsm(self, name, states, init=None):
+        '''A state register with named states: fsm = s.fsm('st', ['IDLE', 'RUN']).
+        Uses the current domain; resets to `init` (default: the first state).'''
+        return _Fsm(self, name, list(states), init)
+
+    # ------------------------------------------------------------------
+    # Ports and streams with computed names
+    # ------------------------------------------------------------------
+    def input(self, name, width, domain=None):
+        self._check_new_name(name)
+        return self.create(name, Input(_width_of(width), domain=domain))
+
+    def output(self, name, width, domain=None):
+        self._check_new_name(name)
+        return self.create(name, Output(_width_of(width), domain=domain))
+
+    def _stream_ports(self, prefix, payload, fwd, bwd, domain):
+        from .Struct import Stream, Struct
+        from collections import OrderedDict
+        mk = lambda n, io, w: self.create(n, io(w, domain=domain) if io is not Wire else Wire(w))
+        vld = mk(prefix + '_vld', fwd, 1)
+        rdy = mk(prefix + '_rdy', bwd, 1)
+        if isinstance(payload, Struct):
+            fields = OrderedDict((f, mk('%s_%s' % (prefix, f), fwd, payload.field_width(f))) for f in payload.fields)
+            return Stream(vld, rdy, fields=fields, struct=payload)
+        return Stream(vld, rdy, data=mk(prefix + '_data', fwd, payload))
+
+    def stream_in(self, prefix, payload, domain=None):
+        '''Input stream ports <prefix>_vld, <prefix>_rdy (out), and <prefix>_data or one
+        <prefix>_<field> per Struct field.'''
+        return self._stream_ports(prefix, payload, Input, Output, domain)
+
+    def stream_out(self, prefix, payload, domain=None):
+        return self._stream_ports(prefix, payload, Output, Input, domain)
+
+    def stream_wire(self, prefix, payload):
+        return self._stream_ports(prefix, payload, Wire, Wire, None)
 
     # ------------------------------------------------------------------
     # Compact declarations: name, type and driver in one call

@@ -6,6 +6,11 @@
                        word). Toggle handshake: dst_data is always a value src_data had,
                        never a mix of two values. Updates every few cycles of each clock.
     AsyncFifo(W, D)    a stream with valid/ready on both sides. D must be a power of 2.
+
+W may be a Struct. Clocks can be given at construction and are connected when the cell is
+placed in its parent: CdcBus(W, src=(clk, rst_n), dst=(clk, rst_n)),
+AsyncFifo(W, D, w=(clk, rst_n), r=(clk, rst_n)). CdcSync's clk/rst_n, if left open, follow the
+parent's current s.domain(). AsyncFifo.w / .r are its two ends as Streams.
 """
 from .Component import Component
 from .Variable import Input, Output, UInt
@@ -32,12 +37,28 @@ class CdcSync(Component):
         s.q += q2
 
 
+def _pair(comp, names, pair):
+    if pair is not None:
+        clk, rst = pair if isinstance(pair, (tuple, list)) else (pair, None)
+        comp._connect_on_attach(names[0], clk)
+        comp._connect_on_attach(names[1], rst)
+
+
 class CdcBus(Component):
     CDC_CELL = 'bus'
+    CLOCK_PORTS = ()
 
-    def __init__(self, W):
+    def __init__(self, W, **clocks):
+        self.payload = W if hasattr(W, 'fields') else None
+        W = W.width if self.payload is not None else W
         self.W = W
+        src, dst = clocks.pop('src', None), clocks.pop('dst', None)
+        if clocks:
+            raise TypeError('CdcBus: unknown arguments %s' % ', '.join(clocks))
         super().__init__()
+        self.set_module_name('CdcBus_W_%d' % W)
+        _pair(self, ('src_clk', 'src_rst_n'), src)
+        _pair(self, ('dst_clk', 'dst_rst_n'), dst)
 
     def circuit(s):
         W = s.W
@@ -69,12 +90,37 @@ class CdcBus(Component):
 
 class AsyncFifo(Component):
     CDC_CELL = 'fifo'
+    CLOCK_PORTS = ()
 
-    def __init__(self, W, D=4):
+    def __init__(self, W, D=4, **clocks):
         if D < 2 or D & (D - 1):
             raise ValueError('AsyncFifo depth must be a power of 2 >= 2, got %r' % D)
+        self.payload = W if hasattr(W, 'fields') else None
+        W = W.width if self.payload is not None else W
         self.W, self.D = W, D
+        wpair, rpair = clocks.pop('w', None), clocks.pop('r', None)
+        if clocks:
+            raise TypeError('AsyncFifo: unknown arguments %s' % ', '.join(clocks))
         super().__init__()
+        self.set_module_name('AsyncFifo_W_%d_D_%d' % (W, D))
+        _pair(self, ('wclk', 'wrst_n'), wpair)
+        _pair(self, ('rclk', 'rrst_n'), rpair)
+
+    @property
+    def w(self):
+        """The write end as a Stream (drive it: fifo.w += src)."""
+        from .Struct import Stream
+        return Stream(self.w_vld, self.w_rdy, data=self.w_data, struct=self.payload)
+
+    @w.setter
+    def w(self, v):          # `fifo.w += src` ends in setattr(fifo, 'w', <the stream>)
+        _accept_stream(v)
+
+    @property
+    def r(self):
+        """The read end as a Stream (dst += fifo.r)."""
+        from .Struct import Stream
+        return Stream(self.r_vld, self.r_rdy, data=self.r_data, struct=self.payload)
 
     def circuit(s):
         W, D = s.W, s.D
@@ -118,3 +164,13 @@ class AsyncFifo(Component):
         s.domain(s.wclk, s.wrst_n)
         rq1 += rgray
         rq2 += rq1
+
+    @r.setter
+    def r(self, v):
+        _accept_stream(v)
+
+
+def _accept_stream(v):
+    from .Struct import Stream
+    if not isinstance(v, Stream):
+        raise AttributeError('AsyncFifo.w / .r are its stream ends; connect them with +=.')

@@ -10,7 +10,7 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'UnionType','UnionConstant','UnionFieldRef',
             'And','Or','Greater','Less','GreaterEqual','LessEqual','NotEqual','Equal',
             'BitXnor','BitXor','BitAnd','BitOr',
-            'Add','Sub','Mul','WrapAdd','WrapSub','Mem','Cat','If','Mux','Priority','CdcSync','CdcBus','AsyncFifo','check_cdc',
+            'Add','Sub','Mul','WrapAdd','WrapSub','Mem','Cat','If','Mux','Priority','CdcSync','CdcBus','AsyncFifo','check_cdc','Struct','Stream',
             'SelfXnor','SelfXor','SelfAnd','SelfOr','Inverse','Not',
             'Combine','BitXnorList','BitXorList','BitOrList','BitAndList','OrList','AndList',
 
@@ -40,6 +40,7 @@ from .Operator      import Case,Cut,When,EmptyWhen,Fanout
 from .Variable      import Bundle
 from .CdcCells      import CdcSync, CdcBus, AsyncFifo
 from .Cdc           import check_cdc
+from .Struct        import Struct, Stream
 from .              import Config
 from .              import UHDLException
 from .              import InternalTool

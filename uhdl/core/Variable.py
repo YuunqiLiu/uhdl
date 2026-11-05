@@ -184,6 +184,14 @@ class Variable(Root):
     def var_name(self):
         return self.__class__.__name__
 
+    # <<= : assignment that may sit inside `with s.when(...)` blocks; resolved after circuit()
+    def __ilshift__(self, rvalue):
+        comp = _temp_wire_scope(self)
+        if comp is None:
+            raise ErrUHDLStr('%s must belong to a component before it can be assigned.' % self.name)
+        comp._blk_assign(self, rvalue)
+        return self
+
     # += as circuit assignment
     def __iadd__(self,rvalue):
         from .Component import Component
@@ -191,6 +199,8 @@ class Variable(Root):
         # rvalue may be expression, so it's no need to check them.
         if not isinstance(self.father, Component):
             raise_ErrVarNotBelongComponent(self)
+        if type(rvalue).__name__ in ('StructView', '_FieldsView'):
+            rvalue = rvalue.bits
         if isinstance(rvalue, (int, AlwaysCombExpression)) and isinstance(self, Value) and _known_attr(rvalue) is None:
             rvalue = _lit(rvalue, self.attribute, 'assignment to %s' % self.name)
         if not isinstance(rvalue,Value):                        
@@ -556,6 +566,12 @@ class Value(ValueRoot):
         else:
             raise Exception()
             return None
+
+    def __setitem__(self, key, value):
+        # `sig[h:l] += v` ends in sig.__setitem__(slice, <the slice>); the slice already recorded the driver.
+        if getattr(value, '_uhdl_part_assigned', False):
+            return
+        raise ErrUHDLStr('Drive part of a signal with +=, e.g. sig[%s] += value.' % key)
 
     #def Cut(self, hbound:int, lbound:int):
     #    return CutExpression(self, hbound, lbound)
@@ -2327,6 +2343,27 @@ class WhenExpression(AlwaysCombExpression):
 
 class CutExpression(Expression):
 
+    def __iadd__(self, rvalue):
+        '''sig[h:l] += v drives bits h..l of sig. All parts of a signal are joined into one
+        driver after circuit(); together they must cover every bit exactly once.'''
+        op = self.op
+        if not isinstance(op, Variable) or isinstance(op, Mem):
+            raise ErrUHDLStr('Only a slice of a signal can be driven with +=, not a slice of an expression.')
+        w = self.hbound - self.lbound + 1
+        if type(rvalue).__name__ in ('StructView', '_FieldsView'):
+            rvalue = rvalue.bits
+        rvalue = _lit(rvalue, UInt(w), 'assignment to %s[%d:%d]' % (op.name, self.hbound, self.lbound))
+        if not isinstance(rvalue, Value) or rvalue.attribute.width != w:
+            raise ErrUHDLStr('%s[%d:%d] is %d bits but the value is %s.' % (
+                op.name, self.hbound, self.lbound, w,
+                '%d bits' % rvalue.attribute.width if isinstance(rvalue, Value) else repr(rvalue)))
+        comp = _temp_wire_scope(op)
+        if comp is None:
+            raise ErrUHDLStr('%s must belong to a component before part of it can be driven.' % op.name)
+        comp._add_part(op, self.hbound, self.lbound, rvalue)
+        object.__setattr__(self, '_uhdl_part_assigned', True)
+        return self
+
     def __init__(self,op:Value,hbound:int,lbound:int):
         super().__init__()
 
@@ -2495,6 +2532,15 @@ class MultiSameListExpression(MultiListExpression):
 #       Same List Expression
 ################################################################################################################
 
+def _logical_list_rstring(self, lvalue):
+    # logical && / || on a multi-bit operand means "is non-zero": write it as |x so the
+    # Verilog stays lint-clean (no WIDTHTRUNC on the logical operator).
+    def one(op):
+        t = op.rstring(lvalue)
+        return '(|%s)' % t if op.attribute.width > 1 else t
+    return '(%s)' % (' %s ' % self.op_str).join(one(op) for op in self.op_list)
+
+
 class AndListExpression(MultiListExpression):
 
     @property
@@ -2505,6 +2551,8 @@ class AndListExpression(MultiListExpression):
     def op_str(self):
         return '&&'
 
+    rstring = _logical_list_rstring
+
 class OrListExpression(MultiListExpression):
 
     @property
@@ -2514,6 +2562,8 @@ class OrListExpression(MultiListExpression):
     @property
     def op_str(self):
         return '||'
+
+    rstring = _logical_list_rstring
 
 class BitAndListExpression(MultiSameListExpression):
 
