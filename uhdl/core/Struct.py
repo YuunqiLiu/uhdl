@@ -268,7 +268,7 @@ class SvPackage:
 
 
 def import_sv_package(sources, package, slang_opts='--single-unit --ignore-unknown-modules'):
-    from pyslang import Driver, CommandLineOptions, SymbolKind
+    from ._slang import Driver, CommandLineOptions, SymbolKind
     srcs = ' '.join(sources) if isinstance(sources, (list, tuple)) else str(sources)
     d = Driver()
     d.addStandardArgs()

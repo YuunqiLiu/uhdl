@@ -1,9 +1,7 @@
 import re
 from collections import OrderedDict
 
-from pyslang import (Driver, CommandLineOptions, SyntaxTree,
-                     Compilation, CompilationOptions, CompilationFlags,
-                     SymbolKind, Bag, ArgumentDirection)
+from . import _slang                       # pyslang, loaded on first use
 
 from .Component import Component
 from .Variable  import (Wire, IOSig, IOGroup, InputStructIO, OutputStructIO,
@@ -81,7 +79,7 @@ class VPort(object):
             # Extract enum members
             members = OrderedDict()
             for mem in actual_type:
-                if mem.kind == SymbolKind.EnumValue:
+                if mem.kind == _slang.SymbolKind.EnumValue:
                     members[mem.name] = self._parse_enum_value(str(mem.value))
             self._enum_type_obj = EnumType.get_or_create(
                 self._enum_type_name, members, self.width, self.signed, self._enum_package
@@ -321,9 +319,9 @@ class VComponent(Component):
             cmd = f'slang {slang_opts} {source} --top {top} {param_args}'.strip()
 
         # Parse and compile using pyslang Driver
-        driver = Driver()
+        driver = _slang.Driver()
         driver.addStandardArgs()
-        ok = driver.parseCommandLine(cmd, CommandLineOptions())
+        ok = driver.parseCommandLine(cmd, _slang.CommandLineOptions())
         if not ok:
             raise Exception(f'Slang failed to parse command line: {cmd}')
         driver.processOptions()
@@ -338,7 +336,7 @@ class VComponent(Component):
             for inst in root.topInstances:
                 if inst.name == '__uhdl_vwrap':
                     for m in inst.body:
-                        if m.kind == SymbolKind.Instance and m.name == 'u':
+                        if m.kind == _slang.SymbolKind.Instance and m.name == 'u':
                             top_inst = m
         for inst in ([] if top_inst is not None else root.topInstances):
             if inst.name == top:
@@ -357,9 +355,9 @@ class VComponent(Component):
         self._vparam_list = []
         self._shim_text = None
 
-        bad = [m.name for m in top_inst.body if m.kind == SymbolKind.Port and m.type.bitWidth == 0
+        bad = [m.name for m in top_inst.body if m.kind == _slang.SymbolKind.Port and m.type.bitWidth == 0
                and not (m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray]
-        bad += [m.name for m in top_inst.body if m.kind == SymbolKind.Port
+        bad += [m.name for m in top_inst.body if m.kind == _slang.SymbolKind.Port
                 and (m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray and m.type.elementType.bitWidth == 0]
         if bad:
             raise ErrUHDLStr('VComponent %s: slang could not resolve the type of port(s) %s (width 0). A package '
@@ -369,20 +367,20 @@ class VComponent(Component):
         # Unpacked-array ports cannot be connected from UHDL's flat vectors. If there are any,
         # wrap the module in a generated SV shim whose ports are all packed (an unpacked array
         # of N elements of W bits becomes one N*W-bit port, element lo+k at bits [k*W +: W]).
-        ports = [m for m in top_inst.body if m.kind == SymbolKind.Port]
+        ports = [m for m in top_inst.body if m.kind == _slang.SymbolKind.Port]
         if any((m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray for m in ports):
             self._build_flat_shim(top, ports, kwargs)
             return
 
         for member in top_inst.body:
-            if member.kind == SymbolKind.Port:
+            if member.kind == _slang.SymbolKind.Port:
                 direction = member.direction.name  # "In", "Out", "InOut"
                 vport = VPort(member.name, direction, member.type, struct_mode=self._struct_mode)
                 self._vport_list.append(vport)
-            elif member.kind == SymbolKind.Parameter and not member.isLocalParam:
+            elif member.kind == _slang.SymbolKind.Parameter and not member.isLocalParam:
                 vparam = VParameter(member.name, str(member.value))
                 self._vparam_list.append(vparam)
-            elif member.kind == SymbolKind.TypeParameter and member.name in type_params:
+            elif member.kind == _slang.SymbolKind.TypeParameter and member.name in type_params:
                 self._vparam_list.append(VParameter(member.name, str(type_params[member.name])))
 
         for vport in self._vport_list:

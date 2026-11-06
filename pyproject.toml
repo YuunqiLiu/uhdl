@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uhdl"
+version = "0.9.0"
+description = "Python hardware description library that generates Verilog"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Liuyunqi"}]
+requires-python = ">=3.8"
+# The core (writing designs, generate(), CDC check) needs only the standard library.
+dependencies = []
+
+[project.optional-dependencies]
+# Reading SystemVerilog: VComponent, import_sv_package, slang lint.
+# pyslang 12 ships one abi3 wheel for Python 3.11+; 8.1 is the last release with Python 3.8 wheels.
+sv = [
+    "pyslang==8.1.0 ; python_version < '3.11'",
+    "pyslang>=12.1,<13 ; python_version >= '3.11'",
+]
+# The legacy TemplateIP (moving to the ip_builder repository) and the demos.
+template = ["PyYAML>=5.4"]
+demo = ["networkx", "matplotlib"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["uhdl*"]

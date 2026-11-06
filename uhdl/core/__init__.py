@@ -2,7 +2,7 @@
 __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
             'Assign','SmartAssign','Linkable','Exclude',
             'join_name',
-            'Component','VComponent','SvType','TemplateIP',
+            'Component','VComponent','SvType',
 
             'Input','Output','Inout','InputStructIO','OutputStructIO','InputEnumIO','OutputEnumIO','InputUnionIO','OutputUnionIO','UInt','SInt','IOGroup','Parameter','Wire','Reg','AnyConstant',
             'StructType','StructConstant','StructFieldRef',
@@ -22,7 +22,6 @@ __all__ = [ 'assign','smart_assign','LCA','linkable','Unpack',
 
 from .Component     import Component
 from .VComponent    import VComponent, SvType
-from .TemplateIP    import TemplateIP
 from .Function      import Assign,SmartAssign,LCA,Linkable,Unpack,BitMask,Exclude
 from .BasicFunction import join_name
 
@@ -55,3 +54,12 @@ smart_assign = SmartAssign
 linkable     = Linkable
 
 from .UHDLException import *
+
+
+def __getattr__(name):
+    # TemplateIP (ip_builder integration) is loaded only when used: it needs PyYAML and an
+    # ip_builder checkout, which plain UHDL designs do not.
+    if name == 'TemplateIP':
+        from .TemplateIP import TemplateIP
+        return TemplateIP
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))

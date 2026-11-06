@@ -983,11 +983,6 @@ class Component(Root):
         else:
             real_prefix = os.path.join(prefix,self.module_name)
 
-        # Reset TemplateComponent's tracking set at the start of filelist generation
-        # This ensures each top-level generate_filelist() call gets a fresh start
-        from .TemplateIP import TemplateComponent
-        TemplateComponent._filelist_template_ips.clear()
-
         file_list = self._generate_filelist_core(prefix=real_prefix)
         file_list.reverse()
 
@@ -1076,7 +1071,7 @@ class Component(Root):
 #################################################################################
 
     def run_slang_compile(self):
-        from pyslang import Driver, CommandLineOptions, DiagnosticEngine
+        from ._slang import Driver, CommandLineOptions, DiagnosticEngine, full_compilation
 
         driver = Driver()
         driver.addStandardArgs()
@@ -1085,7 +1080,7 @@ class Component(Root):
             raise Exception('Slang compile error: failed to parse command line.')
         driver.processOptions()
         driver.parseAllSources()
-        success = driver.runFullCompilation(quiet=True)
+        success = full_compilation(driver)
         if not success:
             comp = driver.createCompilation()
             diags = comp.getAllDiagnostics()

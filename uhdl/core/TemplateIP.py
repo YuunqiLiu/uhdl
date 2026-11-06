@@ -3,7 +3,6 @@ import sys
 import subprocess
 import tempfile
 import hashlib
-import yaml
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -245,6 +244,10 @@ class TemplateIPConfig:
             return self._generated_macro_yaml
         
         # Generate YAML content first to compute hash
+        try:
+            import yaml
+        except ImportError as e:
+            raise ImportError('TemplateIPConfig.set_macro() needs PyYAML: pip install pyyaml') from e
         yaml_content = yaml.dump(self._macros, default_flow_style=False)
         
         # Compute deterministic hash suffix from content (use first 10 chars of hash)
