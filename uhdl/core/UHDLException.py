@@ -2,7 +2,54 @@ from . import Config
 from .Terminal import Terminal
 
 class ErrUHDL(ArithmeticError):
-    pass
+    """Base of UHDL errors. str() starts with the line of the user's code that caused it:
+
+        gen.py:42: s.y += s.a + s.b
+          <message>
+
+    The location is captured when the error is created; errors found after circuit() get the
+    recorded locations instead (see SrcLoc). at() sets them explicitly and adds labelled notes."""
+
+    def __new__(cls, *args, **kwargs):
+        from . import SrcLoc
+        obj = super().__new__(cls, *args)
+        loc = SrcLoc.capture()
+        obj._uhdl_locs = [loc] if loc else []
+        obj._uhdl_notes = []
+        return obj
+
+    def at(self, *locs, notes=()):
+        """Name where the problem is (first location is the main one) and add (label, location) notes."""
+        self._uhdl_locs = [l for l in locs if l] or self._uhdl_locs
+        self._uhdl_notes = [(t, l) for t, l in notes if l]
+        return self
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if '__str__' in cls.__dict__:
+            body = cls.__dict__['__str__']
+            if not getattr(body, '_uhdl_wrapped', False):
+                def __str__(self, _body=body):
+                    return self._uhdl_with_loc(_body(self))
+                __str__._uhdl_wrapped = True
+                cls.__str__ = __str__
+
+    def __str__(self):
+        return self._uhdl_with_loc(super().__str__())
+    __str__._uhdl_wrapped = True
+
+    def _uhdl_with_loc(self, msg):
+        from . import SrcLoc
+        locs, notes = self.__dict__.get('_uhdl_locs') or [], self.__dict__.get('_uhdl_notes') or []
+        if not locs and not notes:
+            return msg
+        out = []
+        if locs:
+            out.append(SrcLoc.fmt(locs[0]))
+        out += ['  ' + x for x in str(msg).split('\n')]
+        out += ['  also: ' + SrcLoc.fmt(l) for l in locs[1:]]
+        out += ['  %s: %s' % (t, SrcLoc.fmt(l)) for t, l in notes]
+        return '\n'.join(out)
 
 class ErrUHDLStr(ErrUHDL):
 

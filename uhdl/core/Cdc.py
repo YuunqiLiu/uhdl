@@ -62,6 +62,20 @@ def _name(obj):
         return str(obj)
 
 
+def _where(*items):
+    """" [x: file:line; y: file:line]" naming the Python lines behind the objects of a message.
+    Items are objects (their declaration) or (object, True) for where a sink was assigned."""
+    from . import SrcLoc
+    out = []
+    for it in items:
+        obj, assigned = it if isinstance(it, tuple) else (it, False)
+        locs = SrcLoc.of(obj) if assigned else ()
+        loc = locs[0] if locs else SrcLoc.decl(obj)
+        if loc:
+            out.append('%s %s' % (_name(obj), SrcLoc.fmt(loc, code=False)))
+    return ' [%s]' % '; '.join(out) if out else ''
+
+
 class _Cone:
     __slots__ = ('sources', 'syncs')
 
@@ -146,12 +160,12 @@ class CdcChecker:
                 self.violations.append(
                     'unsynchronized crossing: %s (clock %s) -> %s (clock %s). Use CdcSync (1 bit), '
                     'CdcBus (a multi-bit value) or AsyncFifo (a stream).'
-                    % (_name(s), _name(d), sink_name, _name(dom)))
+                    % (_name(s), _name(d), sink_name, _name(dom)) + _where(s, (what, True)))
             elif type(cell).CDC_CELL == 'sync' and via_logic:
                 self.violations.append(
                     'logic in front of a synchronizer: %s (clock %s) reaches %s through combinational '
                     'logic. Register the signal in its own domain, then synchronize the register.'
-                    % (_name(s), _name(d), _name(cell)))
+                    % (_name(s), _name(d), _name(cell)) + _where(s, cell))
         # reconvergence of synchronizers from one source domain
         if cone.syncs and len(cone.syncs) > 1 and (what is None or cdc_cell_of(what) is None):
             by_dom = {}
@@ -164,7 +178,8 @@ class CdcChecker:
                         'reconvergent synchronizers: %s carry signals from clock %s and meet in the fan-in of %s. '
                         'Bits that belong together must cross as one value (CdcBus/AsyncFifo), or be combined '
                         'in the source domain before a single CdcSync.'
-                        % (', '.join(sorted(_name(c) for c in cells)), _name(d), sink_name))
+                        % (', '.join(sorted(_name(c) for c in cells)), _name(d), sink_name)
+                        + _where(*sorted(cells, key=_name)))
 
     def run(self):
         from .Component import Component

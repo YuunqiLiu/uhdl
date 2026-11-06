@@ -229,10 +229,15 @@ class Variable(Root):
             new_driver = rvalue.full_hier if hasattr(rvalue, 'full_hier') else str(rvalue)
             if rvalue is self._rvalue:
                 return self          # re-connecting the same driver is a no-op
-            raise ErrUHDLStr(f'{self.full_hier} already has a driver; a signal can only be assigned once with +=.\n'
+            from . import SrcLoc
+            first = (self.__dict__.get('_rvalue_src') or (None,))[0]
+            err = ErrUHDLStr(f'{self.full_hier} already has a driver; a signal can only be assigned once with +=.\n'
                              f'  Existing driver: {existing_driver}\n'
                              f'  New driver:      {new_driver}')
+            raise err.at(*(SrcLoc.assign_locs() or err._uhdl_locs), notes=[('first driver', first)])
         object.__setattr__(self, '_rvalue', rvalue)
+        from .SrcLoc import assign_locs
+        object.__setattr__(self, '_rvalue_src', assign_locs())
         rvalue.add_lvalue(self)
 
         self_module = self.father_until(Component)
@@ -2363,7 +2368,8 @@ class CutExpression(Expression):
         comp = _temp_wire_scope(op)
         if comp is None:
             raise ErrUHDLStr('%s must belong to a component before part of it can be driven.' % op.name)
-        comp._add_part(op, self.hbound, self.lbound, rvalue)
+        from .SrcLoc import capture
+        comp._add_part(op, self.hbound, self.lbound, rvalue, capture())
         object.__setattr__(self, '_uhdl_part_assigned', True)
         return self
 
@@ -3095,6 +3101,8 @@ class Mem(Variable):
         for v in (en, addr, data):
             v.add_lvalue(self)
         self._write_ports.append((en, addr, data))
+        from .SrcLoc import capture
+        self.__dict__.setdefault('_write_srcs', []).append(capture())
         return self
 
     def read(self, addr):
@@ -3120,9 +3128,11 @@ class Mem(Variable):
             return []
         edge = 'negedge' if self._clk_active_neg else 'posedge'
         str_list = ['always @(%s %s) begin' % (edge, self._aclk.rstring(self))]
-        for en, addr, data in self._write_ports:
-            str_list.append('    if(%s) %s[%s] <= %s;' % (en.rstring(self), self.name_before_component,
-                                                        addr.rstring(self), data.rstring(self)))
+        from .SrcLoc import tag
+        srcs = self.__dict__.get('_write_srcs') or [None] * len(self._write_ports)
+        for (en, addr, data), loc in zip(self._write_ports, srcs):
+            str_list += tag(['    if(%s) %s[%s] <= %s;' % (en.rstring(self), self.name_before_component,
+                                                            addr.rstring(self), data.rstring(self))], [loc])
         str_list.append('end')
         return str_list
 

@@ -8,6 +8,7 @@ from .Variable          import Mem,Wire,IOSig,IOGroup,Variable,Parameter,Reg,Out
 from .Variable          import Constant, UInt
 from .UHDLException     import ErrUHDLStr
 from .                  import FileProcess
+from .                  import SrcLoc
 
 from .CustConfig        import ComponentConfig
 
@@ -168,6 +169,10 @@ class Component(Root):
 
     def _uhdl_finalize(self):
         '''Run after circuit(): implicit clocks, joined slice drivers, when-blocks.'''
+        with SrcLoc.deferred():
+            self._uhdl_finalize_body()
+
+    def _uhdl_finalize_body(self):
         # 1. clock/reset of children that were left unconnected follow the domain active at attach time
         for child in self.component_list:
             dom = child.__dict__.get('_uhdl_attach_domain')
@@ -180,7 +185,7 @@ class Component(Root):
                 if isinstance(r, Input) and c_open != r_open:
                     raise ErrUHDLStr('%s: %s is connected but %s is not. Connect both, or neither to let '
                                      'them follow s.domain().' % (child.full_hier, rname if c_open else cname,
-                                                                  cname if c_open else rname))
+                                                                  cname if c_open else rname)).at(SrcLoc.decl(child))
                 if c_open and dom:
                     c += dom[0]
                     if r_open:
@@ -195,7 +200,8 @@ class Component(Root):
                 w = target.attribute.width
                 lst = sorted(lst, key=lambda t: -t[1])
                 bits = [0] * w
-                for h, l, _ in lst:
+                locs = [loc for _, _, _, loc in lst]
+                for h, l, _, _ in lst:
                     for b in range(l, h + 1):
                         bits[b] += 1
                 over = [b for b in range(w) if bits[b] > 1]
@@ -203,9 +209,11 @@ class Component(Root):
                 if over or hole:
                     raise ErrUHDLStr('%s is driven slice by slice, but %s.' % (target.full_hier, '; '.join(
                         x for x in ('bits %s are driven twice' % _ranges(over) if over else '',
-                                    'bits %s are not driven' % _ranges(hole) if hole else '') if x)))
-                vals = [v for _, _, v in lst]
-                target += vals[0] if len(vals) == 1 else Combine(*vals)
+                                    'bits %s are not driven' % _ranges(hole) if hole else '') if x))).at(
+                        *locs, notes=[('declared', SrcLoc.decl(target))])
+                vals = [v for _, _, v, _ in lst]
+                with SrcLoc.assigned_at(locs), SrcLoc.errors_at(locs):
+                    target += vals[0] if len(vals) == 1 else Combine(*vals)
         # 3. when-blocks
         blk = self.__dict__.pop('_uhdl_blk', None)
         if blk:
@@ -213,25 +221,35 @@ class Component(Root):
                 raise ErrUHDLStr('A `with s.when(...)` block was not closed.')
             from .Variable import WhenExpression
             for target, recs in blk['records'].values():
-                last_u = max((i for i, (c, _) in enumerate(recs) if c is None), default=None)
+                last_u = max((i for i, (c, _, _) in enumerate(recs) if c is None), default=None)
                 default = recs[last_u][1] if last_u is not None else None
                 conds = recs[last_u + 1:] if last_u is not None else recs
+                used = ([recs[last_u][2]] if last_u is not None else []) + [loc for _, _, loc in conds]
+                for _, v, l in recs:
+                    a = getattr(v, 'attribute', None)
+                    if a is not None and getattr(a, 'width', None) not in (None, target.attribute.width):
+                        raise ErrUHDLStr('%s is %d bits but is assigned a %d-bit value with <<=.' % (
+                            target.full_hier, target.attribute.width, a.width)).at(l, notes=[('declared', SrcLoc.decl(target))])
                 if not conds:
-                    target += default
+                    with SrcLoc.assigned_at(used), SrcLoc.errors_at(used):
+                        target += default
                     continue
                 if default is None and not isinstance(target, Reg):
                     raise ErrUHDLStr('%s is only assigned inside when-blocks, so it would be a latch. Give it a '
-                                     'default first: `%s <<= value` outside the blocks.' % (target.full_hier, target.name))
-                ch = WhenExpression()
-                for c, v in reversed(conds):                # the last assignment wins
-                    ch.when(c).then(v)
-                if default is not None:
-                    ch.otherwise(default)
-                target += ch
+                                     'default first: `%s <<= value` outside the blocks.' % (target.full_hier, target.name)
+                                     ).at(*used, notes=[('declared', SrcLoc.decl(target))])
+                with SrcLoc.errors_at(used):
+                    ch = WhenExpression()
+                    for c, v, _ in reversed(conds):         # the last assignment wins
+                        ch.when(c).then(v)
+                    if default is not None:
+                        ch.otherwise(default)
+                with SrcLoc.assigned_at(used), SrcLoc.errors_at(used):
+                    target += ch
 
-    def _add_part(self, target, h, l, value):
+    def _add_part(self, target, h, l, value, loc=None):
         d = self.__dict__.setdefault('_uhdl_parts', {})
-        d.setdefault(id(target), (target, []))[1].append((h, l, value))
+        d.setdefault(id(target), (target, []))[1].append((h, l, value, loc))
 
     # ------------------------------------------------------------------
     # when-blocks:  with s.when(c): a <<= x; b <<= y
@@ -244,7 +262,7 @@ class Component(Root):
         cond = b['stack'][-1] if b['stack'] else None
         if type(value).__name__ in ('StructView', '_FieldsView'):
             value = value.bits
-        b['records'].setdefault(id(target), (target, []))[1].append((cond, value))
+        b['records'].setdefault(id(target), (target, []))[1].append((cond, value, SrcLoc.capture()))
 
     @contextlib.contextmanager
     def _blk_enter(self, kind, cond):
@@ -770,15 +788,15 @@ class Component(Root):
 
         # combine logic assignment
         str_list += ['','\t//Wire sub module connect to this module and inter module connect.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in self.lvalue_list if i.verilog_assignment],[]),'')
+        str_list += self.__eol_append(reduce(concat,[SrcLoc.tag(i.verilog_assignment, i.__dict__.get('_rvalue_src')) +[''] for i in self.lvalue_list if i.verilog_assignment],[]),'')
 
         sub_io_list = reduce(concat,[i.outer_lvalue_list for i in self.component_list],[])
         str_list += ['','\t//Wire this module connect to sub module.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_assignment +[''] for i in sub_io_list if i.verilog_assignment],[]),'')
+        str_list += self.__eol_append(reduce(concat,[SrcLoc.tag(i.verilog_assignment, i.__dict__.get('_rvalue_src')) +[''] for i in sub_io_list if i.verilog_assignment],[]),'')
 
         # component inst
         str_list += ['','\t//module inst.']
-        str_list += self.__eol_append(reduce(concat,[i.verilog_inst for i in self.component_list],[]),'')
+        str_list += self.__eol_append(reduce(concat,[SrcLoc.tag(i.verilog_inst, [SrcLoc.decl(i)]) for i in self.component_list],[]),'')
 
         str_list += ['','endmodule']
         return str_list
@@ -818,8 +836,20 @@ class Component(Root):
         else:
             str_list = ['%s %s (' % (self.module_name, self.name)]
 
-        str_list += self.__eol_append(reduce(concat,[i.verilog_inst for i in self.io_list],[]),',',');')
+        ports = [(i.verilog_inst, self._port_src(i)) for i in self.io_list]
+        lines = self.__eol_append(reduce(concat,[p for p, _ in ports],[]),',',');')
+        if SrcLoc.comments_on() and all(len(p) == 1 for p, _ in ports):
+            lines = [SrcLoc.tag([l], locs)[0] for l, (_, locs) in zip(lines, ports)]
+        str_list += lines
         return str_list
+
+    @staticmethod
+    def _port_src(port):
+        '''Where the parent connected a sub-component port: the input's driver, or for an
+        output the assignment that reads it.'''
+        if isinstance(port, Output):
+            return tuple(l for x in port._lvalue_list for l in (x.__dict__.get('_rvalue_src') or ()))
+        return port.__dict__.get('_rvalue_src') or ()
 
 #################################################################################
 # Verilog File Opeartion
@@ -838,13 +868,20 @@ class Component(Root):
         from .Cdc import check_cdc
         return check_cdc(self)
 
-    def generate(self, out_dir, filelist=True, clean=False, filelist_name='filelist.f', cdc_check=True):
+    def generate(self, out_dir, filelist=True, clean=False, filelist_name='filelist.f', cdc_check=True,
+                 src_comments=True):
         '''Write every UHDL-generated module of this design as <out_dir>/<module>.v
         (flat, one file per module, sub-modules first) and, by default,
         <out_dir>/filelist.f with absolute paths. Existing files in out_dir are
         kept unless clean=True. Raises ErrUHDLStr if two different modules share
         a name, or (unless cdc_check=False) if the design has an unsynchronized
-        clock-domain crossing. Returns the list of written .v paths.'''
+        clock-domain crossing. With src_comments (default), the first line of each assign,
+        always block and instance ends with `// file.py:line`, naming the Python code that wrote
+        it. Returns the list of written .v paths.'''
+        with SrcLoc.deferred():
+            return self._generate(out_dir, filelist, clean, filelist_name, cdc_check, src_comments)
+
+    def _generate(self, out_dir, filelist, clean, filelist_name, cdc_check, src_comments):
         from .UHDLException import ErrUHDLStr
         if cdc_check:
             v = self.check_cdc()
@@ -866,7 +903,11 @@ class Component(Root):
                 if isinstance(extra, str) and extra not in extra_paths:
                     extra_paths.append(extra)                # e.g. a packed-port shim around an SV module
                 return
-            text = comp.verilog_def
+            if src_comments:
+                with SrcLoc.verilog_comments():
+                    text = comp.verilog_def
+            else:
+                text = comp.verilog_def
             name = comp.module_name
             if name in texts:
                 if texts[name] != text:

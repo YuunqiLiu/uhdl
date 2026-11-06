@@ -201,6 +201,7 @@ yosys -q -p "read_verilog $(tr '\n' ' ' < out/filelist.f); synth -top <top>; che
 ```
 - To look at one component's Verilog without writing files: `print('\n'.join(comp.verilog_def))`.
 - UHDL writes no log file unless you set `UHDL_LOG=<path>`.
+- **Finding the Python line.** A UHDL error starts with `file.py:line: <source>` of the code that caused it. Checks that run after `circuit()` (latch, slice coverage, CDC, two drivers) name the lines that were recorded, e.g. `first driver: gen.py:40: s.y += s.a`. In the files written by `generate()`, the first line of each assign, always block, instance and instance port ends with `// gen.py:42` (several lines for a when-chain: `// gen.py:48,56`). So for a simulator or lint message on generated Verilog, read the comment on that line. `generate(..., src_comments=False)` leaves the comments out. `verilog_def` never has them.
 
 ## 11. Known limitations
 - The output is Verilog-2001, with no SystemVerilog interfaces. Parameters are not kept, because everything is elaborated.

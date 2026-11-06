@@ -41,6 +41,9 @@ class Root(object):
 
     def __setattr__(self, name, value):
         if isinstance(value, Root):
+            if '_src' not in value.__dict__:
+                from .SrcLoc import capture
+                object.__setattr__(value, '_src', capture())     # where it was placed in its parent
             value.set_name(name)
             value.set_father(self)
             value._setattr_hook()
