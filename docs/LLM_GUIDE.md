@@ -27,7 +27,7 @@ def build(N, W):                       # parameters come from the closure
 
 paths = build(4, 8).generate('out_dir')   # out_dir/<module>.v per module + out_dir/filelist.f
 ```
-- Run as `PYTHONPATH=<uhdl checkout> python gen.py ...`.
+- Run with a Python that has UHDL: `pip install "uhdl[sv]"` (Python 3.8+; `[sv]` adds pyslang for section 7b), or `PYTHONPATH=<uhdl checkout> python gen.py ...`.
 - Use `generate(out_dir)`. It writes the files flat into out_dir, keeps other files there, writes `filelist.f` with absolute paths, and raises an error if two different modules get the same name.
 - `comp.set_module_name('name')` sets the module name at runtime instead of `MODULE_NAME`.
 
@@ -149,6 +149,26 @@ s.bus[3:0] += lo                                 # every bit exactly once
 ```
 - `Stream.of(comp, prefix, payload)` uses ports `<prefix>_vld`, `<prefix>_rdy`, and either one `<prefix>_<field>` per Struct field or `<prefix>_data`.
 - `s.input(name, w, domain=)` and `s.output(name, w, domain=)` declare ports with computed names, e.g. `s.input(f'clk_d{k}', 1)`.
+
+## 7b. Importing SystemVerilog
+Existing SV modules become sub-components with `VComponent`; their ports and parameters are read with pyslang.
+```python
+pk = import_sv_package(['rtl/my_pkg.sv'], 'my_pkg')   # packed structs -> Struct, int localparams -> ints
+Req = pk.req_t                                         # Req.width, Req.fields, Req(sig).addr, Req.pack(...)
+N = pk.N_ENT
+
+s.u_fifo = VComponent(file='rtl/pkg.sv rtl/fifo.sv', top='sync_fifo',      # several files: one string
+                      slang_opts='--ignore-unknown-modules --single-unit',   # --single-unit: files share macros
+                      struct_mode='packed',                                  # struct ports as plain vectors
+                      WIDTH=Req.width, DEPTH=8,                              # module parameters
+                      T=SvType('my_pkg::req_t'))                             # a `parameter type`
+s.u_fifo.in_data += req                                # ports are ordinary UHDL ports
+```
+- **Pass `struct_mode='packed'`** when the module has struct-typed ports. They then become plain vectors of the struct's width, which you read with `Req(sig).field`. Without it, they become struct port groups that cannot be connected to plain signals. A `parameter type` given as `SvType` is always packed.
+- A port of unpacked-array type (`logic [W-1:0] d [N]`) becomes one flat vector, element 0 in the low bits. `generate()` writes a small `<top>__uflat_<hash>.sv` wrapper for it and lists it in `filelist.f`.
+- `generate()` does not copy or list the imported SV files. Give them to the simulator yourself, together with `filelist.f`.
+- Clock and reset ports named `clk` / `rst_n` follow `s.domain(...)` like any child (section 7).
+- If a port type cannot be resolved (missing package, wrong `top`), UHDL raises an error instead of guessing a width.
 
 ## 8. Several clocks
 - Every `s.reg` / `s.mem` belongs to the clock it was declared with (`s.domain(clk, rst)` or `clk=`). Call `s.domain(...)` again to switch.

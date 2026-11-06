@@ -148,11 +148,11 @@ class Top(Component):
     def circuit(s):
         s.clk, s.rst_n = Input(1), Input(1)
         s.domain(s.clk, s.rst_n)
-        s.a, s.c = Input(4), Input(1); s.y, s.z, s.m_o = Output(4), Output(4), Output(4)
+        s.a, s.c = Input(4), Input(1); s.y, s.z, s.m_o = Output(4), Output(4), Output(4)  # @v_ports
         s.u = Leaf()  # @v_inst
         s.u.a += s.a  # @v_subin
         s.y += s.u.y  # @v_out
-        r = s.reg('r', 4)
+        r = s.reg('r', 4)  # @v_regdecl
         with s.when(s.c):
             r <<= s.a  # @v_reg1
         with s.elsewhen(s.a.eq(3)):
@@ -184,6 +184,8 @@ def test_generated_verilog_names_the_python_lines(tmp_path):
     assert _line_with(top, '.y(y)').endswith('// %s:%d' % (f, line_of('v_out')))
     assert _line_with(top, 'always @(posedge clk').endswith('// %s:%d,%d' % (f, line_of('v_reg1'), line_of('v_reg2')))
     assert _line_with(top, '] <= a;').endswith('// %s:%d' % (f, line_of('v_mem')))
+    assert re.search(r'input\s+\[3:0\]\s+a\s*,\s*// %s:%d$' % (f, line_of('v_ports')), _line_with(top, ' a ')), _line_with(top, ' a ')
+    assert _line_with(top, 'reg ').endswith('// %s:%d' % (f, line_of('v_regdecl')))
 
 
 def test_comments_can_be_turned_off_and_do_not_leak(tmp_path):

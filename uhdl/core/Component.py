@@ -773,11 +773,11 @@ class Component(Root):
 
         # module io define
         if self.io_list == []: str_list.append(');')
-        else: str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');')
+        else: str_list += self._tag_decls(self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.io_list]),',',');'), self.io_list)
 
         # module wire define
         str_list += ['','\t//Wire define for this module.']
-        str_list += self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.inter_sig_list]),';',';')
+        str_list += self._tag_decls(self.__eol_append(self.__gen_aligned_signal_def([i.verilog_def_as_list for i in self.inter_sig_list]),';',';'), self.inter_sig_list)
 
         str_list += ['','\t//Wire define for sub module.']
         str_list += self.__eol_append(self.__gen_aligned_signal_def(reduce(concat,[i.verilog_outer_def_as_list for i in self.component_list],[])),';',';')
@@ -842,6 +842,13 @@ class Component(Root):
             lines = [SrcLoc.tag([l], locs)[0] for l, (_, locs) in zip(lines, ports)]
         str_list += lines
         return str_list
+
+    @staticmethod
+    def _tag_decls(lines, sigs):
+        '''Declaration lines (one per signal) end with the Python line that declared the signal.'''
+        if not SrcLoc.comments_on() or len(lines) != len(sigs):
+            return lines
+        return [SrcLoc.tag([l], [SrcLoc.decl(x)])[0] for l, x in zip(lines, sigs)]
 
     @staticmethod
     def _port_src(port):

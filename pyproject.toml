@@ -15,7 +15,8 @@ dependencies = []
 
 [project.optional-dependencies]
 # Reading SystemVerilog: VComponent, import_sv_package, slang lint.
-# pyslang 12 ships one abi3 wheel for Python 3.11+; 8.1 is the last release with Python 3.8 wheels.
+# 8.1 is the last pyslang with Python 3.8 wheels. pyslang 12 is abi3 but depends on
+# nanobind-backend, which has a wheel per Python version.
 sv = [
     "pyslang==8.1.0 ; python_version < '3.11'",
     "pyslang>=12.1,<13 ; python_version >= '3.11'",
