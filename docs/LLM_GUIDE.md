@@ -80,7 +80,18 @@ ptr += when(adv).then(If(ptr.eq(D - 1), 0, WrapAdd(ptr, 1)))   # wrap at D, any 
 - The first true condition wins. A register needs no `otherwise`; when nothing matches it keeps its value.
 
 ### Control logic: when-blocks and state machines
-When one condition drives several signals, write it once as a block. Inside blocks, assign with `<<=`:
+**Rule: when one condition (or one state) decides the next value of two or more signals, write it as a when-block.** Keep `cnt += when(...)...` chains for a signal that is decided on its own. Blocks keep one decision in one place instead of repeating its condition in every signal's chain.
+
+```python
+# a request/response handshake: one event updates several registers
+with s.when(req_vld & ~busy):         # accept
+    busy <<= 1
+    tag  <<= req_tag
+    data <<= req_data
+with s.when(rsp_vld & rsp_rdy):       # complete
+    busy <<= 0
+```
+Inside blocks, assign with `<<=`. State machines use the same blocks:
 ```python
 st = s.fsm('st', ['IDLE', 'WAIT', 'RESP'])       # state reg in the current domain, resets to IDLE
 with st.state('IDLE'):
