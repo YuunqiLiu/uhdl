@@ -82,18 +82,42 @@ def lint(top, gen_files, sv_args):
     return ('FAIL' if ours or other or their_errors else 'PASS'), out
 
 
-def synth(top, gen_files, has_sv):
-    if has_sv:
-        return 'SKIPPED', ['design imports SystemVerilog (--sv): Yosys synthesis check not run']
+def expand(paths):
+    """Source files named by --sv arguments, with .f filelists read (one level of -f nesting)."""
+    out = []
+    for p in paths:
+        if not p.endswith('.f'):
+            out.append(p)
+            continue
+        base = os.path.dirname(os.path.abspath(p))
+        for line in read_filelist(p):
+            tok = line.split()
+            if tok[0] == '-f' and len(tok) > 1:
+                out += expand([os.path.expandvars(tok[1])])
+            elif not tok[0].startswith(('+', '-')):
+                f = os.path.expandvars(tok[0])
+                out.append(f if os.path.isabs(f) else os.path.join(base, f))
+    return out
+
+
+def synth(top, gen_files, sv_files):
     exe = shutil.which('yosys')
     if not exe:
         return 'SKIPPED', ['yosys not found on PATH: synthesis check was not run']
-    script = 'read_verilog %s; synth -top %s; check -assert' % (' '.join(gen_files), top)
+    files = sv_files + gen_files
+    script = 'read_verilog %s%s; synth -top %s; check -assert' % ('-sv ' if sv_files else '', ' '.join(files), top)
     r = subprocess.run([exe, '-q', '-p', script], capture_output=True, text=True)
     if r.returncode == 0:
         return 'PASS', []
-    tail = [l for l in (r.stdout + r.stderr).splitlines() if l.strip()][-15:]
+    log = r.stdout + r.stderr
     gen = {os.path.realpath(f): f for f in gen_files}
+    theirs = {os.path.realpath(f) for f in sv_files}
+    # Yosys reads only part of SystemVerilog: a parse error in an imported file is its limit, not a design bug
+    m = re.search(r'^(?:ERROR: )?(\S+?):(\d+): ERROR: (.*)$', log, re.M) or re.search(r'(\S+\.s?v):(\d+): ERROR: (.*)', log)
+    if m and os.path.realpath(m.group(1)) in theirs:
+        return 'SKIPPED', ['yosys cannot read the imported SV %s:%s (%s): synthesis check not run'
+                           % (os.path.basename(m.group(1)), m.group(2), m.group(3).strip())]
+    tail = [l for l in log.splitlines() if l.strip()][-15:]
     out = []
     for l in tail:
         srcs = []
@@ -118,14 +142,24 @@ def main():
     if not os.path.isfile(fl):
         print('CHECK FAIL: %s not found. Run generate(out_dir) first.' % fl)
         return 1
-    gen_files = read_filelist(fl)
-    sv_args = []
-    for x in a.sv:
-        sv_args += ['-f', x] if x.endswith('.f') else [x]
+    listed = read_filelist(fl)
+    out_dir = os.path.realpath(a.out_dir) + os.sep
+    gen_files = [f for f in listed if os.path.realpath(f).startswith(out_dir)]
+    extra = [f for f in listed if f not in gen_files]
+    notes = []
+    if extra:
+        # someone added hand-written files to filelist.f: treat them as imported SV
+        notes.append('filelist.f lists %d file(s) outside %s (treated as imported SV; pass them with --sv '
+                     'instead of editing filelist.f): %s' % (len(extra), a.out_dir, ' '.join(os.path.basename(x) for x in extra)))
+    sv_files = [x for x in extra if not x.startswith(('-', '+'))] + expand(a.sv)
+    seen = set()
+    sv_files = [x for x in sv_files if not (os.path.realpath(x) in seen or seen.add(os.path.realpath(x)))]
 
-    results = [('lint', ) + lint(a.top, gen_files, sv_args)]
+    for n in notes:
+        print('note   ' + n)
+    results = [('lint', ) + lint(a.top, gen_files, sv_files)]
     if not a.no_synth:
-        results.append(('synth', ) + synth(a.top, gen_files, bool(a.sv)))
+        results.append(('synth', ) + synth(a.top, gen_files, sv_files))
     failed = False
     for step, status, lines in results:
         print('%-6s %s' % (step, status))

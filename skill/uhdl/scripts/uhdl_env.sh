@@ -43,10 +43,26 @@ STAMP="$VENV/.uhdl_skill"
 
 # ---- 2. already prepared?
 find_vpy() { for p in "$VENV/bin/python" "$VENV/Scripts/python.exe" "$VENV/python"; do [ -x "$p" ] && { echo "$p"; return; }; done; }
-VPY=$(find_vpy)
-if [ -n "$VPY" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$VERSION $BASE" ] && "$VPY" -c 'import uhdl' >/dev/null 2>&1; then
-    echo "$VPY"; exit 0
-fi
+ready() {
+    VPY=$(find_vpy)
+    [ -n "$VPY" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$VERSION $BASE" ] && "$VPY" -c 'import uhdl' >/dev/null 2>&1
+}
+if ready; then echo "$VPY"; exit 0; fi
+
+# several agents may run this at once: one prepares, the others wait for it
+mkdir -p "$(dirname "$VENV")"
+LOCK="$VENV.lock"
+waited=0
+until mkdir "$LOCK" 2>/dev/null; do
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+        say "removing a stale lock $LOCK"; rmdir "$LOCK" 2>/dev/null; continue
+    fi
+    [ $waited = 0 ] && say "another process is preparing $VENV; waiting"
+    waited=$((waited + 1)); [ $waited -gt 1200 ] && die "timed out waiting for $LOCK"
+    sleep 0.5
+done
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+if ready; then echo "$VPY"; exit 0; fi
 
 # ---- 3. create the environment
 say "preparing UHDL $UHDL_VER for Python $PYVER ($BASE) in $VENV"

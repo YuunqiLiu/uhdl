@@ -1,0 +1,10 @@
+In this directory, use UHDL (the Python hardware description library) to build a top module `tag_filter`, and generate its Verilog into ./out (including out/filelist.f).
+
+The existing SystemVerilog in rtl/ must be reused, not rewritten: rtl/filt_pkg.sv (package filt_pkg with struct entry_t = {tag, data}) and rtl/sync_fifo.sv (module sync_fifo).
+
+tag_filter:
+- Ports: clk, rst_n (async, active low), match_tag[3:0] (in), in_vld (in), in_rdy (out), in_pld[15:0] (in, a filt_pkg::entry_t), out_vld (out), out_rdy (in), out_data[11:0] (out).
+- Instantiate one sync_fifo with DEPTH=4. The input stream (in_vld/in_rdy/in_pld) goes straight into the FIFO.
+- At the FIFO output: if the head entry's tag equals match_tag, present it on the output (out_vld = FIFO not empty, out_data = the entry's data) and pop it when out_rdy is 1. If the tag does not match, drop the entry: pop it at once and keep out_vld at 0.
+
+When you are done, say which skill you used (if any), the generator file name, and the check commands you ran with their results.
