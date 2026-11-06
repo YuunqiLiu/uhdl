@@ -856,13 +856,15 @@ class Component(Root):
         else:
             os.makedirs(out_dir, exist_ok=True)
 
-        texts, order = {}, []
+        texts, order, extra_paths = {}, [], []
 
         def walk(comp):
             for sub in comp.component_list:
                 walk(sub)
             if type(comp)._create_this_vfile is not Component._create_this_vfile:
-                comp._create_this_vfile(out_dir)      # VComponent / TemplateComponent keep their own handling
+                extra = comp._create_this_vfile(out_dir)   # VComponent / TemplateComponent keep their own handling
+                if isinstance(extra, str) and extra not in extra_paths:
+                    extra_paths.append(extra)                # e.g. a packed-port shim around an SV module
                 return
             text = comp.verilog_def
             name = comp.module_name
@@ -875,7 +877,7 @@ class Component(Root):
             order.append(name)
 
         walk(self)
-        paths = []
+        paths = list(extra_paths)
         for name in order:
             path = os.path.join(out_dir, '%s.v' % name)
             FileProcess.create_file(path, texts[name])

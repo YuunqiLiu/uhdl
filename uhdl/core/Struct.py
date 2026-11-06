@@ -232,3 +232,78 @@ class _FieldsView:
     @property
     def bits(self):
         return self._struct.pack(**self._f)
+
+
+# ---------------------------------------------------------------------------- SV packages
+
+class SvPackage:
+    """Packed structs and integer parameters of a SystemVerilog package, read with slang.
+
+        pk = import_sv_package([define.sv, pack.sv], 'lwmnoc_pack')
+        RingDat = pk.ring_dat_chnl            # a Struct, nested structs included
+        N = pk.MNOC_TNIU_DNSTREAM_WRITE_ROB_ENTRY_NUM
+
+    Using the package as the single source of truth keeps UHDL and SV field layouts equal.
+    """
+
+    def __init__(self, name, structs, params):
+        self._name, self._structs, self._params = name, structs, params
+
+    def __getattr__(self, n):
+        if n.startswith('_'):
+            raise AttributeError(n)
+        if n in self._structs:
+            return self._structs[n]
+        if n in self._params:
+            return self._params[n]
+        raise AttributeError('package %s has no packed struct or integer parameter "%s"' % (self._name, n))
+
+    @property
+    def structs(self):
+        return dict(self._structs)
+
+    @property
+    def params(self):
+        return dict(self._params)
+
+
+def import_sv_package(sources, package, slang_opts='--single-unit --ignore-unknown-modules'):
+    from pyslang import Driver, CommandLineOptions, SymbolKind
+    srcs = ' '.join(sources) if isinstance(sources, (list, tuple)) else str(sources)
+    d = Driver()
+    d.addStandardArgs()
+    if not d.parseCommandLine('slang %s %s' % (slang_opts, srcs), CommandLineOptions()):
+        raise ErrUHDLStr('slang could not parse: %s' % srcs)
+    d.processOptions()
+    d.parseAllSources()
+    comp = d.createCompilation()
+    pk = comp.getPackage(package)
+    if pk is None:
+        raise ErrUHDLStr('package %s not found in %s' % (package, srcs))
+
+    def conv(t):
+        ct = t.canonicalType if t.isAlias else t
+        if ct.isStruct and ct.bitWidth > 0:
+            return Struct(**OrderedDict((f.name, conv(f.type)) for f in ct))
+        return ct.bitWidth
+
+    structs, params = {}, {}
+    for m in pk:
+        if m.kind == SymbolKind.TypeAlias:
+            t = m.targetType.type
+            ct = t.canonicalType if t.isAlias else t
+            if ct.isStruct and ct.bitWidth > 0:
+                structs[m.name] = conv(t)
+        elif m.kind == SymbolKind.Parameter:
+            v = m.value
+            try:
+                if not v.hasUnknown():
+                    params[m.name] = int(v.convertToInt().integer)
+            except Exception:
+                txt = str(v)                      # e.g. "32'd64", "1'b0"
+                try:
+                    base = {'d': 10, 'h': 16, 'b': 2, 'o': 8}[txt.split("'")[1].lstrip('s')[0]]
+                    params[m.name] = int(txt.split("'")[1].lstrip('s')[1:].replace('_', ''), base)
+                except Exception:
+                    pass
+    return SvPackage(package, structs, params)

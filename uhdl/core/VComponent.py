@@ -25,6 +25,15 @@ class VParameter(object):
         return Parameter(AnyConstant(self.value))
 
 
+from .UHDLException import ErrUHDLStr
+from .Variable import Input, Output, UInt
+
+
+class SvType(str):
+    '''A SystemVerilog type given as a parameter of a VComponent, for `parameter type`:
+    VComponent(file, top='fcip_reg_slice', PLD_TYPE=SvType('logic [37:0]'), RS_TYPE=0).'''
+
+
 class VPort(object):
     """Port descriptor built directly from pyslang type symbols.
 
@@ -290,12 +299,26 @@ class VComponent(Component):
         else:
             source = str(file)
 
-        # Build parameter overrides in slang -G format
-        param_args = ''
-        for k, v in kwargs.items():
-            param_args += f'-G {k}={v} '
-
-        cmd = f'slang {slang_opts} {source} --top {top} {param_args}'.strip()
+        # Type parameters (SvType values) cannot be set with -G: elaborate the module inside a
+        # small wrapper that overrides them, and read the ports of that instance instead.
+        type_params = {k: v for k, v in kwargs.items() if isinstance(v, SvType)}
+        wrap_file = None
+        if type_params and struct_mode == 'auto':
+            # ports typed by a type parameter have no package-qualified name to emit: keep them packed
+            self._struct_mode = 'packed'
+        if type_params:
+            import tempfile, os
+            ov = ', '.join('.%s(%s)' % (k, v) for k, v in kwargs.items())
+            fd, wrap_file = tempfile.mkstemp(suffix='.sv', prefix='uhdl_vwrap_')
+            with os.fdopen(fd, 'w') as f:
+                f.write('module __uhdl_vwrap; %s #(%s) u (); endmodule\n' % (top, ov))
+            cmd = f'slang {slang_opts} {source} {wrap_file} --top __uhdl_vwrap'.strip()
+        else:
+            # Build parameter overrides in slang -G format
+            param_args = ''
+            for k, v in kwargs.items():
+                param_args += f'-G {k}={v} '
+            cmd = f'slang {slang_opts} {source} --top {top} {param_args}'.strip()
 
         # Parse and compile using pyslang Driver
         driver = Driver()
@@ -310,7 +333,14 @@ class VComponent(Component):
         # Find top instance and extract ports/parameters
         root = comp.getRoot()
         top_inst = None
-        for inst in root.topInstances:
+        if wrap_file is not None:
+            os.unlink(wrap_file)
+            for inst in root.topInstances:
+                if inst.name == '__uhdl_vwrap':
+                    for m in inst.body:
+                        if m.kind == SymbolKind.Instance and m.name == 'u':
+                            top_inst = m
+        for inst in ([] if top_inst is not None else root.topInstances):
             if inst.name == top:
                 top_inst = inst
                 break
@@ -325,6 +355,24 @@ class VComponent(Component):
 
         self._vport_list = []
         self._vparam_list = []
+        self._shim_text = None
+
+        bad = [m.name for m in top_inst.body if m.kind == SymbolKind.Port and m.type.bitWidth == 0
+               and not (m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray]
+        bad += [m.name for m in top_inst.body if m.kind == SymbolKind.Port
+                and (m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray and m.type.elementType.bitWidth == 0]
+        if bad:
+            raise ErrUHDLStr('VComponent %s: slang could not resolve the type of port(s) %s (width 0). A package '
+                             'or macro is probably missing from the sources; for macros defined in another file '
+                             "try slang_opts='--ignore-unknown-modules --single-unit'." % (top, ', '.join(bad)))
+
+        # Unpacked-array ports cannot be connected from UHDL's flat vectors. If there are any,
+        # wrap the module in a generated SV shim whose ports are all packed (an unpacked array
+        # of N elements of W bits becomes one N*W-bit port, element lo+k at bits [k*W +: W]).
+        ports = [m for m in top_inst.body if m.kind == SymbolKind.Port]
+        if any((m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray for m in ports):
+            self._build_flat_shim(top, ports, kwargs)
+            return
 
         for member in top_inst.body:
             if member.kind == SymbolKind.Port:
@@ -334,6 +382,8 @@ class VComponent(Component):
             elif member.kind == SymbolKind.Parameter and not member.isLocalParam:
                 vparam = VParameter(member.name, str(member.value))
                 self._vparam_list.append(vparam)
+            elif member.kind == SymbolKind.TypeParameter and member.name in type_params:
+                self._vparam_list.append(VParameter(member.name, str(type_params[member.name])))
 
         for vport in self._vport_list:
             self.create(vport.name, vport.create_uhdl_port())
@@ -353,12 +403,55 @@ class VComponent(Component):
 
 
 
+    def _build_flat_shim(self, top, ports, params):
+        import hashlib
+        tag = hashlib.md5(repr((top, sorted((k, str(v)) for k, v in params.items()))).encode()).hexdigest()[:8]
+        shim = '%s__uflat_%s' % (top, tag)
+        decl, body, conns = [], [], []
+        for m in ports:
+            t = m.type.canonicalType if m.type.isAlias else m.type
+            d = {'In': 'input', 'Out': 'output'}.get(m.direction.name)
+            if d is None:
+                raise ErrUHDLStr('VComponent %s: inout port %s is not supported with unpacked-array ports.' % (top, m.name))
+            if t.isUnpackedArray:
+                el = t.elementType
+                if (el.canonicalType if el.isAlias else el).isUnpackedArray:
+                    raise ErrUHDLStr('VComponent %s: port %s has more than one unpacked dimension.' % (top, m.name))
+                ew, rg = el.bitWidth, t.fixedRange
+                n, lo = abs(rg.left - rg.right) + 1, min(rg.left, rg.right)
+                width = n * ew
+                body.append('    logic [%d:0] %s__a [%d:%d];' % (ew - 1, m.name, rg.left, rg.right))
+                for k in range(n):
+                    if d == 'input':
+                        body.append('    assign %s__a[%d] = %s[%d +: %d];' % (m.name, lo + k, m.name, k * ew, ew))
+                    else:
+                        body.append('    assign %s[%d +: %d] = %s__a[%d];' % (m.name, k * ew, ew, m.name, lo + k))
+                conns.append('.%s(%s__a)' % (m.name, m.name))
+            else:
+                width = t.bitWidth
+                conns.append('.%s(%s)' % (m.name, m.name))
+            decl.append('    %s logic %s%s' % (d, '' if width == 1 else '[%d:0] ' % (width - 1), m.name))
+            io = Input if d == 'input' else Output
+            self.create(m.name, io(UInt(width)))
+        ov = ', '.join('.%s(%s)' % (k, v) for k, v in params.items())
+        self._shim_text = '\n'.join(
+            ['// Generated by UHDL: packed-port wrapper around %s.' % top,
+             'module %s (' % shim, ',\n'.join(decl), ');'] + body +
+            ['    %s %su (' % (top, '#(%s) ' % ov if ov else ''), '        ' + ',\n        '.join(conns), '    );', 'endmodule', ''])
+        self._module_name = shim
+
     @property
     def module_name(self):
         return self._module_name
 
     def _create_this_vfile(self, path):
-        pass
+        if self._shim_text is None:
+            return None
+        import os
+        f = os.path.join(path, '%s.sv' % self._module_name)
+        with open(f, 'w') as fh:
+            fh.write(self._shim_text)
+        return f
 
 
     def _generate_filelist_core(self, prefix=''):
