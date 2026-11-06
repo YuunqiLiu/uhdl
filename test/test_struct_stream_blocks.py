@@ -291,3 +291,50 @@ def test_stream_with_named_packed_payload():
     names = [p.name for p in c.input_list + c.output_list]
     assert 'rx_req_pld' in names and 'tx_pld' in names and 'rx_req_dst' not in names
     assert 'assign d = rx_req_pld[10:8];' in vtext(c)
+
+
+@needs_verilator
+def test_reg_without_reset_multiline(tmp_path):
+    def body(s):
+        s.a, s.b = Input(1), Input(1); s.o = Output(4)
+        r = s.reg('r', 4, rst=None)
+        with s.when(s.a):
+            r <<= 1
+        with s.when(s.b):
+            r <<= 2
+        s.o += r
+        s.mark_unused(s.rst_n)
+    c = comp(body, 'norst')
+    t = vtext(c)
+    assert "if(b) r <= 4'b10;" in t and "else if(a) r <= 4'b1;" in t
+    assert lint(c.generate(str(tmp_path / 'o')), 'norst') == []
+
+
+def test_own_output_read_inside_while_parent_uses_it():
+    """A child reads its own Output to drive a grandchild input; the parent also reads that Output."""
+    class Leaf(Component):
+        MODULE_NAME = 'leaf'
+
+        def circuit(s):
+            s.i, s.o = Input(1), Output(1)
+            s.o += s.i
+
+    class Mid(Component):
+        MODULE_NAME = 'mid'
+
+        def circuit(s):
+            s.a, s.v, s.q = Input(1), Output(1), Output(1)
+            s.v += s.a
+            s.leaf = Leaf()
+            s.leaf.i += s.v & s.a                 # reads its own output v
+            s.q += s.leaf.o
+
+    def body(s):
+        s.x, s.y, s.z = Input(1), Output(1), Output(1)
+        s.m = Mid()
+        s.m.a += s.x
+        s.y += s.m.v                              # the parent reads v too
+        s.z += s.m.q
+    t = comp(body, 'own_out')
+    mid = '\n'.join(t.m.verilog_def)
+    assert 'm_v' not in mid and '(v & a)' in mid

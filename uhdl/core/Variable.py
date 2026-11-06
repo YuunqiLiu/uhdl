@@ -793,7 +793,7 @@ class Reg(SingleVar):
             else:
                 tmp_str_list = self._rvalue.bstring(self,'<=')
                 tmp_str_list[0] = '    %s' % tmp_str_list[0]
-                tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:0]]
+                tmp_str_list[1:] = ['    %s' % x for x in tmp_str_list[1:]]
                 str_list += tmp_str_list
             str_list += ['end']
             return str_list
@@ -982,7 +982,10 @@ class OutputLikeMixin:
         return self.name_before_component
 
     def rstring(self, lvalue):
-        if (lvalue.father_until_component() is self.father_until_component()) and not is_input_port(lvalue):
+        # Name the port as seen from the module where this assignment is written: inside its own
+        # module (also when it drives a sub-component's input there) it is its port name; from
+        # the parent it is the parent's wire for it.
+        if _temp_wire_scope(lvalue) is self.father_until_component():
             return self.name_before_component
         else:
             return self.name_until_component
@@ -2382,7 +2385,7 @@ class CutExpression(Expression):
         if self.hbound < self.lbound:
             raise ErrCutExpSliceInvalid(self,'hbound %s must be greater than or equal to lbound %s' % (self.hbound,self.lbound))
         if hbound > (op.attribute.width -1):
-            raise ErrCutExpSliceInvalid(self,'hbound %s exceeds the variable range of %s[%s:0]' % (self.hbound,self.op.name,op.attribute.width-1))
+            raise ErrCutExpSliceInvalid(self,'hbound %s exceeds the variable range of %s[%s:0]' % (self.hbound,getattr(self.op, 'name', None) or type(self.op).__name__,op.attribute.width-1))
 
     @property
     def op_name(self):

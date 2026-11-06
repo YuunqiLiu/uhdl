@@ -129,7 +129,7 @@ class ErrCutExpSliceInvalid(ErrUHDL):
         self.str = str_in
 
     def __str__(self):
-        return '%s has invalid slice [%s:%s]:\n\t%s' % (self.exp.op.name,self.exp.hbound,self.exp.lbound,self.str)
+        return '%s has invalid slice [%s:%s]:\n\t%s' % (getattr(self.exp.op, 'name', None) or type(self.exp.op).__name__,self.exp.hbound,self.exp.lbound,self.str)
 
 
 class ErrWhenExpOperateWrong(ErrUHDL):
