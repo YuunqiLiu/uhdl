@@ -206,4 +206,4 @@ yosys -q -p "read_verilog $(tr '\n' ' ' < out/filelist.f); synth -top <top>; che
 ## 11. Known limitations
 - The output is Verilog-2001, with no SystemVerilog interfaces. Parameters are not kept, because everything is elaborated.
 - Constants are emitted in binary.
-- `VComponent` (importing hand-written SV) and `TemplateIP` use their own output handling. `generate()` hands those components to it, and their files are not listed in `filelist.f`.
+- `VComponent` (importing hand-written SV), and `TemplateComponent` from ip_builder (`ip_builder/uhdl_template_ip.py`), use their own output handling. `generate()` hands those components to it, and their files are not listed in `filelist.f`.

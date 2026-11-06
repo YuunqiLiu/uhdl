@@ -28,7 +28,6 @@ uhdl/
 │   │   ├── Operator.py          # 运算符函数式 API 封装 (~674 行)
 │   │   ├── Function.py          # SmartAssign, Assign, LCA 等 (~223 行)
 │   │   ├── types.py             # 类型描述符 (TypeKernel, StructType, EnumType, UnionType) (~367 行)
-│   │   ├── TemplateIP.py        # 模板 IP 支持
 │   │   ├── Config.py            # 配置管理
 │   │   ├── Terminal.py          # 日志/终端输出
 │   │   ├── MultiFileCoop.py     # 多文件协作
@@ -110,11 +109,9 @@ Root (Root.py)
 Component (Component.py)
 │   模块容器。管理 IO 列表、内部信号、子模块实例、Verilog 代码生成。
 │
-├── VComponent (VComponent.py)
-│   通过 pyslang 解析导入 Verilog/SystemVerilog 模块。
-│
-└── TemplateIP (TemplateIP.py)
-    模板 IP 支持。
+└── VComponent (VComponent.py)
+    通过 pyslang 解析导入 Verilog/SystemVerilog 模块。
+    （TemplateIP / TemplateComponent 已移到 ip_builder 仓库：ip_builder/uhdl_template_ip.py）
 ```
 
 ### Mixin 类
@@ -441,7 +438,6 @@ PerfectAssign 内部使用以下函数识别端口类型：
 |---|---|
 | `Component` | 模块容器基类 |
 | `VComponent` | Verilog 导入组件 |
-| `TemplateIP` | 模板 IP |
 | `Circuit` | `Root` 的别名 |
 
 ### IO 类型

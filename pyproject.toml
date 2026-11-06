@@ -20,8 +20,7 @@ sv = [
     "pyslang==8.1.0 ; python_version < '3.11'",
     "pyslang>=12.1,<13 ; python_version >= '3.11'",
 ]
-# The legacy TemplateIP (moving to the ip_builder repository) and the demos.
-template = ["PyYAML>=5.4"]
+# TemplateIP (ip_builder integration) now lives in the ip_builder repository.
 demo = ["networkx", "matplotlib"]
 test = ["pytest"]
 

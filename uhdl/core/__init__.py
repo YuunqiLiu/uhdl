@@ -57,9 +57,6 @@ from .UHDLException import *
 
 
 def __getattr__(name):
-    # TemplateIP (ip_builder integration) is loaded only when used: it needs PyYAML and an
-    # ip_builder checkout, which plain UHDL designs do not.
-    if name == 'TemplateIP':
-        from .TemplateIP import TemplateIP
-        return TemplateIP
+    if name in ('TemplateIP', 'TemplateIPConfig', 'TemplateComponent'):
+        raise ImportError('TemplateIP moved to the ip_builder repository: from ip_builder.uhdl_template_ip import TemplateIPConfig, TemplateComponent')
     raise AttributeError("module %r has no attribute %r" % (__name__, name))

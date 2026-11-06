@@ -1,4 +1,4 @@
-"""The UHDL core imports and generates Verilog without its optional dependencies."""
+"""The UHDL core imports and generates Verilog without its optional dependencies (pyslang, demo packages)."""
 import os, subprocess, sys, textwrap
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,10 +24,12 @@ def test_core_without_pyslang_or_yaml():
             VComponent(file='x.sv', top='x')
         except ImportError as e:
             print('VC:', e)
-        from uhdl import TemplateIP          # loads lazily; PyYAML is needed only by set_macro()
-        print('TemplateIP:', TemplateIP.__name__)
+        try:
+            from uhdl import TemplateIP
+        except ImportError as e:
+            print('TemplateIP:', e)
         ''')
     assert rc == 0, out
     assert 'assign y = (~a);' in out.replace('\t', '') or 'assign y' in out
     assert 'VC: Reading SystemVerilog' in out and 'pip install' in out
-    assert 'TemplateIP: TemplateIP' in out
+    assert 'TemplateIP: TemplateIP moved to the ip_builder repository' in out
