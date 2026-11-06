@@ -302,27 +302,38 @@ class Component(Root):
         self._check_new_name(name)
         return self.create(name, Output(_width_of(width), domain=domain))
 
-    def _stream_ports(self, prefix, payload, fwd, bwd, domain):
+    def _stream_ports(self, prefix, payload, fwd, bwd, domain, data='data'):
         from .Struct import Stream, Struct
         from collections import OrderedDict
         mk = lambda n, io, w: self.create(n, io(w, domain=domain) if io is not Wire else Wire(w))
         vld = mk(prefix + '_vld', fwd, 1)
         rdy = mk(prefix + '_rdy', bwd, 1)
-        if isinstance(payload, Struct):
+        if isinstance(payload, Struct) and data is None:
             fields = OrderedDict((f, mk('%s_%s' % (prefix, f), fwd, payload.field_width(f))) for f in payload.fields)
             return Stream(vld, rdy, fields=fields, struct=payload)
-        return Stream(vld, rdy, data=mk(prefix + '_data', fwd, payload))
+        width = payload.width if isinstance(payload, Struct) else payload
+        return Stream(vld, rdy, data=mk('%s_%s' % (prefix, data), fwd, width), struct=payload if isinstance(payload, Struct) else None)
 
-    def stream_in(self, prefix, payload, domain=None):
-        '''Input stream ports <prefix>_vld, <prefix>_rdy (out), and <prefix>_data or one
-        <prefix>_<field> per Struct field.'''
-        return self._stream_ports(prefix, payload, Input, Output, domain)
+    _PER_FIELD = object()
 
-    def stream_out(self, prefix, payload, domain=None):
-        return self._stream_ports(prefix, payload, Output, Input, domain)
+    def stream_in(self, prefix, payload, domain=None, data=_PER_FIELD):
+        '''Input stream ports <prefix>_vld, <prefix>_rdy (out) and the payload. A Struct
+        payload becomes one port per field (<prefix>_<field>) unless data='name' asks for
+        one packed port <prefix>_<name>; an int payload is one port <prefix>_<data or "data">.'''
+        return self._stream_ports(prefix, payload, Input, Output, domain, self._data_name(payload, data))
 
-    def stream_wire(self, prefix, payload):
-        return self._stream_ports(prefix, payload, Wire, Wire, None)
+    def stream_out(self, prefix, payload, domain=None, data=_PER_FIELD):
+        return self._stream_ports(prefix, payload, Output, Input, domain, self._data_name(payload, data))
+
+    def stream_wire(self, prefix, payload, data=_PER_FIELD):
+        return self._stream_ports(prefix, payload, Wire, Wire, None, self._data_name(payload, data))
+
+    @staticmethod
+    def _data_name(payload, data):
+        from .Struct import Struct
+        if data is Component._PER_FIELD:
+            return None if isinstance(payload, Struct) else 'data'
+        return data
 
     # ------------------------------------------------------------------
     # Compact declarations: name, type and driver in one call

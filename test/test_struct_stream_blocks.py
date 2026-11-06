@@ -279,3 +279,15 @@ def test_fsm_blocks_and_streams_simulate(tmp_path):
           end
         endmodule''')
     assert 'RESULT PASS' in out, out
+
+
+def test_stream_with_named_packed_payload():
+    def body(s):
+        a = s.stream_in('rx_req', Flit, data='pld')         # one packed port rx_req_pld
+        b = s.stream_out('tx', Flit, data='pld')
+        b += a
+        s.d = Output(3); s.d += a.payload.dst
+    c = comp(body)
+    names = [p.name for p in c.input_list + c.output_list]
+    assert 'rx_req_pld' in names and 'tx_pld' in names and 'rx_req_dst' not in names
+    assert 'assign d = rx_req_pld[10:8];' in vtext(c)

@@ -143,6 +143,12 @@ class Stream:
             return self._data
         return self.struct.pack(**self.fields)
 
+    @data.setter
+    def data(self, v):
+        # `stream.data += x` ends in setattr(stream, 'data', <the same signal>)
+        if v is not self._data:
+            raise ErrUHDLStr('Drive a stream payload with +=, e.g. stream.data += value.')
+
     @property
     def payload(self):
         """The payload as a StructView when the stream has a Struct, else the vector."""
@@ -185,21 +191,23 @@ class Stream:
 
     # ---- construction
     @staticmethod
-    def of(comp, prefix, payload=None, lane=None):
+    def of(comp, prefix, payload=None, lane=None, data='data'):
         """The stream formed by comp's ports <prefix>_vld, <prefix>_rdy and either
-        <prefix>_data or one <prefix>_<field> per field of the Struct `payload`.
-        lane=i takes lane i of flat vectors (vld is N bits, each field N times its width)."""
+        <prefix>_<data> (default <prefix>_data) or one <prefix>_<field> per field of the
+        Struct `payload`. lane=i takes lane i of flat vectors (vld is N bits, each field N
+        times its width)."""
         def get(n):
             if not hasattr(comp, n):
                 raise ErrUHDLStr('%s has no port "%s".' % (type(comp).__name__, n))
             return getattr(comp, n)
         vld, rdy = get(prefix + '_vld'), get(prefix + '_rdy')
         struct = payload if isinstance(payload, Struct) else None
-        if struct is not None and all(hasattr(comp, '%s_%s' % (prefix, f)) for f in struct.fields):
+        if struct is not None and data == 'data' and \
+                all(hasattr(comp, '%s_%s' % (prefix, f)) for f in struct.fields):
             fields = OrderedDict((f, get('%s_%s' % (prefix, f))) for f in struct.fields)
             data = None
         else:
-            fields, data = None, get(prefix + '_data')
+            fields, data = None, get('%s_%s' % (prefix, data))
         if lane is not None:
             n = vld.attribute.width
             if not 0 <= lane < n:
