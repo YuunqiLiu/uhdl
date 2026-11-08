@@ -7,7 +7,7 @@ set -e
 E=$(cd "$(dirname "$0")" && pwd); C=$(cd "$1" && pwd); task=$3; label=$4; model=${5:-}
 P=$(bash "$E/setup.sh" "$1" "$2" "$task" "$label")
 cd "$P"
-env -u PYTHONPATH PATH="$C/bin:$PATH" claude -p "$(cat "$E/$task/prompt.txt")" ${model:+--model "$model"} \
+env -u PYTHONPATH PATH="$C:$PATH" claude -p "$(cat "$E/$task/prompt.txt")" ${model:+--model "$model"} \
   --output-format stream-json --verbose --dangerously-skip-permissions > "$P/../$label.jsonl"
 echo "transcript: $P/../$label.jsonl"
 grep -c '"name":"Skill"' "$P/../$label.jsonl" | sed 's/^/Skill tool calls: /'

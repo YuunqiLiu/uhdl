@@ -18,5 +18,5 @@ TMPDIR=$B verilator --binary --timing -Wno-fatal -Wno-lint -Wno-style --top-modu
   || { echo "GRADE FAIL: testbench build"; grep -E '^%Error' "$B/build.log" | head -5; exit 1; }
 "$B/obj/Vtb" | grep RESULT
 top=$(sed -n 's/^\s*\(\w*\) dut(.*/\1/p' "$E/$task/hidden/tb.sv" | head -1)
-echo "uhdl check: $("$C/bin/uhdl" check "$P/out" --top "$top" "${CK[@]}" | tail -1)"
+echo "uhdl check: $("$C/uhdl" check "$P/out" --top "$top" "${CK[@]}" | tail -1)"
 rm -rf "$B"

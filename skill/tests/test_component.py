@@ -1,6 +1,6 @@
 """Test a built UHDL component (packaging/build_component.py) the way an agent uses it.
 
-    python skill/tests/test_component.py --component dist/component/uhdl-<ver>-linux-x86_64 \\
+    python skill/tests/test_component.py --component <extracted component archive> \\
         --work /some/scratch --python /path/python3.8 --python /usr/bin/python3.9 ... \\
         [--user-venv /path/venv/bin/python]    # a venv with prettytable installed
 
@@ -22,7 +22,7 @@ shutil.rmtree(T, ignore_errors=True); os.makedirs(T)
 HERE = os.path.dirname(os.path.abspath(__file__))
 for f in ('pkg.sv', 'cells.sv'):
     shutil.copy(os.path.join(HERE, 'data', f), T)
-UHDL = os.path.join(C, 'bin', 'uhdl')
+UHDL = os.path.join(C, 'uhdl')                  # archive root: uhdl, _uhdl/, skill/
 BARE = {'HOME': os.environ['HOME'], 'PATH': '/usr/bin:/bin', 'TMPDIR': T, 'UHDL_CACHE': os.path.join(T, 'cache')}
 TOOLS = dict(BARE, PATH='/usr/bin:/bin:' + os.path.dirname(shutil.which('verilator') or '/x') + ':' + os.path.dirname(shutil.which('yosys') or '/x'))
 ok_all = True
@@ -50,7 +50,7 @@ open(os.path.join(T, 'sv_gen.py'), 'w').write(SVGEN)
 
 # ---- frozen command
 r = sh([UHDL, 'version']); expect('frozen: version', r.returncode == 0 and 'frozen' in r.stdout and 'uhdl_slang' in r.stdout, r.stdout + r.stderr)
-ex = os.path.join(C, 'skills', 'uhdl', 'uhdl-design', 'references', 'example_gen.py')
+ex = os.path.join(C, 'skill', 'uhdl-design', 'references', 'example_gen.py')
 r = sh([UHDL, 'run', ex, '--out', 'o_ex']); expect('frozen: run the guide example', r.returncode == 0 and os.path.isfile(os.path.join(T, 'o_ex', 'filelist.f')), r.stderr)
 top = [l for l in open(os.path.join(T, 'o_ex', 'filelist.f')).read().split() if l.endswith('.v')][-1].split('/')[-1][:-2] if r.returncode == 0 else 'x'
 r = sh([UHDL, 'check', 'o_ex', '--top', top], TOOLS); expect('frozen: check -> CHECK PASS', r.returncode == 0 and 'CHECK PASS' in r.stdout, r.stdout + r.stderr)
@@ -58,8 +58,8 @@ r = sh([UHDL, 'run', 'sv_gen.py']); expect('frozen: SV import (libuhdl_slang)', 
 mods = 'json math argparse itertools dataclasses fractions functools collections re csv statistics random textwrap pathlib typing enum decimal hashlib shutil subprocess glob copy pprint string struct zlib tempfile unittest logging datetime operator heapq bisect concurrent.futures multiprocessing xml.etree.ElementTree'
 r = sh([UHDL, 'python', '-c', 'import ' + ', '.join(mods.split()) + '; print("stdlib ok")'])
 expect('frozen: standard library modules', 'stdlib ok' in r.stdout, r.stderr)
-r = sh([UHDL, 'python', '-c', 'import hashlib; hashlib.md5(b"x").hexdigest()\ntry:\n    import ssl\nexcept ImportError:\n    print("no ssl, md5 ok")'])
-expect('frozen: no ssl (no network), hashlib md5 still works', 'no ssl, md5 ok' in r.stdout, r.stdout + r.stderr)
+r = sh([UHDL, 'python', '-c', 'import ssl, hashlib; print("ssl", hashlib.md5(b"x").hexdigest()[:4])'])
+expect('frozen: ssl and hashlib (OpenSSL) available', 'ssl 9dd4' in r.stdout, r.stdout + r.stderr)
 r = sh([UHDL, 'python'], inp='import uhdl\nprint("stdin ok")\n'); expect('frozen: script on stdin', 'stdin ok' in r.stdout, r.stdout + r.stderr)
 r = sh([UHDL, 'python', '-c', 'import sys; sys.exit(3)']); expect('frozen: exit status passes through', r.returncode == 3, r.returncode)
 open(os.path.join(T, 'bad.py'), 'w').write('from uhdl import *\nclass t(Component):\n    def circuit(s):\n        s.a = Input(2); s.y = Output(1)\n        s.y += s.a\nt()\n')

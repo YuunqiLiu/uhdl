@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """Build the UHDL toolkit component: a frozen `uhdl` command plus its Skill.
 
-    python packaging/build_component.py [--python /path/python3.X] [--out dist/component]
+    python packaging/build_component.py --python /path/python3.X [--out dist/component]
+        [--repository YuunqiLiu/uhdl] [--release-tag v<version>]
 
-Result: <out>/uhdl-<version>-linux-x86_64/ and the same as a .tar.gz, laid out like the other
-motryx-toolkit components:
+Writes, in <out>, what a motryx-toolkit component release consists of:
+    uhdl-<version>-linux-x86_64.tar.gz          the archive
+    uhdl-<version>-linux-x86_64.tar.gz.sha256   "<sha256>  <archive name>"
+    component-manifest.json                      the same manifest as inside the archive
 
-    bin/uhdl            frozen entry point (PyInstaller onedir)
-    bin/_uhdl/          its runtime: Python, the full standard library, uhdl with
-                        libuhdl_slang.so (SystemVerilog import), and pysrc/ (uhdl as plain
-                        source, with the same library, for other Pythons: uhdl pythonpath)
-    skills/uhdl/uhdl-design/   the Skill (SKILL.md, references/); its folder name differs from
-                        the component's so that a short path like r1/uhdl-design/SKILL.md is unambiguous
-    manifest.json       versions, source commit, SHA-256 of the binary and the Skill tree
+The archive root (the contract checked by motryx-toolkit's scripts/update_component_lock.py):
+    uhdl                     frozen entry point (PyInstaller onedir)
+    _uhdl/                   its runtime: Python with the standard library, uhdl with
+                             _native/libuhdl_slang.so, and pysrc/ (uhdl as plain source for other
+                             Pythons: uhdl pythonpath)
+    skill/uhdl-design/       the Skill (the toolkit installs skill/ as skills/uhdl/)
+    component-manifest.json  identity, binary hash and size, runtime and Skill tree hashes
 
-Keep all of bin/: the entry point needs bin/_uhdl/. The oldest glibc the component runs on is the
-newest one any of its ELF files needs (recorded in manifest.json as build.glibc_needed):
-libuhdl_slang.so follows its compiler's sysroot (python native/build.py --cxx ...), the frozen
-Python follows the interpreter given with --python. Needs PyPI for PyInstaller; runs offline.
+The archive is reproducible (sorted, root-owned, commit time). The oldest glibc the component runs
+on is the newest one any ELF file needs (build.glibc_needed in the manifest): libuhdl_slang.so
+follows its compiler's sysroot (python native/build.py --cxx ...), the frozen Python follows the
+interpreter given with --python. Needs PyPI for PyInstaller; the result runs offline.
 """
 import argparse
 import hashlib
@@ -32,16 +35,14 @@ import tarfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, 'skill', 'uhdl-design')
 SKILL_NAME = 'uhdl-design'
+COMPONENT = 'uhdl'
 PYINSTALLER = 'pyinstaller==6.16.0'
 # standard-library modules generators never need, or that pull in GUI toolkits
 STDLIB_SKIP = {'tkinter', 'turtle', 'turtledemo', 'idlelib', 'test', 'lib2to3', 'ensurepip', 'venv',
                'pydoc_data', 'this', 'antigravity', 'msilib', 'winreg', 'winsound', '_winapi', 'nt',
                'msvcrt', '_msi', '_overlapped', 'curses', '_curses', '_curses_panel', 'readline', 'dbm',
                '_dbm', '_gdbm', 'sqlite3', '_sqlite3', 'xxsubtype', 'xxlimited', 'xxlimited_35', '_tkinter',
-               # no network: drops OpenSSL (about 8 MB); hashlib falls back to its built-in md5/sha.
-               # A generator that needs ssl, or third-party packages, runs in the user's Python
-               # through `uhdl pythonpath`.
-               'ssl', '_ssl', '_hashlib'}
+               }
 
 
 def run(cmd, **kw):
@@ -64,16 +65,17 @@ def pip(vpy, verb, args, wheelhouse):
     raise SystemExit('pip %s failed: %s' % (verb, ' '.join(args)))
 
 
-def tree_sha(path):
+def tree_sha(root):
+    """motryx-toolkit's skill_tree_hash: sha256 over (relative path, hex sha256) of every file."""
     h = hashlib.sha256()
     n = 0
-    for d, dirs, files in sorted(os.walk(path)):
-        dirs.sort()
-        for f in sorted(files):
-            p = os.path.join(d, f)
-            rel = os.path.relpath(p, path)
-            h.update(rel.encode() + b'\0' + open(p, 'rb').read() + b'\0')
-            n += 1
+    for p in sorted((os.path.join(d, f) for d, _, fs in os.walk(root) for f in fs),
+                    key=lambda x: os.path.relpath(x, root).replace(os.sep, '/')):
+        if os.path.islink(p):
+            raise SystemExit('links are not allowed in the component: %s' % p)
+        h.update(os.path.relpath(p, root).replace(os.sep, '/').encode() + b'\0')
+        h.update(file_sha(p).encode('ascii') + b'\0')
+        n += 1
     return h.hexdigest(), n
 
 
@@ -107,6 +109,8 @@ def main():
     ap.add_argument('--out', default=os.path.join(ROOT, 'dist', 'component'))
     ap.add_argument('--work', default=None, help='build scratch directory (default: <out>/.build)')
     ap.add_argument('--wheelhouse', default=None, help='kept between builds (default: <out>/.wheelhouse)')
+    ap.add_argument('--repository', default='YuunqiLiu/uhdl', help='recorded in component-manifest.json')
+    ap.add_argument('--release-tag', default=None, help='v<version> for a formal release (default: main-<commit[:12]>)')
     a = ap.parse_args()
 
     ver = {}
@@ -153,8 +157,6 @@ def main():
         if ok:
             hidden += ['--hidden-import', m]
     excludes = []
-    for m in ('ssl', '_ssl', '_hashlib'):
-        excludes += ['--exclude-module', m]
     run([vpy, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onedir', '--strip'] + excludes + [
          '--name', 'uhdl', '--contents-directory', '_uhdl',
          '--distpath', os.path.join(work, 'dist'), '--workpath', os.path.join(work, 'pyi'),
@@ -163,43 +165,95 @@ def main():
          '--add-binary', '%s:uhdl/_native' % lib,
          '--add-data', '%s:pysrc' % pysrc] + hidden + [entry])
 
-    # 5. lay out the component
-    comp = os.path.join(out, name)
-    shutil.rmtree(comp, ignore_errors=True)
-    os.makedirs(os.path.join(comp, 'skills', 'uhdl'))
-    shutil.copytree(os.path.join(work, 'dist', 'uhdl'), os.path.join(comp, 'bin'))
-    sk = os.path.join(comp, 'skills', 'uhdl', SKILL_NAME)
+    # 5. the component archive, laid out as motryx-toolkit expects (scripts/update_component_lock.py,
+    #    same layout as wave_reader's scripts/ci/package_component.sh): at the archive root
+    #    uhdl, _uhdl/ (its onedir runtime), skill/ (copied to skills/uhdl/ by the toolkit) and
+    #    component-manifest.json
+    rev = git('rev-parse', 'HEAD')
+    dirty = git('status', '--porcelain', '--', 'uhdl', 'skill', 'docs', 'packaging', 'native')
+    release_tag = a.release_tag or 'main-' + rev[:12]
+    epoch = int(git('show', '-s', '--format=%ct', rev))
+    archive_name = '%s-%s-linux-x86_64.tar.gz' % (COMPONENT, version)
+    stage = os.path.join(work, 'stage')
+    os.makedirs(stage)
+    shutil.copy2(os.path.join(work, 'dist', 'uhdl', 'uhdl'), os.path.join(stage, 'uhdl'))
+    os.chmod(os.path.join(stage, 'uhdl'), 0o755)
+    shutil.copytree(os.path.join(work, 'dist', 'uhdl', '_uhdl'), os.path.join(stage, '_uhdl'), symlinks=False)
+    sk = os.path.join(stage, 'skill', SKILL_NAME)
     shutil.copytree(SKILL, sk, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     os.makedirs(os.path.join(sk, 'references'), exist_ok=True)
     shutil.copy(os.path.join(ROOT, 'docs', 'LLM_GUIDE.md'), os.path.join(sk, 'references', 'guide.md'))
     shutil.copy(os.path.join(ROOT, 'docs', 'llm_example', 'gen.py'), os.path.join(sk, 'references', 'example_gen.py'))
 
-    rev = subprocess.run(['git', '-c', 'safe.directory=*', '-C', ROOT, 'rev-parse', 'HEAD'],
-                         capture_output=True, text=True).stdout.strip()
-    dirty = subprocess.run(['git', '-c', 'safe.directory=*', '-C', ROOT, 'status', '--porcelain', '--',
-                            'uhdl', 'skill', 'docs', 'packaging'], capture_output=True, text=True).stdout.strip()
-    skill_sha, skill_n = tree_sha(sk)
-    rt_sha, rt_n = tree_sha(os.path.join(comp, 'bin', '_uhdl'))
-    exe = os.path.join(comp, 'bin', 'uhdl')
-    libc = platform.libc_ver()
-    glibc_needed = max_glibc(comp)
+    exe = os.path.join(stage, 'uhdl')
+    skill_sha, skill_n = tree_sha(os.path.join(stage, 'skill'))
+    rt_sha, rt_n = tree_sha(os.path.join(stage, '_uhdl'))
     manifest = {
-        'component': 'uhdl', 'component_version': version, 'platform': 'linux-' + platform.machine(),
-        'repository': 'YuunqiLiu/uhdl', 'source_commit': rev, 'source_dirty': bool(dirty),
-        'binary': {'path': 'uhdl', 'sha256': file_sha(exe), 'size_bytes': os.path.getsize(exe)},
+        'schema_version': 1,
+        'component': COMPONENT,
+        'component_version': version,
+        'archive_name': archive_name,
+        'repository': a.repository,
+        'source_commit': rev,
+        'release_tag': release_tag,
+        'platform': 'linux-x86_64',
+        'source_date_epoch': epoch,
+        'binary': {'path': 'uhdl', 'sha256': file_sha(exe), 'size_bytes': os.path.getsize(exe), 'executable': True},
         'runtime': {'path': '_uhdl', 'sha256_tree': rt_sha, 'file_count': rt_n},
-        'skill': {'path': 'uhdl/' + SKILL_NAME, 'sha256_tree': skill_sha, 'file_count': skill_n},
+        'skill': {'path': 'skill', 'sha256_tree': skill_sha, 'file_count': skill_n},
+        # informational, not part of the toolkit contract
         'build': {'python': '%d.%d' % pyver, 'pyinstaller': PYINSTALLER.split('==')[1],
-                  'build_machine_glibc': '%s %s' % libc, 'glibc_needed': glibc_needed},
+                  'build_machine_glibc': '%s %s' % platform.libc_ver(), 'glibc_needed': max_glibc(stage),
+                  'source_dirty': bool(dirty)},
     }
-    json.dump(manifest, open(os.path.join(comp, 'manifest.json'), 'w'), indent=2)
-    tar = comp + '.tar.gz'
-    with tarfile.open(tar, 'w:gz') as t:
-        t.add(comp, arcname=name)
-    size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(comp) for f in fs)
-    shutil.rmtree(work, ignore_errors=True)
-    print('component %s: %s (%.0f MB unpacked)\n  %s' % (version, comp, size / 1e6, tar))
+    text = json.dumps(manifest, indent=2, sort_keys=True) + '\n'
+    open(os.path.join(stage, 'component-manifest.json'), 'w').write(text)
 
+    os.makedirs(out, exist_ok=True)
+    archive = os.path.join(out, archive_name)
+    for p in (archive, archive + '.sha256', os.path.join(out, 'component-manifest.json')):
+        if os.path.exists(p):
+            os.remove(p)
+    open(os.path.join(out, 'component-manifest.json'), 'w').write(text)
+    write_archive(stage, archive, ['uhdl', '_uhdl', 'skill', 'component-manifest.json'], epoch)
+    open(archive + '.sha256', 'w').write('%s  %s\n' % (file_sha(archive), archive_name))
+    size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(stage) for f in fs)
+    shutil.rmtree(work, ignore_errors=True)
+    if dirty:
+        print('warning: the source tree has uncommitted changes; this build is not a release', file=sys.stderr)
+    print('component %s (%s): %s, %.1f MB archive, %.0f MB unpacked, glibc %s'
+          % (version, release_tag, archive, os.path.getsize(archive) / 1e6, size / 1e6, manifest['build']['glibc_needed']))
+
+
+def git(*args):
+    return subprocess.run(['git', '-c', 'safe.directory=*', '-C', ROOT] + list(args),
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def write_archive(stage, archive, members, epoch):
+    """Reproducible tar.gz: sorted names, root ownership, the commit time, no gzip timestamp."""
+    import gzip, io
+    def norm(ti):
+        ti.uid = ti.gid = 0
+        ti.uname = ti.gname = ''
+        ti.mtime = epoch
+        return ti
+    entries = []
+    for m in members:
+        root = os.path.join(stage, m)
+        entries.append(m)
+        if os.path.isdir(root):
+            for d, dirs, files in os.walk(root):
+                for x in dirs + files:
+                    entries.append(os.path.relpath(os.path.join(d, x), stage))
+    with open(archive, 'wb') as raw:
+        with gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=0) as gz:
+            with tarfile.open(fileobj=gz, mode='w', format=tarfile.PAX_FORMAT) as t:
+                for e in sorted(entries):
+                    p = os.path.join(stage, e)
+                    if os.path.islink(p):
+                        raise SystemExit('links are not allowed in the component: %s' % e)
+                    t.add(p, arcname=e, recursive=False, filter=norm)
 
 if __name__ == '__main__':
     main()
