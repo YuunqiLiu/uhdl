@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
 """Check the Verilog that UHDL generate() wrote, and point every message at the Python line.
 
-    python uhdl_check.py OUT_DIR --top TOP [--sv FILE ...] [--no-synth]
+    uhdl check OUT_DIR --top TOP [--sv FILE ...] [--no-synth]      (or: python -m uhdl check ...)
 
 1. Verilator lint with -Wall on OUT_DIR/filelist.f (plus the --sv files: imported SV sources or
    .f filelists). Each warning on a generated file is followed by the Python line from the
    `// file.py:line` comment that generate() put on that Verilog line.
-2. Yosys synthesis with `check -assert`, for pure-Verilog designs (no --sv files): it catches
-   combinational loops, multiple drivers and undriven nets after synthesis.
+2. Yosys synthesis with `check -assert` (imported SV read with -sv): it catches combinational
+   loops, multiple drivers and undriven nets after synthesis. A Yosys parse error in an imported
+   SV file means Yosys cannot read it, so that step is SKIPPED rather than failed.
 
 Prints CHECK PASS (exit 0), CHECK FAIL with the problems (exit 1), or CHECK NOT RUN when neither
 tool is installed (exit 2). A tool that is not installed is reported as SKIPPED: that step was not
@@ -130,13 +130,13 @@ def synth(top, gen_files, sv_files):
     return 'FAIL', ['yosys failed:'] + out
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog='uhdl check', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('out_dir', help='directory given to generate()')
     ap.add_argument('--top', required=True, help='top module name')
     ap.add_argument('--sv', action='append', default=[], help='imported SV source or .f filelist (repeatable)')
     ap.add_argument('--no-synth', action='store_true', help='skip the Yosys step')
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     fl = os.path.join(a.out_dir, 'filelist.f')
     if not os.path.isfile(fl):

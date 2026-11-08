@@ -1,44 +1,49 @@
-# UHDL agent skill
+# UHDL toolkit component and Skill
 
-`skill/uhdl/` is a Claude Code skill that teaches an agent to write UHDL designs and brings
-everything needed to run them: UHDL and pyslang wheels, installed offline into a virtual
-environment made from whatever Python 3.8+ the machine has.
+`skill/uhdl/` is the agent Skill. `packaging/build_component.py` builds a toolkit component around it:
+a frozen `uhdl` command that brings its own Python, UHDL and pyslang.
 
 ## Build
 
 ```bash
-python skill/build.py                          # -> dist/skill/uhdl/ and dist/skill/uhdl-skill-<version>.tar.gz
-python skill/build.py --platform linux-x86_64 --platform linux-aarch64   # more platforms
+python packaging/build_component.py --python /path/to/python3.13 [--out dist/component]
 ```
-Building needs network access to PyPI. The result does not. `references/guide.md` is copied
-from `docs/LLM_GUIDE.md` and `references/example_gen.py` from `docs/llm_example/gen.py`, so
-edit those, not the copies. `VERSION` is the UHDL version plus the git revision.
+Result: `dist/component/uhdl-<version>-linux-x86_64/` and the same as a `.tar.gz`:
 
-| Bundled | For |
+| Path | |
 |---|---|
-| `uhdl-<ver>-py3-none-any.whl` | all Pythons ≥3.8 |
-| `pyslang-8.1.0-cp38/39/310` | Python 3.8–3.10 |
-| `pyslang-12.1.0-cp311-abi3` + `nanobind_backend-cp311…cp315` | Python 3.11–3.15 |
-| `pip-24.3.1` | replaces old system pips that cannot install manylinux_2_27 wheels |
+| `bin/uhdl` | frozen entry point (PyInstaller onedir) |
+| `bin/_uhdl/` | its runtime: Python with the full standard library, uhdl, pyslang; `pysrc/` (uhdl as plain source) and `wheels/` (pyslang for Python 3.8–3.15) |
+| `skills/uhdl/uhdl/` | `SKILL.md`, `references/guide.md` (from `docs/LLM_GUIDE.md`), `references/example_gen.py` (from `docs/llm_example/gen.py`) |
+| `manifest.json` | version, source commit, SHA-256 of the binary, runtime tree and Skill tree, build Python/pyslang/glibc |
 
-About 20 MB per platform.
+About 100 MB unpacked. Building needs PyPI; the result runs offline. Keep all of `bin/`.
 
-## Install
+**glibc:** the frozen Python needs the build machine's glibc or newer. PyPI's pyslang needs glibc
+2.27+. A build for the toolkit's glibc 2.17 baseline waits for a pyslang built on that baseline
+(NexEvic/motryx-toolkit#15).
 
-Copy (or untar) `uhdl/` to one of:
-- `~/.claude/skills/uhdl` (all projects; use `$CLAUDE_CONFIG_DIR/skills` if that is set)
-- `<project>/.claude/skills/uhdl` (one project)
+## The `uhdl` command
 
-The first use creates `~/.cache/uhdl-skill/<version>-py<X.Y>-<machine>/` (about 40 MB).
-`UHDL_VENV` and `UHDL_PYTHON` override where it goes and which Python it uses.
+| Command | |
+|---|---|
+| `uhdl run gen.py ARGS` | run a generator with the bundled Python |
+| `uhdl check OUT --top T [--sv F]` | Verilator `-Wall` lint + Yosys synth/`check -assert`, messages mapped to Python lines |
+| `uhdl python [-c/-m/FILE]` | the bundled Python (interactive without arguments) |
+| `uhdl pythonpath --python PY` | PYTHONPATH that lets another Python 3.8+ import this UHDL, adding a bundled pyslang for its version if it has none. For generators that also need the user's own libraries. |
+| `uhdl version` | |
 
-## What the agent gets
+From an installed package the same commands are `python -m uhdl ...` (or `uhdl` from `pip install`).
 
-- `SKILL.md`: when to use the skill, setup, workflow (read the guide, generate, check,
-  simulate), and the mistakes seen most often.
-- `scripts/uhdl_env.sh`: prints a python with UHDL. It handles a missing ensurepip or venv
-  module and old pips, and lets parallel agents share one environment (a lock). Without a
-  matching pyslang wheel it installs UHDL without SV import and says so.
-- `scripts/uhdl_check.py`: Verilator `-Wall` lint and a Yosys synth/`check -assert`. Each
-  message is mapped back to the Python line via the `// file.py:line` comments in the
-  generated Verilog. A missing tool is reported as SKIPPED, never as a pass.
+## Tests
+
+```bash
+python skill/tests/test_component.py --component dist/component/uhdl-<ver>-linux-x86_64 --work <dir> \
+    --python /path/python3.8 --python /usr/bin/python3.9 --python /path/python3.14 [--user-venv <venv python>]
+python skill/tests/test_check.py --uhdl dist/component/uhdl-<ver>-linux-x86_64/bin/uhdl --work <dir>
+# agent end to end: setup.sh / grade.sh, or run_headless.sh for a real `claude -p` run
+bash skill/tests/e2e/run_headless.sh dist/component/uhdl-<ver>-linux-x86_64 <dir> t1 t1-run
+bash skill/tests/e2e/grade.sh <dir>/t1-run t1 dist/component/uhdl-<ver>-linux-x86_64
+```
+`e2e/t1` (round-robin arbiter) and `e2e/t2` (filter around an imported SV FIFO) have hidden testbenches,
+each checked against a reference and a mutant.

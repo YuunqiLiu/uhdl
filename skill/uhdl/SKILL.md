@@ -5,25 +5,32 @@ description: Design hardware in Python with UHDL and generate Verilog from it. U
 
 # UHDL
 
-UHDL is a Python library for describing hardware. A design is Python code that builds a circuit; `generate()` writes Verilog-2001. This skill brings its own UHDL and pyslang wheels (Python 3.8-3.15; see `wheels/PLATFORMS` for the operating systems), so it works offline.
+UHDL is a Python library for describing hardware. A design is a Python script that builds a circuit; `generate()` writes Verilog-2001. The `uhdl` command runs such scripts with its own bundled Python, UHDL and pyslang, so nothing has to be installed.
 
-## 1. Set up Python (once per machine)
+## 1. Find the command
 
 ```bash
-PY=$(bash <this skill dir>/scripts/uhdl_env.sh)    # prints a python that has UHDL; messages go to stderr
-"$PY" -c "import uhdl"                            # works
+uhdl version            # e.g. "uhdl 0.9.0 (frozen, Python 3.13 x86_64, pyslang 12.1.0)"
 ```
-- The script picks a Python ≥3.8 from PATH (`UHDL_PYTHON=/path/to/python` to choose one). It creates a virtual environment in `~/.cache/uhdl-skill/` (`UHDL_VENV=<dir>` to place it elsewhere) and installs from the bundled `wheels/` with no network. Running it again is fast and prints the same path.
-- If the bundle has no pyslang wheel for this Python or platform, it installs UHDL without SV import and says so. In that case section 7b of the guide (VComponent, `import_sv_package`) is unavailable; `UHDL_ALLOW_NETWORK=1` lets pip fetch pyslang from PyPI.
-- Use `"$PY"` for every command below. Do not `pip install` UHDL some other way, and do not edit the venv.
-- **Existing projects that pin their own UHDL** (a `uhdl` checkout or submodule imported as `uhdl.uhdl.core`, like lwnoc) run with their own setup. Follow the style of their code: that UHDL may be older than this guide and may lack the compact syntax.
+If `uhdl` is not on PATH, use `<this skill dir>/../../../bin/uhdl` (the toolkit's `bin/`). Keep the whole `bin/` directory; `bin/uhdl` needs its sibling `bin/_uhdl/`.
+
+**Which Python runs the generator:**
+- **Default: `uhdl run gen.py ...`.** The bundled Python has the full standard library, UHDL and pyslang, and no third-party packages.
+- **When the generator also needs packages from the user's own Python** (numpy, a project library, ...), run it in that Python and give it UHDL through PYTHONPATH:
+  ```bash
+  PYTHONPATH=$(uhdl pythonpath --python python3)${PYTHONPATH:+:$PYTHONPATH} python3 gen.py --out out
+  ```
+  This works with any Python 3.8+, including a venv or conda env. It installs nothing and does not change that environment. If that Python lacks pyslang, `pythonpath` adds a bundled one for its version, or says that SV import is unavailable.
+- **Projects that pin their own UHDL** (a `uhdl` checkout or submodule imported as `uhdl.uhdl.core`, like lwnoc) keep using it with their own setup. Follow the style of their code; that UHDL may be older than this guide.
 
 ## 2. Workflow
 
-1. **Read `references/guide.md` completely before writing UHDL** (once per task). It is the reference for syntax, widths, registers, when-blocks, sub-components, structs and streams, importing SV, clocks and CDC. `references/example_gen.py` is a complete, lint-clean example.
+1. **Read `references/guide.md` completely before writing UHDL** (once per task). It covers syntax, widths, registers, when-blocks, sub-components, structs and streams, importing SV (section 7b), clocks and CDC. `references/example_gen.py` is a complete, lint-clean example.
 2. Write the generator as a script that takes its output directory and parameters on the command line (template below).
-3. Generate: `"$PY" gen.py --out out`. UHDL errors start with `file.py:line: <source line>` of the code that caused them. Fix that line.
-4. Check: `"$PY" <this skill dir>/scripts/uhdl_check.py out --top <top>`. If the design imports SystemVerilog, add `--sv <file>` for each imported source or `.f` filelist, packages first. Do not edit `out/filelist.f`; it lists only what UHDL generated. It runs Verilator lint (`-Wall`) and, for pure-Verilog designs, a Yosys synthesis check. Each message is mapped back to your Python line through the `// file.py:line` comments that `generate()` writes. Expect `CHECK PASS`. A missing tool shows as `SKIPPED`, and with neither tool installed the result is `CHECK NOT RUN`. Tell the user which steps were skipped; do not call the design lint-clean.
+3. Generate: `uhdl run gen.py --out out`. A UHDL error starts with `file.py:line: <source line>` of the code that caused it. Fix that line.
+4. Check: `uhdl check out --top <top>`. If the design imports SystemVerilog, add `--sv <file>` for each imported source or `.f` filelist, packages first. Do not edit `out/filelist.f`; it lists only what UHDL generated.
+   - The check runs Verilator lint (`-Wall`) and a Yosys synthesis check. Each message is mapped back to your Python line through the `// file.py:line` comments that `generate()` writes.
+   - Expect `CHECK PASS`. A missing tool shows as `SKIPPED`, and with neither tool installed the result is `CHECK NOT RUN`. Tell the user which steps were skipped; do not call the design lint-clean.
 5. If behaviour matters, write a testbench and simulate the generated Verilog: `verilator --binary --timing --top-module tb <imported SV files> tb.sv -f out/filelist.f`. Simulator messages point at generated lines; their trailing comment names the Python line.
 6. Tell the user what you generated, where, and what you checked (lint, synthesis, simulation), including anything that was skipped.
 
@@ -52,6 +59,8 @@ if __name__ == '__main__':
     for p in build(a.width).generate(a.out):
         print(p)
 ```
+
+`uhdl python` opens the bundled Python: `uhdl python -c '...'`, `uhdl python script.py`, or interactive.
 
 ## 3. Mistakes to avoid
 

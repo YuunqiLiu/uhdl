@@ -1,6 +1,6 @@
 #!/bin/bash
-# grade.sh <project dir> <task> : the hidden testbench on the agent's out/, plus the skill's own check
-P=$(cd "$1" && pwd); task=$2; E=$(cd "$(dirname "$0")" && pwd); B=$P/.grade
+# grade.sh <project dir> <task> <component dir> : the hidden testbench on the agent's out/, plus `uhdl check`
+P=$(cd "$1" && pwd); task=$2; C=$(cd "$3" && pwd); E=$(cd "$(dirname "$0")" && pwd); B=$P/.grade
 rm -rf "$B"; mkdir -p "$B"
 [ -f "$P/out/filelist.f" ] || { echo "GRADE FAIL: no out/filelist.f"; exit 1; }
 SV=(); CK=()
@@ -18,6 +18,5 @@ TMPDIR=$B verilator --binary --timing -Wno-fatal -Wno-lint -Wno-style --top-modu
   || { echo "GRADE FAIL: testbench build"; grep -E '^%Error' "$B/build.log" | head -5; exit 1; }
 "$B/obj/Vtb" | grep RESULT
 top=$(sed -n 's/^\s*\(\w*\) dut(.*/\1/p' "$E/$task/hidden/tb.sv" | head -1)
-PY=$(env -u BASH_ENV bash "$P/.claude/skills/uhdl/scripts/uhdl_env.sh" 2>/dev/null)
-echo "skill check: $("$PY" "$P/.claude/skills/uhdl/scripts/uhdl_check.py" "$P/out" --top "$top" "${CK[@]}" | tail -1)"
+echo "uhdl check: $("$C/bin/uhdl" check "$P/out" --top "$top" "${CK[@]}" | tail -1)"
 rm -rf "$B"

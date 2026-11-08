@@ -23,10 +23,27 @@ _SITE = tuple(os.path.abspath(p) + os.sep for p in {sysconfig.get_paths()['purel
 _state = {'defer': 0, 'override': [], 'comments': 0}
 
 
+# UHDL's own package name: 'uhdl', or 'uhdl.uhdl' for a checkout imported from its parent (lwnoc)
+_PKGNAME = __name__.rsplit('.core.SrcLoc', 1)[0]
+_STDNAMES = frozenset(getattr(sys, 'stdlib_module_names', ()))
+
+
 def _internal(fn):
     if fn.startswith(_PKG) or fn.startswith('<frozen'):
         return True
     return fn.startswith(_STD) and not fn.startswith(_SITE)
+
+
+def _internal_frame(f):
+    # By module name first: in a frozen build (PyInstaller) UHDL and the standard library have
+    # relative file names, so their paths say nothing about where they live.
+    name = f.f_globals.get('__name__') or ''
+    if name == _PKGNAME or name.startswith(_PKGNAME + '.'):
+        return True
+    if name.split('.')[0] in _STDNAMES:
+        return True
+    fn = f.f_code.co_filename
+    return _internal(fn if os.path.isabs(fn) else os.path.abspath(fn))
 
 
 def capture():
@@ -38,9 +55,8 @@ def capture():
         return None
     f = sys._getframe(1)
     while f is not None:
-        fn = f.f_code.co_filename
-        if not _internal(os.path.abspath(fn) if not os.path.isabs(fn) else fn):
-            return (fn, f.f_lineno)
+        if not _internal_frame(f):
+            return (f.f_code.co_filename, f.f_lineno)
         f = f.f_back
     return None
 
