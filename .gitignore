@@ -8,3 +8,6 @@ case/Test
 .pytest_cache/
 Test/
 dist/
+build/
+native/build/
+uhdl/_native/

@@ -1,4 +1,4 @@
 # Core UHDL needs only the Python standard library (3.8+). Optional parts:
-#   pip install -e ".[sv]"        reading SystemVerilog (pyslang; version chosen by Python version)
+#   python native/build.py         reading SystemVerilog (builds uhdl/_native/libuhdl_slang.so from third_party/slang)
 #   pip install -e ".[demo,test]" demos and the test suite
--e .[sv,demo,test]
+-e .[demo,test]

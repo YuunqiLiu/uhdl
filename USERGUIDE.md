@@ -30,7 +30,7 @@ pip install -e .
 **依赖：**
 
 - Python 3
-- pyslang（用于 VComponent 导入 Verilog，可选）
+- 读取 SystemVerilog（VComponent、import_sv_package）用 UHDL 自带的 libuhdl_slang（基于 slang），源码检出后用 `python native/build.py` 编译，不需要 pyslang
 
 ---
 
@@ -448,7 +448,7 @@ class Top(Component):
   - `'auto'`（默认）— 自动识别 struct/enum/union typedef，创建结构化 IO
   - `'packed'` — 将所有端口展平为位向量
 
-VComponent 使用 pyslang 解析 Verilog AST，自动创建与 Verilog 模块端口对应的 Input/Output。
+VComponent 使用 slang（libuhdl_slang）解析 Verilog，自动创建与 Verilog 模块端口对应的 Input/Output。
 
 ---
 

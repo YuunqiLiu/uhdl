@@ -5,22 +5,22 @@ description: Design hardware in Python with UHDL and generate Verilog from it. U
 
 # UHDL
 
-UHDL is a Python library for describing hardware. A design is a Python script that builds a circuit; `generate()` writes Verilog-2001. The `uhdl` command runs such scripts with its own bundled Python, UHDL and pyslang, so nothing has to be installed.
+UHDL is a Python library for describing hardware. A design is a Python script that builds a circuit; `generate()` writes Verilog-2001. The `uhdl` command runs such scripts with its own bundled Python and UHDL (including SystemVerilog import), so nothing has to be installed.
 
 ## 1. Find the command
 
 ```bash
-uhdl version            # e.g. "uhdl 0.9.0 (frozen, Python 3.13 x86_64, pyslang 12.1.0)"
+uhdl version            # e.g. "uhdl 0.9.0 (frozen, Python 3.13.11 x86_64, uhdl_slang 1 (slang 10.0))"
 ```
 If `uhdl` is not on PATH, use `<this skill dir>/../../../bin/uhdl` (the toolkit's `bin/`). Keep the whole `bin/` directory; `bin/uhdl` needs its sibling `bin/_uhdl/`.
 
 **Which Python runs the generator:**
-- **Default: `uhdl run gen.py ...`.** The bundled Python has the full standard library, UHDL and pyslang, and no third-party packages.
+- **Default: `uhdl run gen.py ...`.** The bundled Python has the full standard library and UHDL, and no third-party packages.
 - **When the generator also needs packages from the user's own Python** (numpy, a project library, ...), run it in that Python and give it UHDL through PYTHONPATH:
   ```bash
   PYTHONPATH=$(uhdl pythonpath --python python3)${PYTHONPATH:+:$PYTHONPATH} python3 gen.py --out out
   ```
-  This works with any Python 3.8+, including a venv or conda env. It installs nothing and does not change that environment. If that Python lacks pyslang, `pythonpath` adds a bundled one for its version, or says that SV import is unavailable.
+  This works with any Python 3.8+, including a venv or conda env. It installs nothing and does not change that environment. SystemVerilog import works there too: it uses a library shipped with UHDL, not a Python package.
 - **Projects that pin their own UHDL** (a `uhdl` checkout or submodule imported as `uhdl.uhdl.core`, like lwnoc) keep using it with their own setup. Follow the style of their code; that UHDL may be older than this guide.
 
 ## 2. Workflow

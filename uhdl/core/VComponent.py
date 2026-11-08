@@ -1,7 +1,8 @@
+import os
 import re
 from collections import OrderedDict
 
-from . import _slang                       # pyslang, loaded on first use
+from . import _slang                       # libuhdl_slang, loaded on first use
 
 from .Component import Component
 from .Variable  import (Wire, IOSig, IOGroup, InputStructIO, OutputStructIO,
@@ -13,7 +14,7 @@ from .Terminal  import Terminal
 
 
 class VParameter(object):
-    """Wrapper for a pyslang parameter symbol."""
+    """A module parameter: name and value as slang prints it."""
 
     def __init__(self, name, value):
         self.name = name
@@ -33,11 +34,9 @@ class SvType(str):
 
 
 class VPort(object):
-    """Port descriptor built directly from pyslang type symbols.
-
-    Replaces the old JSON-based parser with direct pyslang type introspection,
-    eliminating all regex-based type string parsing.
-    """
+    """Port descriptor built from the type description of libuhdl_slang (see core/_slang.py):
+    {"w": width, "s": signed, "alias": "pkg::name" | None, "k": "scalar" | "struct" | "union"
+     | "enum" | "unpacked", "fields": [{"n", "t"}], "values": [[name, int]], "elem", "left", "right"}."""
 
     def __init__(self, name, direction, port_type, struct_mode: str = 'auto'):
         self.name = name
@@ -58,148 +57,73 @@ class VPort(object):
         self._union_type_name = None
         self._union_package = None
         self._union_fields = []
-        self.width = port_type.bitWidth
-        self.signed = port_type.isSigned
+        self.width = port_type['w']
+        self.signed = port_type['s']
+        kind = port_type['k']
+        name_pkg = self._alias_name(port_type)
 
-        # Detect actual type (resolve alias)
-        actual_type = port_type
-        if port_type.isAlias:
-            actual_type = port_type.canonicalType
-
-        # ---------- Enum detection ----------
-        if actual_type.isEnum:
+        if kind == 'enum':
             self.is_enum = True
-            if port_type.isAlias:
-                hier = port_type.hierarchicalPath
-                if '::' in hier:
-                    self._enum_package = hier.split('::')[0]
-                    self._enum_type_name = hier
-                else:
-                    self._enum_type_name = hier
-            # Extract enum members
-            members = OrderedDict()
-            for mem in actual_type:
-                if mem.kind == _slang.SymbolKind.EnumValue:
-                    members[mem.name] = self._parse_enum_value(str(mem.value))
+            self._enum_type_name, self._enum_package = name_pkg
+            members = OrderedDict((n, v) for n, v in port_type['values'])
             self._enum_type_obj = EnumType.get_or_create(
                 self._enum_type_name, members, self.width, self.signed, self._enum_package
             )
 
-        # ---------- Packed Union detection ----------
-        elif actual_type.isPackedUnion:
+        elif kind == 'union':
             self.is_union = True
-            if port_type.isAlias:
-                hier = port_type.hierarchicalPath
-                if '::' in hier:
-                    self._union_package = hier.split('::')[0]
-                    self._union_type_name = hier
-                else:
-                    self._union_type_name = hier
-            # Extract union fields
-            for field in actual_type:
-                finfo = {
-                    'name': field.name,
-                    'width': field.type.bitWidth,
-                    'signed': field.type.isSigned,
-                }
-                # Detect nested struct/enum in union fields
-                ft = field.type
-                ft_canon = ft.canonicalType if ft.isAlias else ft
-                if ft_canon.isStruct:
-                    nested_st = self._build_struct_type_from_pyslang(ft, ft_canon)
-                    finfo['struct_type'] = nested_st
-                self._union_fields.append(finfo)
-            # Build UnionType
-            field_info = OrderedDict()
-            for f in self._union_fields:
-                fi = {'width': f['width'], 'signed': f['signed']}
-                if 'struct_type' in f:
-                    fi['struct_type'] = f['struct_type']
-                field_info[f['name']] = fi
+            self._union_type_name, self._union_package = name_pkg
+            self._union_fields = [self._field_info(f) for f in port_type['fields']]
             self._union_type_obj = UnionType.get_or_create(
-                self._union_type_name, field_info, self._union_package
+                self._union_type_name, self._field_map(self._union_fields), self._union_package
             )
 
-        # ---------- Struct detection ----------
-        elif actual_type.isStruct:
+        elif kind == 'struct':
             self.is_struct = True
-            # Extract struct name and package from the typedef alias
-            if port_type.isAlias:
-                hier = port_type.hierarchicalPath
-                if '::' in hier:
-                    self.struct_package = hier.split('::')[0]
-                    self.struct_type_name = hier
-                else:
-                    self.struct_type_name = hier
-            # Extract field information with nested type support
-            for field in actual_type:
-                finfo = {
-                    'name': field.name,
-                    'width': field.type.bitWidth,
-                    'signed': field.type.isSigned,
-                }
-                # Detect nested struct fields
-                ft = field.type
-                ft_canon = ft.canonicalType if ft.isAlias else ft
-                if ft_canon.isStruct:
-                    nested_st = self._build_struct_type_from_pyslang(ft, ft_canon)
-                    finfo['struct_type'] = nested_st
-                self.struct_fields.append(finfo)
-            # Build or retrieve StructType
-            field_info = OrderedDict()
-            for f in self.struct_fields:
-                fi = {'width': f['width'], 'signed': f['signed']}
-                if 'struct_type' in f:
-                    fi['struct_type'] = f['struct_type']
-                field_info[f['name']] = fi
+            self.struct_type_name, self.struct_package = name_pkg
+            self.struct_fields = [self._field_info(f) for f in port_type['fields']]
             self._struct_type_obj = StructType.get_or_create(
-                self.struct_type_name, field_info, self.struct_package
+                self.struct_type_name, self._field_map(self.struct_fields), self.struct_package
             )
 
     @staticmethod
-    def _parse_enum_value(val_str):
-        """Parse pyslang enum value string like "2'b0" or "-4'sd2" to int."""
-        import re
-        # Match patterns like: 2'b01, 3'h7, 32'd42, -4'sd2
-        m = re.match(r"(-?\d+)'[sS]?([dDbBhHoO])(.*)", val_str)
-        if m:
-            sign = -1 if m.group(0).startswith('-') else 1
-            base_char = m.group(2).lower()
-            digits = m.group(3).strip()
-            bases = {'b': 2, 'o': 8, 'd': 10, 'h': 16}
-            base = bases.get(base_char, 10)
-            try:
-                return sign * int(digits, base)
-            except ValueError:
-                return 0
-        # Fallback: try direct int parse
-        try:
-            return int(val_str)
-        except ValueError:
-            return 0
+    def _alias_name(t):
+        """(type name, package) of a typedef'd type: ('pkg::t', 'pkg'), ('t', None) or (None, None)."""
+        hier = t.get('alias')
+        if not hier:
+            return None, None
+        return hier, (hier.split('::')[0] if '::' in hier else None)
 
     @staticmethod
-    def _build_struct_type_from_pyslang(alias_type, canon_type):
-        """Build a StructType from pyslang types for nested struct fields."""
-        nested_name = None
-        nested_pkg = None
-        if alias_type.isAlias:
-            hier = alias_type.hierarchicalPath
-            if '::' in hier:
-                nested_pkg = hier.split('::')[0]
-                nested_name = hier
-            else:
-                nested_name = hier
-        nested_fields = OrderedDict()
-        for sf in canon_type:
-            sft = sf.type
-            sft_canon = sft.canonicalType if sft.isAlias else sft
-            fi = {'width': sft.bitWidth, 'signed': sft.isSigned}
-            # Recursive: nested struct within nested struct
-            if sft_canon.isStruct:
-                fi['struct_type'] = VPort._build_struct_type_from_pyslang(sft, sft_canon)
-            nested_fields[sf.name] = fi
-        return StructType.get_or_create(nested_name, nested_fields, nested_pkg)
+    def _field_info(f):
+        ft = f['t']
+        info = {'name': f['n'], 'width': ft['w'], 'signed': ft['s']}
+        if ft['k'] == 'struct':
+            info['struct_type'] = VPort._build_struct_type(ft)
+        return info
+
+    @staticmethod
+    def _field_map(fields):
+        out = OrderedDict()
+        for f in fields:
+            fi = {'width': f['width'], 'signed': f['signed']}
+            if 'struct_type' in f:
+                fi['struct_type'] = f['struct_type']
+            out[f['name']] = fi
+        return out
+
+    @staticmethod
+    def _build_struct_type(t):
+        """StructType of a (possibly nested) struct type description."""
+        name, pkg = VPort._alias_name(t)
+        fields = OrderedDict()
+        for f in t['fields']:
+            ft = f['t']
+            fi = {'width': ft['w'], 'signed': ft['s']}
+            if ft['k'] == 'struct':
+                fi['struct_type'] = VPort._build_struct_type(ft)
+            fields[f['n']] = fi
+        return StructType.get_or_create(name, fields, pkg)
 
     def create_uhdl_port(self):
         """Create the appropriate UHDL port object from parsed port data."""
@@ -290,7 +214,7 @@ class VComponent(Component):
         self._module_name = top
         self._struct_mode = struct_mode
 
-        # Build slang command line for pyslang Driver
+        # Build the slang command line
         # Handle file source: .f files use -f flag, others are passed directly
         if str(file).endswith('.f'):
             source = f'-f {file}'
@@ -305,7 +229,7 @@ class VComponent(Component):
             # ports typed by a type parameter have no package-qualified name to emit: keep them packed
             self._struct_mode = 'packed'
         if type_params:
-            import tempfile, os
+            import tempfile
             ov = ', '.join('.%s(%s)' % (k, v) for k, v in kwargs.items())
             fd, wrap_file = tempfile.mkstemp(suffix='.sv', prefix='uhdl_vwrap_')
             with os.fdopen(fd, 'w') as f:
@@ -318,47 +242,23 @@ class VComponent(Component):
                 param_args += f'-G {k}={v} '
             cmd = f'slang {slang_opts} {source} --top {top} {param_args}'.strip()
 
-        # Parse and compile using pyslang Driver
-        driver = _slang.Driver()
-        driver.addStandardArgs()
-        ok = driver.parseCommandLine(cmd, _slang.CommandLineOptions())
-        if not ok:
-            raise Exception(f'Slang failed to parse command line: {cmd}')
-        driver.processOptions()
-        driver.parseAllSources()
-        comp = driver.createCompilation()
-
-        # Find top instance and extract ports/parameters
-        root = comp.getRoot()
-        top_inst = None
-        if wrap_file is not None:
-            os.unlink(wrap_file)
-            for inst in root.topInstances:
-                if inst.name == '__uhdl_vwrap':
-                    for m in inst.body:
-                        if m.kind == _slang.SymbolKind.Instance and m.name == 'u':
-                            top_inst = m
-        for inst in ([] if top_inst is not None else root.topInstances):
-            if inst.name == top:
-                top_inst = inst
-                break
-
-        if top_inst is None:
-            # If only one top instance, use it regardless of name
-            instances = list(root.topInstances)
-            if len(instances) == 1:
-                top_inst = instances[0]
-            else:
-                raise Exception(f"Top instance '{top}' not found in compilation")
+        # Elaborate with slang (libuhdl_slang) and read the instance's ports and parameters
+        try:
+            info = _slang.module_info(cmd, '__uhdl_vwrap.u' if wrap_file is not None else top)
+        except RuntimeError as e:
+            raise Exception(str(e)) from None
+        finally:
+            if wrap_file is not None:
+                os.unlink(wrap_file)
 
         self._vport_list = []
         self._vparam_list = []
         self._shim_text = None
 
-        bad = [m.name for m in top_inst.body if m.kind == _slang.SymbolKind.Port and m.type.bitWidth == 0
-               and not (m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray]
-        bad += [m.name for m in top_inst.body if m.kind == _slang.SymbolKind.Port
-                and (m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray and m.type.elementType.bitWidth == 0]
+        ports = [m for m in info['members'] if m['kind'] == 'port']
+        bad = [m['name'] for m in ports if m['type']['w'] == 0 and m['type']['k'] != 'unpacked']
+        bad += [m['name'] for m in ports if m['type']['k'] == 'unpacked'
+                and (m['type'].get('elem') or {'w': 0})['w'] == 0]
         if bad:
             raise ErrUHDLStr('VComponent %s: slang could not resolve the type of port(s) %s (width 0). A package '
                              'or macro is probably missing from the sources; for macros defined in another file '
@@ -367,21 +267,17 @@ class VComponent(Component):
         # Unpacked-array ports cannot be connected from UHDL's flat vectors. If there are any,
         # wrap the module in a generated SV shim whose ports are all packed (an unpacked array
         # of N elements of W bits becomes one N*W-bit port, element lo+k at bits [k*W +: W]).
-        ports = [m for m in top_inst.body if m.kind == _slang.SymbolKind.Port]
-        if any((m.type.canonicalType if m.type.isAlias else m.type).isUnpackedArray for m in ports):
+        if any(m['type']['k'] == 'unpacked' for m in ports):
             self._build_flat_shim(top, ports, kwargs)
             return
 
-        for member in top_inst.body:
-            if member.kind == _slang.SymbolKind.Port:
-                direction = member.direction.name  # "In", "Out", "InOut"
-                vport = VPort(member.name, direction, member.type, struct_mode=self._struct_mode)
-                self._vport_list.append(vport)
-            elif member.kind == _slang.SymbolKind.Parameter and not member.isLocalParam:
-                vparam = VParameter(member.name, str(member.value))
-                self._vparam_list.append(vparam)
-            elif member.kind == _slang.SymbolKind.TypeParameter and member.name in type_params:
-                self._vparam_list.append(VParameter(member.name, str(type_params[member.name])))
+        for member in info['members']:
+            if member['kind'] == 'port':
+                self._vport_list.append(VPort(member['name'], member['dir'], member['type'], struct_mode=self._struct_mode))
+            elif member['kind'] == 'param' and not member['local']:
+                self._vparam_list.append(VParameter(member['name'], member['value']))
+            elif member['kind'] == 'type_param' and member['name'] in type_params:
+                self._vparam_list.append(VParameter(member['name'], str(type_params[member['name']])))
 
         for vport in self._vport_list:
             self.create(vport.name, vport.create_uhdl_port())
@@ -407,30 +303,30 @@ class VComponent(Component):
         shim = '%s__uflat_%s' % (top, tag)
         decl, body, conns = [], [], []
         for m in ports:
-            t = m.type.canonicalType if m.type.isAlias else m.type
-            d = {'In': 'input', 'Out': 'output'}.get(m.direction.name)
+            t = m['type']
+            d = {'In': 'input', 'Out': 'output'}.get(m['dir'])
             if d is None:
-                raise ErrUHDLStr('VComponent %s: inout port %s is not supported with unpacked-array ports.' % (top, m.name))
-            if t.isUnpackedArray:
-                el = t.elementType
-                if (el.canonicalType if el.isAlias else el).isUnpackedArray:
-                    raise ErrUHDLStr('VComponent %s: port %s has more than one unpacked dimension.' % (top, m.name))
-                ew, rg = el.bitWidth, t.fixedRange
-                n, lo = abs(rg.left - rg.right) + 1, min(rg.left, rg.right)
+                raise ErrUHDLStr('VComponent %s: inout port %s is not supported with unpacked-array ports.' % (top, m['name']))
+            if t['k'] == 'unpacked':
+                el = t['elem']
+                if el['k'] == 'unpacked':
+                    raise ErrUHDLStr('VComponent %s: port %s has more than one unpacked dimension.' % (top, m['name']))
+                ew, left, right = el['w'], t['left'], t['right']
+                n, lo = abs(left - right) + 1, min(left, right)
                 width = n * ew
-                body.append('    logic [%d:0] %s__a [%d:%d];' % (ew - 1, m.name, rg.left, rg.right))
+                body.append('    logic [%d:0] %s__a [%d:%d];' % (ew - 1, m['name'], left, right))
                 for k in range(n):
                     if d == 'input':
-                        body.append('    assign %s__a[%d] = %s[%d +: %d];' % (m.name, lo + k, m.name, k * ew, ew))
+                        body.append('    assign %s__a[%d] = %s[%d +: %d];' % (m['name'], lo + k, m['name'], k * ew, ew))
                     else:
-                        body.append('    assign %s[%d +: %d] = %s__a[%d];' % (m.name, k * ew, ew, m.name, lo + k))
-                conns.append('.%s(%s__a)' % (m.name, m.name))
+                        body.append('    assign %s[%d +: %d] = %s__a[%d];' % (m['name'], k * ew, ew, m['name'], lo + k))
+                conns.append('.%s(%s__a)' % (m['name'], m['name']))
             else:
-                width = t.bitWidth
-                conns.append('.%s(%s)' % (m.name, m.name))
-            decl.append('    %s logic %s%s' % (d, '' if width == 1 else '[%d:0] ' % (width - 1), m.name))
+                width = t['w']
+                conns.append('.%s(%s)' % (m['name'], m['name']))
+            decl.append('    %s logic %s%s' % (d, '' if width == 1 else '[%d:0] ' % (width - 1), m['name']))
             io = Input if d == 'input' else Output
-            self.create(m.name, io(UInt(width)))
+            self.create(m['name'], io(UInt(width)))
         ov = ', '.join('.%s(%s)' % (k, v) for k, v in params.items())
         self._shim_text = '\n'.join(
             ['// Generated by UHDL: packed-port wrapper around %s.' % top,

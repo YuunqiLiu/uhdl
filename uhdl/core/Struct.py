@@ -268,42 +268,33 @@ class SvPackage:
 
 
 def import_sv_package(sources, package, slang_opts='--single-unit --ignore-unknown-modules'):
-    from ._slang import Driver, CommandLineOptions, SymbolKind
+    from . import _slang
     srcs = ' '.join(sources) if isinstance(sources, (list, tuple)) else str(sources)
-    d = Driver()
-    d.addStandardArgs()
-    if not d.parseCommandLine('slang %s %s' % (slang_opts, srcs), CommandLineOptions()):
-        raise ErrUHDLStr('slang could not parse: %s' % srcs)
-    d.processOptions()
-    d.parseAllSources()
-    comp = d.createCompilation()
-    pk = comp.getPackage(package)
-    if pk is None:
+    try:
+        info = _slang.package_info('slang %s %s' % (slang_opts, srcs), package)
+    except RuntimeError as e:
+        raise ErrUHDLStr('slang could not read %s: %s' % (srcs, e)) from None
+    if info is None:
         raise ErrUHDLStr('package %s not found in %s' % (package, srcs))
 
     def conv(t):
-        ct = t.canonicalType if t.isAlias else t
-        if ct.isStruct and ct.bitWidth > 0:
-            return Struct(**OrderedDict((f.name, conv(f.type)) for f in ct))
-        return ct.bitWidth
+        if t['k'] == 'struct' and t['w'] > 0:
+            return Struct(**OrderedDict((f['n'], conv(f['t'])) for f in t['fields']))
+        return t['w']
 
     structs, params = {}, {}
-    for m in pk:
-        if m.kind == SymbolKind.TypeAlias:
-            t = m.targetType.type
-            ct = t.canonicalType if t.isAlias else t
-            if ct.isStruct and ct.bitWidth > 0:
-                structs[m.name] = conv(t)
-        elif m.kind == SymbolKind.Parameter:
-            v = m.value
-            try:
-                if not v.hasUnknown():
-                    params[m.name] = int(v.convertToInt().integer)
-            except Exception:
-                txt = str(v)                      # e.g. "32'd64", "1'b0"
-                try:
-                    base = {'d': 10, 'h': 16, 'b': 2, 'o': 8}[txt.split("'")[1].lstrip('s')[0]]
-                    params[m.name] = int(txt.split("'")[1].lstrip('s')[1:].replace('_', ''), base)
-                except Exception:
-                    pass
+    for td in info['typedefs']:
+        t = td['type']
+        if t['k'] == 'struct' and t['w'] > 0:
+            structs[td['name']] = conv(t)
+    for p in info['params']:
+        if 'int' in p:
+            params[p['name']] = p['int']
+            continue
+        txt = p['text']                           # e.g. "32'd64", "1'b0" when not a plain integer
+        try:
+            base = {'d': 10, 'h': 16, 'b': 2, 'o': 8}[txt.split("'")[1].lstrip('s')[0]]
+            params[p['name']] = int(txt.split("'")[1].lstrip('s')[1:].replace('_', ''), base)
+        except Exception:
+            pass
     return SvPackage(package, structs, params)

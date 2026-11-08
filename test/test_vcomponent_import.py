@@ -8,7 +8,8 @@ from uhdl import *
 from uhdl.core.UHDLException import ErrUHDLStr
 from test_lint_clean_features import needs_verilator, lint, sim
 
-pyslang = pytest.importorskip('pyslang')
+if not os.path.isfile(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uhdl', '_native', 'libuhdl_slang.so')):
+    pytest.skip('libuhdl_slang.so not built (python native/build.py)', allow_module_level=True)
 
 PKG = '''
 package demo_pkg;

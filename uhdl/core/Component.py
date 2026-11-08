@@ -1078,23 +1078,13 @@ class Component(Root):
 #################################################################################
 
     def run_slang_compile(self):
-        from ._slang import Driver, CommandLineOptions, DiagnosticEngine, full_compilation
-
-        driver = Driver()
-        driver.addStandardArgs()
-        ok = driver.parseCommandLine(f'slang -f {self._flist_path}', CommandLineOptions())
-        if not ok:
-            raise Exception('Slang compile error: failed to parse command line.')
-        driver.processOptions()
-        driver.parseAllSources()
-        success = full_compilation(driver)
-        if not success:
-            comp = driver.createCompilation()
-            diags = comp.getAllDiagnostics()
-            details = ''
-            if diags:
-                details = '\n' + DiagnosticEngine.reportAll(comp.sourceManager, diags)
-            raise Exception('Slang compile error.' + details)
+        from . import _slang
+        try:
+            res = _slang.check(f'slang -f {self._flist_path}')
+        except RuntimeError as e:
+            raise Exception('Slang compile error: %s' % e) from None
+        if res['errors']:
+            raise Exception('Slang compile error.' + ('\n' + res['report'] if res['report'] else ''))
 
     def run_verilator_compile(self):
         cmd = 'verilator --lint-only -f %s' % self._flist_path

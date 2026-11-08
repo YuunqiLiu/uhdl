@@ -14,13 +14,6 @@ requires-python = ">=3.8"
 dependencies = []
 
 [project.optional-dependencies]
-# Reading SystemVerilog: VComponent, import_sv_package, slang lint.
-# 8.1 is the last pyslang with Python 3.8 wheels. pyslang 12 is abi3 but depends on
-# nanobind-backend, which has a wheel per Python version.
-sv = [
-    "pyslang==8.1.0 ; python_version < '3.11'",
-    "pyslang>=12.1,<13 ; python_version >= '3.11'",
-]
 # TemplateIP (ip_builder integration) now lives in the ip_builder repository.
 demo = ["networkx", "matplotlib"]
 test = ["pytest"]
@@ -33,6 +26,10 @@ version = {attr = "uhdl._version.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["uhdl*"]
+
+[tool.setuptools.package-data]
+# SystemVerilog import: build with `python native/build.py` before building the wheel
+uhdl = ["_native/libuhdl_slang.so"]
 
 [tool.pytest.ini_options]
 # skill/tests holds command-line test drivers for a built component, not pytest modules

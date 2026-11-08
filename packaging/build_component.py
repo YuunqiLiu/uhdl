@@ -7,15 +7,17 @@ Result: <out>/uhdl-<version>-linux-x86_64/ and the same as a .tar.gz, laid out l
 motryx-toolkit components:
 
     bin/uhdl            frozen entry point (PyInstaller onedir)
-    bin/_uhdl/          its runtime: Python, the full standard library, uhdl, pyslang,
-                        pysrc/ (uhdl as plain source) and wheels/ (pyslang for other Pythons)
+    bin/_uhdl/          its runtime: Python, the full standard library, uhdl with
+                        libuhdl_slang.so (SystemVerilog import), and pysrc/ (uhdl as plain
+                        source, with the same library, for other Pythons: uhdl pythonpath)
     skills/uhdl/uhdl-design/   the Skill (SKILL.md, references/); its folder name differs from
                         the component's so that a short path like r1/uhdl-design/SKILL.md is unambiguous
     manifest.json       versions, source commit, SHA-256 of the binary and the Skill tree
 
-Keep all of bin/: the entry point needs bin/_uhdl/. The frozen Python needs the glibc of the build
-machine or newer; pyslang from PyPI needs glibc 2.27+ (see NexEvic/motryx-toolkit#15).
-Needs network access to PyPI (PyInstaller, pyslang, wheels); the result runs offline.
+Keep all of bin/: the entry point needs bin/_uhdl/. The oldest glibc the component runs on is the
+newest one any of its ELF files needs (recorded in manifest.json as build.glibc_needed):
+libuhdl_slang.so follows its compiler's sysroot (python native/build.py --cxx ...), the frozen
+Python follows the interpreter given with --python. Needs PyPI for PyInstaller; runs offline.
 """
 import argparse
 import hashlib
@@ -31,11 +33,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, 'skill', 'uhdl-design')
 SKILL_NAME = 'uhdl-design'
 PYINSTALLER = 'pyinstaller==6.16.0'
-# pyslang for the frozen runtime (by its Python version) and wheels for other Pythons:
-# 8.1.0 is the last release for 3.8; 12.x is abi3 but needs nanobind-backend per Python version.
-PYSLANG_FOR = lambda v: '8.1.0' if v < (3, 11) else '12.1.0'
-WHEEL_PYTHONS = ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.15']
-PLATFORM_TAGS = ['manylinux_2_28_x86_64', 'manylinux_2_27_x86_64']
 # standard-library modules generators never need, or that pull in GUI toolkits
 STDLIB_SKIP = {'tkinter', 'turtle', 'turtledemo', 'idlelib', 'test', 'lib2to3', 'ensurepip', 'venv',
                'pydoc_data', 'this', 'antigravity', 'msilib', 'winreg', 'winsound', '_winapi', 'nt',
@@ -76,13 +73,33 @@ def tree_sha(path):
     return h.hexdigest(), n
 
 
+def max_glibc(root):
+    """Newest GLIBC_x.y symbol version needed by any ELF file under root, as "x.y"."""
+    import re
+    tool = shutil.which('objdump')
+    best = None
+    for d, _, files in os.walk(root):
+        for f in files:
+            p = os.path.join(d, f)
+            with open(p, 'rb') as fh:
+                if fh.read(4) != b'\x7fELF':
+                    continue
+            out = subprocess.run([tool, '-T', p], capture_output=True, text=True).stdout if tool else ''
+            for m in re.findall(r'GLIBC_(\d+)\.(\d+)', out):
+                v = (int(m[0]), int(m[1]))
+                best = v if best is None or v > best else best
+    return '%d.%d' % best if best else None
+
+
 def file_sha(p):
     return hashlib.sha256(open(p, 'rb').read()).hexdigest()
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--python', default=sys.executable, help='Python to freeze (3.8+)')
+    ap.add_argument('--python', default=sys.executable,
+                    help='Python to freeze (3.8+); its glibc requirement becomes the component\'s, e.g. a '
+                         'conda-forge python with sysroot_linux-64=2.17 for glibc 2.17')
     ap.add_argument('--out', default=os.path.join(ROOT, 'dist', 'component'))
     ap.add_argument('--work', default=None, help='build scratch directory (default: <out>/.build)')
     ap.add_argument('--wheelhouse', default=None, help='kept between builds (default: <out>/.wheelhouse)')
@@ -99,39 +116,25 @@ def main():
     wh = os.path.abspath(a.wheelhouse or os.path.join(out, '.wheelhouse'))
     os.makedirs(wh, exist_ok=True)
 
-    # 1. a build venv with PyInstaller, pyslang and this uhdl
+    # 1. a build venv with PyInstaller and this uhdl
     venv = os.path.join(work, 'venv')
     run([a.python, '-m', 'venv', venv])
     vpy = os.path.join(venv, 'bin', 'python')
     pyver = tuple(json.loads(subprocess.check_output([vpy, '-c', 'import sys,json; print(json.dumps(sys.version_info[:2]))'])))
-    tools = [PYINSTALLER, 'setuptools>=61', 'wheel', 'pyslang==' + PYSLANG_FOR(pyver)]
+    lib = os.path.join(ROOT, 'uhdl', '_native', 'libuhdl_slang.so')
+    if not os.path.isfile(lib):
+        raise SystemExit('%s is missing: build it first with python native/build.py --cxx <compiler>' % lib)
+    tools = [PYINSTALLER, 'setuptools>=61', 'wheel']
     pip(vpy, 'download', ['--only-binary', ':all:'] + tools, wh)
     pip(vpy, 'install', tools, wh)
     run([vpy, '-m', 'pip', 'install', '-q', '--no-deps', '--no-build-isolation', ROOT])
     for egg in ('build', 'uhdl.egg-info'):
         shutil.rmtree(os.path.join(ROOT, egg), ignore_errors=True)
 
-    # 2. wheels for running uhdl in other Pythons (uhdl pythonpath)
-    wheels = os.path.join(work, 'wheels')
-    os.makedirs(wheels)
-    for py in WHEEL_PYTHONS:
-        v = tuple(int(x) for x in py.split('.'))
-        cp = 'cp%d%d' % v
-        args = ['--only-binary', ':all:', '--python-version', py, '--implementation', 'cp',
-                '--abi', cp, '--abi', 'abi3', '--abi', 'none']
-        for t in PLATFORM_TAGS:
-            args += ['--platform', t]
-        pip(vpy, 'download', args + ['pyslang==' + PYSLANG_FOR(v)], wh)
-        # copy this Python's pyslang (and nanobind-backend) from the wheelhouse into wheels/
-        r = subprocess.run([vpy, '-m', 'pip', 'download', '-q', '--no-index', '--find-links', wh, '-d', wheels]
-                           + args + ['pyslang==' + PYSLANG_FOR(v)], capture_output=True, text=True)
-        if r.returncode != 0:
-            raise SystemExit(r.stderr)
-
     # 3. uhdl as plain source (for other Pythons), without caches and demos' outputs
     pysrc = os.path.join(work, 'pysrc')
     shutil.copytree(os.path.join(ROOT, 'uhdl'), os.path.join(pysrc, 'uhdl'),
-                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '_native'))   # the library comes from the runtime
 
     # 4. freeze
     entry = os.path.join(work, 'uhdl_entry.py')
@@ -149,9 +152,9 @@ def main():
          '--name', 'uhdl', '--contents-directory', '_uhdl',
          '--distpath', os.path.join(work, 'dist'), '--workpath', os.path.join(work, 'pyi'),
          '--specpath', work,
-         '--collect-all', 'uhdl', '--collect-all', 'pyslang', '--collect-all', 'nanobind_backend',
-         '--copy-metadata', 'pyslang', '--copy-metadata', 'uhdl',
-         '--add-data', '%s:pysrc' % pysrc, '--add-data', '%s:wheels' % wheels] + hidden + [entry])
+         '--collect-all', 'uhdl', '--copy-metadata', 'uhdl',
+         '--add-binary', '%s:uhdl/_native' % lib,
+         '--add-data', '%s:pysrc' % pysrc] + hidden + [entry])
 
     # 5. lay out the component
     comp = os.path.join(out, name)
@@ -172,14 +175,15 @@ def main():
     rt_sha, rt_n = tree_sha(os.path.join(comp, 'bin', '_uhdl'))
     exe = os.path.join(comp, 'bin', 'uhdl')
     libc = platform.libc_ver()
+    glibc_needed = max_glibc(comp)
     manifest = {
         'component': 'uhdl', 'component_version': version, 'platform': 'linux-' + platform.machine(),
         'repository': 'YuunqiLiu/uhdl', 'source_commit': rev, 'source_dirty': bool(dirty),
         'binary': {'path': 'uhdl', 'sha256': file_sha(exe), 'size_bytes': os.path.getsize(exe)},
         'runtime': {'path': '_uhdl', 'sha256_tree': rt_sha, 'file_count': rt_n},
         'skill': {'path': 'uhdl/' + SKILL_NAME, 'sha256_tree': skill_sha, 'file_count': skill_n},
-        'build': {'python': '%d.%d' % pyver, 'pyslang': PYSLANG_FOR(pyver), 'pyinstaller': PYINSTALLER.split('==')[1],
-                  'glibc': '%s %s' % libc},
+        'build': {'python': '%d.%d' % pyver, 'pyinstaller': PYINSTALLER.split('==')[1],
+                  'build_machine_glibc': '%s %s' % libc, 'glibc_needed': glibc_needed},
     }
     json.dump(manifest, open(os.path.join(comp, 'manifest.json'), 'w'), indent=2)
     tar = comp + '.tar.gz'

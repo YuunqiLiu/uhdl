@@ -8,8 +8,7 @@ Frozen command, in an environment with no usable Python on PATH:
   version, run (the guide's example), check, SV import, the standard library, stdin, errors.
 Each --python: `uhdl pythonpath --python X` then X runs a generator that imports SV.
 --user-venv: a generator importing both a library of that venv and UHDL.
-Also: a component without the wheel for a Python (SV import reported as unavailable), and
-parallel `pythonpath` calls sharing one extracted pyslang.
+Also: no pyslang anywhere in the component, and SV import in a Python that has no pyslang.
 """
 import argparse, json, os, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
@@ -43,18 +42,19 @@ SVGEN = '''import sys, importlib.metadata as m
 from uhdl import *
 pk = import_sv_package(['pkg.sv'], 'my_pkg')
 c = VComponent(file='pkg.sv cells.sv', top='sreg', slang_opts='--ignore-unknown-modules --single-unit', struct_mode='packed')
-print('SV OK py%d.%d pyslang %s width %d %s' % (sys.version_info[0], sys.version_info[1], m.version('pyslang'), pk.req_t.width,
+from uhdl.core import _slang
+print('SV OK py%d.%d %s width %d %s' % (sys.version_info[0], sys.version_info[1], _slang.version(), pk.req_t.width,
       'bundled-uhdl' if '/_uhdl/pysrc/' in __import__('uhdl').__file__ else 'OTHER-uhdl'))
 '''
 open(os.path.join(T, 'sv_gen.py'), 'w').write(SVGEN)
 
 # ---- frozen command
-r = sh([UHDL, 'version']); expect('frozen: version', r.returncode == 0 and 'frozen' in r.stdout and 'pyslang 12' in r.stdout, r.stdout + r.stderr)
+r = sh([UHDL, 'version']); expect('frozen: version', r.returncode == 0 and 'frozen' in r.stdout and 'uhdl_slang' in r.stdout, r.stdout + r.stderr)
 ex = os.path.join(C, 'skills', 'uhdl', 'uhdl-design', 'references', 'example_gen.py')
 r = sh([UHDL, 'run', ex, '--out', 'o_ex']); expect('frozen: run the guide example', r.returncode == 0 and os.path.isfile(os.path.join(T, 'o_ex', 'filelist.f')), r.stderr)
 top = [l for l in open(os.path.join(T, 'o_ex', 'filelist.f')).read().split() if l.endswith('.v')][-1].split('/')[-1][:-2] if r.returncode == 0 else 'x'
 r = sh([UHDL, 'check', 'o_ex', '--top', top], TOOLS); expect('frozen: check -> CHECK PASS', r.returncode == 0 and 'CHECK PASS' in r.stdout, r.stdout + r.stderr)
-r = sh([UHDL, 'run', 'sv_gen.py']); expect('frozen: SV import with bundled pyslang', 'SV OK' in r.stdout and 'width 12' in r.stdout, r.stdout + r.stderr)
+r = sh([UHDL, 'run', 'sv_gen.py']); expect('frozen: SV import (libuhdl_slang)', 'SV OK' in r.stdout and 'width 12' in r.stdout, r.stdout + r.stderr)
 mods = 'json math argparse itertools dataclasses fractions functools collections re csv statistics random textwrap pathlib typing enum decimal hashlib shutil subprocess glob copy pprint string struct zlib tempfile unittest logging datetime operator heapq bisect concurrent.futures multiprocessing xml.etree.ElementTree'
 r = sh([UHDL, 'python', '-c', 'import ' + ', '.join(mods.split()) + '; print("stdlib ok")'])
 expect('frozen: standard library modules', 'stdlib ok' in r.stdout, r.stderr)
@@ -77,33 +77,12 @@ if A.user_venv:
     v = sh([A.user_venv, 'mix_gen.py'], dict(BARE, PYTHONPATH=r.stdout.strip()))
     expect('pythonpath: user venv library + UHDL together', 'user lib ok' in v.stdout and 'SV OK' in v.stdout, v.stdout + v.stderr)
 
-# ---- a component without the wheels for one Python
-if A.python:
-    py = A.python[0]
-    ver = sh([py, '-c', 'import sys; print("cp%d%d" % sys.version_info[:2])']).stdout.strip()
-    C2 = os.path.join(T, 'comp_nowheel'); shutil.copytree(C, C2, symlinks=True)
-    wd = os.path.join(C2, 'bin', '_uhdl', 'wheels')
-    for w in os.listdir(wd):
-        if '-%s-' % ver in w or (ver >= 'cp311' and 'abi3' in w):
-            os.remove(os.path.join(wd, w))
-    r = sh([os.path.join(C2, 'bin', 'uhdl'), 'pythonpath', '--python', py], dict(BARE, UHDL_CACHE=os.path.join(T, 'cache2')))
-    v = sh([py, '-c', 'import uhdl; print("uhdl ok")'], dict(BARE, PYTHONPATH=r.stdout.strip()))
-    has_own = sh([py, '-c', 'import pyslang']).returncode == 0
-    expect('no wheel for %s: UHDL works, SV import reported unavailable' % ver,
-           r.returncode == 0 and 'uhdl ok' in v.stdout and (has_own or 'SV import' in r.stderr), r.stderr + v.stderr)
-
-# ---- parallel pythonpath calls share one extraction
-if A.python:
-    py = A.python[-1]
-    env = dict(BARE, UHDL_CACHE=os.path.join(T, 'cache3'))
-    with ThreadPoolExecutor(6) as pool:
-        outs = list(pool.map(lambda _: sh([UHDL, 'pythonpath', '--python', py], env), range(6)))
-    paths = {o.stdout.strip() for o in outs}
-    v = sh([py, 'sv_gen.py'], dict(BARE, PYTHONPATH=paths.pop())) if len(paths) == 1 else None
-    left = [d for d in os.listdir(os.path.join(T, 'cache3'))] if os.path.isdir(os.path.join(T, 'cache3')) else []
-    expect('parallel pythonpath: one result, usable, no leftovers',
-           all(o.returncode == 0 for o in outs) and v is not None and ('SV OK' in v.stdout or sh([py, '-c', 'import pyslang']).returncode == 0)
-           and not any('.tmp' in d for d in left), [o.stderr for o in outs] + left)
+# ---- no pyslang in the component; SV import where no pyslang exists
+found = [os.path.join(d, f) for d, _, fs in os.walk(C) for f in fs if 'pyslang' in f.lower() or 'nanobind' in f.lower()]
+expect('component contains no pyslang / nanobind', not found, found[:5])
+r = sh([UHDL, 'pythonpath', '--python', '/usr/bin/python3'])
+v = sh(['/usr/bin/python3', '-c', 'import sys; sys.modules["pyslang"] = None\n' + SVGEN], dict(BARE, PYTHONPATH=r.stdout.strip()))
+expect('pythonpath: SV import with pyslang blocked', 'SV OK' in v.stdout, v.stdout + v.stderr)
 
 print('ALL PASS' if ok_all else 'SOME FAILED')
 sys.exit(0 if ok_all else 1)
