@@ -15,7 +15,7 @@ uhdl version            # e.g. "uhdl 0.9.0 (frozen, Python 3.13.11 x86_64, uhdl_
 If `uhdl` is not on PATH, use `<this skill dir>/../../../bin/uhdl` (the toolkit's `bin/`). Keep the whole `bin/` directory; `bin/uhdl` needs its sibling `bin/_uhdl/`.
 
 **Which Python runs the generator:**
-- **Default: `uhdl run gen.py ...`.** The bundled Python has the full standard library and UHDL, and no third-party packages.
+- **Default: `uhdl run gen.py ...`.** The bundled Python is there to run UHDL: it has the standard library (without `ssl`, so no network) and UHDL, and no third-party packages.
 - **When the generator also needs packages from the user's own Python** (numpy, a project library, ...), run it in that Python and give it UHDL through PYTHONPATH:
   ```bash
   PYTHONPATH=$(uhdl pythonpath --python python3)${PYTHONPATH:+:$PYTHONPATH} python3 gen.py --out out

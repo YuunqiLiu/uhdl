@@ -58,6 +58,8 @@ r = sh([UHDL, 'run', 'sv_gen.py']); expect('frozen: SV import (libuhdl_slang)', 
 mods = 'json math argparse itertools dataclasses fractions functools collections re csv statistics random textwrap pathlib typing enum decimal hashlib shutil subprocess glob copy pprint string struct zlib tempfile unittest logging datetime operator heapq bisect concurrent.futures multiprocessing xml.etree.ElementTree'
 r = sh([UHDL, 'python', '-c', 'import ' + ', '.join(mods.split()) + '; print("stdlib ok")'])
 expect('frozen: standard library modules', 'stdlib ok' in r.stdout, r.stderr)
+r = sh([UHDL, 'python', '-c', 'import hashlib; hashlib.md5(b"x").hexdigest()\ntry:\n    import ssl\nexcept ImportError:\n    print("no ssl, md5 ok")'])
+expect('frozen: no ssl (no network), hashlib md5 still works', 'no ssl, md5 ok' in r.stdout, r.stdout + r.stderr)
 r = sh([UHDL, 'python'], inp='import uhdl\nprint("stdin ok")\n'); expect('frozen: script on stdin', 'stdin ok' in r.stdout, r.stdout + r.stderr)
 r = sh([UHDL, 'python', '-c', 'import sys; sys.exit(3)']); expect('frozen: exit status passes through', r.returncode == 3, r.returncode)
 open(os.path.join(T, 'bad.py'), 'w').write('from uhdl import *\nclass t(Component):\n    def circuit(s):\n        s.a = Input(2); s.y = Output(1)\n        s.y += s.a\nt()\n')

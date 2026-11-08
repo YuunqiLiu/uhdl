@@ -37,7 +37,11 @@ PYINSTALLER = 'pyinstaller==6.16.0'
 STDLIB_SKIP = {'tkinter', 'turtle', 'turtledemo', 'idlelib', 'test', 'lib2to3', 'ensurepip', 'venv',
                'pydoc_data', 'this', 'antigravity', 'msilib', 'winreg', 'winsound', '_winapi', 'nt',
                'msvcrt', '_msi', '_overlapped', 'curses', '_curses', '_curses_panel', 'readline', 'dbm',
-               '_dbm', '_gdbm', 'sqlite3', '_sqlite3', 'xxsubtype', 'xxlimited', 'xxlimited_35', '_tkinter'}
+               '_dbm', '_gdbm', 'sqlite3', '_sqlite3', 'xxsubtype', 'xxlimited', 'xxlimited_35', '_tkinter',
+               # no network: drops OpenSSL (about 8 MB); hashlib falls back to its built-in md5/sha.
+               # A generator that needs ssl, or third-party packages, runs in the user's Python
+               # through `uhdl pythonpath`.
+               'ssl', '_ssl', '_hashlib'}
 
 
 def run(cmd, **kw):
@@ -148,7 +152,10 @@ def main():
         ok = subprocess.run([vpy, '-c', 'import ' + m], capture_output=True).returncode == 0
         if ok:
             hidden += ['--hidden-import', m]
-    run([vpy, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onedir',
+    excludes = []
+    for m in ('ssl', '_ssl', '_hashlib'):
+        excludes += ['--exclude-module', m]
+    run([vpy, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onedir', '--strip'] + excludes + [
          '--name', 'uhdl', '--contents-directory', '_uhdl',
          '--distpath', os.path.join(work, 'dist'), '--workpath', os.path.join(work, 'pyi'),
          '--specpath', work,

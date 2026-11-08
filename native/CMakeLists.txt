@@ -24,4 +24,5 @@ target_link_libraries(uhdl_slang PRIVATE slang::slang)
 set_target_properties(uhdl_slang PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 # Only the C functions are exported; libstdc++/libgcc are static, so the library needs only the
 # glibc of the toolchain's sysroot (2.17 with conda-forge gxx_linux-64 + sysroot_linux-64=2.17).
-target_link_options(uhdl_slang PRIVATE -static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL)
+# -s: no debug information or local symbols (19.6 MB -> about 8 MB); the exported C functions stay.
+target_link_options(uhdl_slang PRIVATE -static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL -s)
