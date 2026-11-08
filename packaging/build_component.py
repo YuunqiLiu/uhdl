@@ -9,7 +9,8 @@ motryx-toolkit components:
     bin/uhdl            frozen entry point (PyInstaller onedir)
     bin/_uhdl/          its runtime: Python, the full standard library, uhdl, pyslang,
                         pysrc/ (uhdl as plain source) and wheels/ (pyslang for other Pythons)
-    skills/uhdl/uhdl/   the Skill (SKILL.md, references/)
+    skills/uhdl/uhdl-design/   the Skill (SKILL.md, references/); its folder name differs from
+                        the component's so that a short path like r1/uhdl-design/SKILL.md is unambiguous
     manifest.json       versions, source commit, SHA-256 of the binary and the Skill tree
 
 Keep all of bin/: the entry point needs bin/_uhdl/. The frozen Python needs the glibc of the build
@@ -27,7 +28,8 @@ import sys
 import tarfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKILL = os.path.join(ROOT, 'skill', 'uhdl')
+SKILL = os.path.join(ROOT, 'skill', 'uhdl-design')
+SKILL_NAME = 'uhdl-design'
 PYINSTALLER = 'pyinstaller==6.16.0'
 # pyslang for the frozen runtime (by its Python version) and wheels for other Pythons:
 # 8.1.0 is the last release for 3.8; 12.x is abi3 but needs nanobind-backend per Python version.
@@ -156,7 +158,7 @@ def main():
     shutil.rmtree(comp, ignore_errors=True)
     os.makedirs(os.path.join(comp, 'skills', 'uhdl'))
     shutil.copytree(os.path.join(work, 'dist', 'uhdl'), os.path.join(comp, 'bin'))
-    sk = os.path.join(comp, 'skills', 'uhdl', 'uhdl')
+    sk = os.path.join(comp, 'skills', 'uhdl', SKILL_NAME)
     shutil.copytree(SKILL, sk, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     os.makedirs(os.path.join(sk, 'references'), exist_ok=True)
     shutil.copy(os.path.join(ROOT, 'docs', 'LLM_GUIDE.md'), os.path.join(sk, 'references', 'guide.md'))
@@ -175,7 +177,7 @@ def main():
         'repository': 'YuunqiLiu/uhdl', 'source_commit': rev, 'source_dirty': bool(dirty),
         'binary': {'path': 'uhdl', 'sha256': file_sha(exe), 'size_bytes': os.path.getsize(exe)},
         'runtime': {'path': '_uhdl', 'sha256_tree': rt_sha, 'file_count': rt_n},
-        'skill': {'path': 'uhdl/uhdl', 'sha256_tree': skill_sha, 'file_count': skill_n},
+        'skill': {'path': 'uhdl/' + SKILL_NAME, 'sha256_tree': skill_sha, 'file_count': skill_n},
         'build': {'python': '%d.%d' % pyver, 'pyslang': PYSLANG_FOR(pyver), 'pyinstaller': PYINSTALLER.split('==')[1],
                   'glibc': '%s %s' % libc},
     }

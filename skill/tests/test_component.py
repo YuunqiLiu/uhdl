@@ -50,7 +50,7 @@ open(os.path.join(T, 'sv_gen.py'), 'w').write(SVGEN)
 
 # ---- frozen command
 r = sh([UHDL, 'version']); expect('frozen: version', r.returncode == 0 and 'frozen' in r.stdout and 'pyslang 12' in r.stdout, r.stdout + r.stderr)
-ex = os.path.join(C, 'skills', 'uhdl', 'uhdl', 'references', 'example_gen.py')
+ex = os.path.join(C, 'skills', 'uhdl', 'uhdl-design', 'references', 'example_gen.py')
 r = sh([UHDL, 'run', ex, '--out', 'o_ex']); expect('frozen: run the guide example', r.returncode == 0 and os.path.isfile(os.path.join(T, 'o_ex', 'filelist.f')), r.stderr)
 top = [l for l in open(os.path.join(T, 'o_ex', 'filelist.f')).read().split() if l.endswith('.v')][-1].split('/')[-1][:-2] if r.returncode == 0 else 'x'
 r = sh([UHDL, 'check', 'o_ex', '--top', top], TOOLS); expect('frozen: check -> CHECK PASS', r.returncode == 0 and 'CHECK PASS' in r.stdout, r.stdout + r.stderr)

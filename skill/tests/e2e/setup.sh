@@ -5,6 +5,6 @@
 set -e
 C=$(cd "$1" && pwd); W=$2; task=$3; label=$4; E=$(cd "$(dirname "$0")" && pwd)
 P=$W/$label; rm -rf "$P"; mkdir -p "$P/.claude/skills"
-cp -r "$C/skills/uhdl/uhdl" "$P/.claude/skills/uhdl"
+cp -r "$C/skills/uhdl/uhdl-design" "$P/.claude/skills/uhdl-design"
 [ -d "$E/$task/assets" ] && cp -r "$E/$task/assets/." "$P/"
 echo "$P"

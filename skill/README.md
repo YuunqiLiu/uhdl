@@ -1,6 +1,7 @@
 # UHDL toolkit component and Skill
 
-`skill/uhdl/` is the agent Skill. `packaging/build_component.py` builds a toolkit component around it:
+`skill/uhdl-design/` is the agent Skill (named `uhdl-design`, not `uhdl`: agents misread the short
+path `r1/uhdl/SKILL.md` under a root that already ends in `skills/uhdl`). `packaging/build_component.py` builds a toolkit component around it:
 a frozen `uhdl` command that brings its own Python, UHDL and pyslang.
 
 ## Build
@@ -14,7 +15,7 @@ Result: `dist/component/uhdl-<version>-linux-x86_64/` and the same as a `.tar.gz
 |---|---|
 | `bin/uhdl` | frozen entry point (PyInstaller onedir) |
 | `bin/_uhdl/` | its runtime: Python with the full standard library, uhdl, pyslang; `pysrc/` (uhdl as plain source) and `wheels/` (pyslang for Python 3.8–3.15) |
-| `skills/uhdl/uhdl/` | `SKILL.md`, `references/guide.md` (from `docs/LLM_GUIDE.md`), `references/example_gen.py` (from `docs/llm_example/gen.py`) |
+| `skills/uhdl/uhdl-design/` | `SKILL.md`, `references/guide.md` (from `docs/LLM_GUIDE.md`), `references/example_gen.py` (from `docs/llm_example/gen.py`) |
 | `manifest.json` | version, source commit, SHA-256 of the binary, runtime tree and Skill tree, build Python/pyslang/glibc |
 
 About 100 MB unpacked. Building needs PyPI; the result runs offline. Keep all of `bin/`.

@@ -1,5 +1,5 @@
 ---
-name: uhdl
+name: uhdl-design
 description: Design hardware in Python with UHDL and generate Verilog from it. Use when asked to write, modify or check an RTL module or design in UHDL (or "in Python" for hardware), to generate Verilog from UHDL code, to wrap existing SystemVerilog modules in a UHDL design, or when working in code that uses UHDL (`from uhdl import *`, `Component`, `circuit(s)`).
 ---
 
