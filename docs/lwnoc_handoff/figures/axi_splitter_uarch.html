@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>突发拆分器微架构</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one wide block diagram (scrolls sideways when narrow), a first-child timeline inside it, then register and behaviour notes. */
+:root {
+  --bg: #f6f7f9;
+  --fg: #1c2330;
+  --muted: #5b6576;
+  --line: #3a4456;
+  --reg: #ffffff;
+  --comb: #eaf0f8;
+  --wfill: #e8f1ec;
+  --hot: #b4531c;
+  --hot-fill: #fbe9dd;
+  --rule: #d5dbe4;
+  --sans: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --fg: #e3e8ef; --muted: #9aa5b5; --line: #b7c1cf;
+    --reg: #202838; --comb: #1a2333; --wfill: #172520;
+    --hot: #f0955a; --hot-fill: #3a2418; --rule: #2c3544; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --fg: #e3e8ef; --muted: #9aa5b5; --line: #b7c1cf;
+  --reg: #202838; --comb: #1a2333; --wfill: #172520;
+  --hot: #f0955a; --hot-fill: #3a2418; --rule: #2c3544; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  margin: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+main { max-width: 1560px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; max-width: 80ch; }
+h1 { font-size: 26px; line-height: 1.25; margin: 0; text-wrap: balance; }
+h2 { font-size: 18px; margin: 0 0 10px; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; }
+.mono { font-family: var(--mono); font-size: 0.92em; }
+.diagram { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); }
+.diagram svg { display: block; width: 100%; min-width: 1200px; height: auto; }
+figure { margin: 0; display: grid; gap: 10px; }
+figcaption { color: var(--muted); font-size: 14px; max-width: 95ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 22px; height: 12px; border-radius: 2px; border: 1.6px solid var(--line); background: var(--reg); display: inline-block; }
+.sw.comb { background: var(--comb); border-radius: 6px; border-width: 1px; }
+.sw.hot { border-color: var(--hot); background: var(--hot-fill); }
+.sw.sug { background: none; border: 1.6px dashed var(--hot); }
+
+/* SVG styling from the page */
+.reg rect.box { fill: var(--reg); stroke: var(--line); stroke-width: 1.8; }
+.reg path.clk { fill: none; stroke: var(--line); stroke-width: 1.2; }
+.comb rect.box { fill: var(--comb); stroke: var(--line); stroke-width: 1; }
+.wbox rect.box { fill: var(--wfill); }
+.hot rect.box { fill: var(--hot-fill); stroke: var(--hot); stroke-width: 2; }
+.port rect.box { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 2 2; }
+.n { fill: var(--fg); font: 600 12.5px var(--sans); text-anchor: middle; }
+.s { fill: var(--muted); font: 400 11.5px var(--sans); text-anchor: middle; }
+.k { fill: var(--muted); font: 400 11px var(--mono); }
+.hot .s { fill: var(--hot); font-weight: 600; }
+.sec { fill: var(--muted); font: 600 12px var(--sans); letter-spacing: 0.05em; text-anchor: middle; }
+.w { stroke: var(--line); stroke-width: 1.3; fill: none; }
+.w.rdy { stroke-dasharray: 4 3; }
+.w.sug { stroke: var(--hot); stroke-dasharray: 6 4; stroke-width: 1.6; }
+.ah { fill: var(--line); }
+.ahs { fill: var(--hot); }
+.al { fill: var(--muted); font: 400 11.5px var(--sans); }
+.al.sug { fill: var(--hot); }
+.tl rect { fill: var(--reg); stroke: var(--rule); stroke-width: 1; }
+.tl .cyc { fill: var(--fg); font: 600 12px var(--mono); text-anchor: middle; }
+.tl .what { fill: var(--muted); font: 400 11.5px var(--sans); text-anchor: middle; }
+.tl.out rect { stroke: var(--hot); stroke-width: 1.6; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+.tbl { overflow-x: auto; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; letter-spacing: 0.04em; }
+td:first-child { font-family: var(--mono); font-size: 13.5px; white-space: nowrap; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
+.cols > section { min-width: 0; }
+ul.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 80ch; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>突发拆分器微架构</h1>
+    <p class="sub"><span class="mono">niu_base/lwmnoc_axi_splitter.sv</span>：INIU ROB 模式下把 AXI 突发切成不超过 <span class="mono">RING_MAX_TRANSFER_NUM</span>（4）拍的子请求，读写两条通道各一份（写通道带 W 对齐）。零负载下，第一个子请求在收下 AR/AW 后的第 5 拍输出。</p>
+  </header>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1520 790" role="img" aria-label="突发拆分器：输入经暂存寄存器和装载选择进入当前请求状态寄存器，组合逻辑算出子请求并回送下一地址和剩余拍数；子请求依次经过 stage0、stage1（原样寄存）、stage2 和 2 项描述符队列，与 ROB 表项号对接后经组合切片输出，同时把子请求拍数写入长度 FIFO，W 通道按这个拍数放行。第一个子请求在第 5 拍输出，W 从第 7 拍开始放行。">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+          <marker id="ahs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahs"/></marker>
+        </defs>
+
+        <!-- section labels -->
+        <text class="sec" x="190" y="34">输入与暂存</text>
+        <text class="sec" x="365" y="34">当前请求</text>
+        <text class="sec" x="570" y="34">子请求计算</text>
+        <text class="sec" x="865" y="34">生成流水</text>
+        <text class="sec" x="1182" y="34">描述符队列</text>
+        <text class="sec" x="1395" y="34">表项号与输出</text>
+
+        <!-- inputs -->
+        <g class="port"><rect class="box" x="20" y="180" width="80" height="40" rx="4"/><text class="n" x="60" y="198">s_ax</text><text class="s" x="60" y="213">AR/AW</text></g>
+        <line class="w" x1="100" y1="200" x2="148" y2="200" marker-end="url(#ah)"/>
+        <polyline class="w" points="115,200 115,135 128,135" marker-end="url(#ah)"/>
+
+        <g class="reg"><rect class="box" x="130" y="108" width="120" height="54" rx="3"/><path class="clk" d="M130,153 l7,5 l-7,5"/><text class="n" x="190" y="130">pending 寄存器</text><text class="s" x="190" y="147">1 项：忙时暂存下一个</text></g>
+        <line class="w" x1="190" y1="162" x2="190" y2="178" marker-end="url(#ah)"/>
+        <g class="comb"><rect class="box" x="150" y="180" width="80" height="40" rx="8"/><text class="n" x="190" y="198">装载选择</text><text class="s" x="190" y="213">pending 优先</text></g>
+        <line class="w" x1="190" y1="220" x2="190" y2="248" marker-end="url(#ah)"/>
+        <g class="comb"><rect class="box" x="140" y="250" width="100" height="44" rx="8"/><text class="n" x="190" y="268">要不要拆</text><text class="s" x="190" y="284">INCR/WRAP 且 &gt; 4 拍</text></g>
+        <polyline class="w" points="230,200 288,200" marker-end="url(#ah)"/>
+        <polyline class="w" points="240,272 265,272 265,215 288,215" marker-end="url(#ah)"/>
+        <text class="k" x="22" y="246">s_axrdy =</text>
+        <text class="k" x="22" y="261">!pending_vld ||</text>
+        <text class="k" x="22" y="276">需要装载</text>
+
+        <!-- active request state -->
+        <g class="reg"><rect class="box" x="290" y="95" width="150" height="212" rx="3"/><path class="clk" d="M290,292 l7,5 l-7,5"/>
+          <text class="n" x="365" y="117">当前请求寄存器</text>
+          <text class="s" x="365" y="134">第 0 拍装载</text>
+          <text class="k" x="304" y="160">latched_pld</text>
+          <text class="k" x="304" y="178">orig_beats_dff</text>
+          <text class="k" x="304" y="196">split_required_dff</text>
+          <text class="k" x="304" y="214">curr_addr_q</text>
+          <text class="k" x="304" y="232">remaining_beats_q</text>
+          <text class="k" x="304" y="250">has_latched</text>
+          <text class="k" x="304" y="268">gen_first_child</text>
+        </g>
+        <line class="w" x1="440" y1="200" x2="478" y2="200" marker-end="url(#ah)"/>
+
+        <!-- child computation -->
+        <g class="comb"><rect class="box" x="480" y="95" width="180" height="212" rx="8"/>
+          <text class="n" x="570" y="117">子请求计算（组合）</text>
+          <text class="s" x="570" y="134">拆分器里最长的逻辑</text>
+          <text class="k" x="492" y="160">beats = min(剩余, 4)</text>
+          <text class="k" x="492" y="178">WRAP：不跨回绕点</text>
+          <text class="k" x="492" y="196">is_last = 剩余 == beats</text>
+          <text class="k" x="492" y="214">burst：拆开的 WRAP→INCR</text>
+          <text class="k" x="492" y="232">下一地址 = 对齐地址</text>
+          <text class="k" x="492" y="250">        + beats×位宽</text>
+          <text class="k" x="492" y="268">        或回绕基址</text>
+        </g>
+        <polyline class="w" points="570,307 570,335 365,335 365,309" marker-end="url(#ah)"/>
+        <text class="al" x="468" y="328" text-anchor="middle">回送下一地址、剩余拍数（不是最后一个时）</text>
+        <line class="w" x1="660" y1="200" x2="698" y2="200" marker-end="url(#ah)"/>
+        <text class="al" x="679" y="191" text-anchor="middle">launch</text>
+
+        <!-- generation pipeline -->
+        <g class="reg"><rect class="box" x="700" y="170" width="90" height="60" rx="3"/><path class="clk" d="M700,215 l7,5 l-7,5"/><text class="n" x="745" y="194">stage0</text><text class="s" x="745" y="211">第 1 拍</text></g>
+        <line class="w" x1="790" y1="200" x2="813" y2="200" marker-end="url(#ah)"/>
+        <g class="reg hot"><rect class="box" x="815" y="170" width="90" height="60" rx="3"/><path class="clk" d="M815,215 l7,5 l-7,5"/><text class="n" x="860" y="194">stage1</text><text class="s" x="860" y="211">第 2 拍·原样寄存</text></g>
+        <line class="w" x1="905" y1="200" x2="928" y2="200" marker-end="url(#ah)"/>
+        <g class="comb"><rect class="box" x="930" y="176" width="70" height="48" rx="8"/><text class="n" x="965" y="196">填字段</text><text class="s" x="965" y="212">axlen=beats-1</text></g>
+        <line class="w" x1="1000" y1="200" x2="1018" y2="200" marker-end="url(#ah)"/>
+        <g class="reg"><rect class="box" x="1020" y="170" width="90" height="60" rx="3"/><path class="clk" d="M1020,215 l7,5 l-7,5"/><text class="n" x="1065" y="194">stage2</text><text class="s" x="1065" y="211">第 3 拍</text></g>
+        <line class="w" x1="1110" y1="200" x2="1133" y2="200" marker-end="url(#ah)"/>
+
+        <!-- descriptor queue -->
+        <g class="reg"><rect class="box" x="1135" y="158" width="95" height="84" rx="3"/><path class="clk" d="M1135,227 l7,5 l-7,5"/>
+          <text class="n" x="1182" y="176">desc_q</text>
+          <rect x="1150" y="184" width="30" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1" class="w"/>
+          <rect x="1186" y="184" width="30" height="20" rx="2" fill="none" class="w"/>
+          <text class="k" x="1165" y="198" text-anchor="middle">q0</text>
+          <text class="k" x="1201" y="198" text-anchor="middle">q1</text>
+          <text class="s" x="1182" y="225">第 4 拍 · 2 项</text>
+        </g>
+        <line class="w" x1="1230" y1="200" x2="1253" y2="200" marker-end="url(#ah)"/>
+
+        <!-- ready chain -->
+        <line class="w rdy" x1="1245" y1="258" x2="702" y2="258" marker-end="url(#ah)"/>
+        <text class="al" x="975" y="276" text-anchor="middle">ready 链（组合）：本级为空或下一级可收，就能前进</text>
+
+        <!-- entry id join -->
+        <g class="port"><rect class="box" x="1255" y="60" width="100" height="40" rx="4"/><text class="n" x="1305" y="78">entry_id</text><text class="s" x="1305" y="93">ROB 预分配</text></g>
+        <line class="w" x1="1305" y1="100" x2="1305" y2="168" marker-end="url(#ah)"/>
+        <g class="comb"><rect class="box" x="1255" y="170" width="100" height="60" rx="8"/><text class="n" x="1305" y="193">表项号对接</text><text class="s" x="1305" y="210">q0 有效 + 表项号有效</text></g>
+        <polyline class="w" points="1355,80 1430,80 1430,93" marker-end="url(#ah)"/>
+        <g class="reg"><rect class="box" x="1375" y="95" width="110" height="44" rx="3"/><path class="clk" d="M1375,124 l7,5 l-7,5"/><text class="n" x="1430" y="114">prev_entry_id</text><text class="s" x="1430" y="130">上一个子请求的表项</text></g>
+        <line class="w" x1="1405" y1="139" x2="1405" y2="168" marker-end="url(#ah)"/>
+        <line class="w" x1="1355" y1="200" x2="1373" y2="200" marker-end="url(#ah)"/>
+        <g class="comb"><rect class="box" x="1375" y="170" width="60" height="60" rx="8"/><text class="n" x="1405" y="194">切片</text><text class="s" x="1405" y="211">RS2·0 拍</text></g>
+        <line class="w" x1="1435" y1="200" x2="1453" y2="200" marker-end="url(#ah)"/>
+        <g class="port"><rect class="box" x="1455" y="180" width="55" height="40" rx="4"/><text class="n" x="1482" y="198">m_ax</text><text class="s" x="1482" y="213">第 5 拍</text></g>
+        <text class="k" x="1450" y="246" text-anchor="middle">+ curr/prev 表项</text>
+        <text class="k" x="1450" y="261" text-anchor="middle">+ first/last 标志</text>
+
+        <!-- suggested fast path (not implemented) -->
+        <polyline class="w sug" points="190,294 190,368 1160,368 1160,244" marker-end="url(#ahs)"/>
+        <text class="al sug" x="640" y="360" text-anchor="middle">建议的快速通道（未实现）：不用拆、且流水为空时直接写入 desc_q，第 1 拍即可输出</text>
+
+        <!-- W channel -->
+        <polyline class="w" points="1182,242 1182,375 1243,375" marker-end="url(#ah)"/>
+        <text class="al" x="1176" y="300" text-anchor="end">子请求发出时</text>
+        <text class="al" x="1176" y="315" text-anchor="end">写入它的拍数</text>
+        <g class="reg wbox"><rect class="box" x="1245" y="350" width="120" height="50" rx="3"/><path class="clk" d="M1245,385 l7,5 l-7,5"/><text class="n" x="1305" y="370">子请求长度 FIFO</text><text class="s" x="1305" y="387">4 项 · +1 拍</text></g>
+        <polyline class="w" points="1340,350 1340,232" marker-end="url(#ah)"/>
+        <text class="al" x="1348" y="300">满了就</text>
+        <text class="al" x="1348" y="315">不发 AX</text>
+        <line class="w" x1="1305" y1="400" x2="1305" y2="428" marker-end="url(#ah)"/>
+        <g class="reg wbox"><rect class="box" x="1245" y="430" width="120" height="56" rx="3"/><path class="clk" d="M1245,471 l7,5 l-7,5"/><text class="n" x="1305" y="449">W 放行控制</text><text class="s" x="1305" y="465">w_child_active +1 拍</text><text class="s" x="1305" y="480">按拍数计数</text></g>
+        <line class="w" x1="1305" y1="486" x2="1305" y2="513" marker-end="url(#ah)"/>
+        <g class="port"><rect class="box" x="20" y="517" width="80" height="40" rx="4"/><text class="n" x="60" y="535">s_w</text><text class="s" x="60" y="550">来自 W 切片</text></g>
+        <line class="w" x1="100" y1="537" x2="1243" y2="537" marker-end="url(#ah)"/>
+        <text class="al" x="670" y="529" text-anchor="middle">W 数据直通，不寄存</text>
+        <g class="comb wbox"><rect class="box" x="1245" y="515" width="120" height="45" rx="8"/><text class="n" x="1305" y="533">W 放行门</text><text class="s" x="1305" y="549">wlast = 剩余拍数 == 1</text></g>
+        <line class="w" x1="1365" y1="537" x2="1443" y2="537" marker-end="url(#ah)"/>
+        <g class="port"><rect class="box" x="1445" y="517" width="65" height="40" rx="4"/><text class="n" x="1477" y="535">m_w</text><text class="s" x="1477" y="550">第 7 拍起</text></g>
+
+        <!-- first-child timeline -->
+        <text class="sec" x="760" y="616">第一个子请求的时序（零负载，第 0 拍 = 收下 AR/AW）</text>
+        <g class="tl"><rect x="40" y="630" width="165" height="56" rx="4"/><text class="cyc" x="122" y="652">第 0 拍</text><text class="what" x="122" y="671">握手，装载当前请求</text></g>
+        <g class="tl"><rect x="220" y="630" width="165" height="56" rx="4"/><text class="cyc" x="302" y="652">第 1 拍</text><text class="what" x="302" y="671">算子请求 → stage0</text></g>
+        <g class="tl"><rect x="400" y="630" width="165" height="56" rx="4"/><text class="cyc" x="482" y="652">第 2 拍</text><text class="what" x="482" y="671">stage1（原样寄存）</text></g>
+        <g class="tl"><rect x="580" y="630" width="165" height="56" rx="4"/><text class="cyc" x="662" y="652">第 3 拍</text><text class="what" x="662" y="671">填 axlen → stage2</text></g>
+        <g class="tl"><rect x="760" y="630" width="165" height="56" rx="4"/><text class="cyc" x="842" y="652">第 4 拍</text><text class="what" x="842" y="671">写入 desc_q</text></g>
+        <g class="tl out"><rect x="940" y="630" width="165" height="56" rx="4"/><text class="cyc" x="1022" y="652">第 5 拍</text><text class="what" x="1022" y="671">对接表项号，m_ax 有效</text></g>
+        <g class="tl"><rect x="1120" y="630" width="165" height="56" rx="4"/><text class="cyc" x="1202" y="652">第 6 拍</text><text class="what" x="1202" y="671">长度 FIFO 输出</text></g>
+        <g class="tl"><rect x="1300" y="630" width="165" height="56" rx="4"/><text class="cyc" x="1382" y="652">第 7 拍</text><text class="what" x="1382" y="671">W 开始放行（写通道）</text></g>
+        <line class="w" x1="40" y1="706" x2="1465" y2="706"/>
+        <text class="al" x="40" y="728">后面的子请求：当前请求寄存器每拍回送一次地址和剩余拍数，流水不堵时每拍出一个子请求，最后一个子请求发出时才装载下一个 AR/AW。</text>
+        <text class="al" x="40" y="748">吞吐受 pending 寄存器限制：当前请求忙时只能再收 1 个，第 3 个要等当前请求的最后一个子请求发出。</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="sw"></i>寄存器（左下角三角为时钟沿）</span>
+      <span><i class="sw comb"></i>组合逻辑</span>
+      <span><i class="sw hot"></i>只寄存、不做计算的一级</span>
+      <span><i class="sw sug"></i>建议的改动，RTL 里没有</span>
+    </div>
+    <figcaption>拆分器的 5 拍来自 5 个寄存器：当前请求寄存器、stage0、stage1、stage2 和 desc_q，输出切片是 RS_TYPE=2，只在 ready 路径上寄存。子请求计算的组合逻辑（取拍数、WRAP 回绕、下一地址的加法）放在当前请求寄存器和 stage0 之间；stage1 原样寄存，stage2 只算 <span class="mono">axlen = beats-1</span>。写通道里，子请求发出时把拍数写进长度 FIFO，W 放行控制按这个拍数逐拍放行 W，并在最后一拍拉起 wlast。</figcaption>
+  </figure>
+
+  <div class="cols">
+    <section>
+      <h2>寄存器</h2>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>寄存器</th><th>作用</th><th>源码</th></tr></thead>
+          <tbody>
+            <tr><td>pending_vld/pld</td><td>当前请求还在拆时，再收下 1 个请求</td><td>:304-312</td></tr>
+            <tr><td>latched_pld 等</td><td>当前请求：原始 payload、总拍数、是否要拆</td><td>:259-269</td></tr>
+            <tr><td>curr_addr_q</td><td>下一个子请求的起始地址，每发一个子请求更新</td><td>:271-282</td></tr>
+            <tr><td>remaining_beats_q</td><td>还没拆出去的拍数</td><td>:271-282</td></tr>
+            <tr><td>has_latched</td><td>当前请求有效；最后一个子请求发出时清零</td><td>:284-292</td></tr>
+            <tr><td>gen_first_child</td><td>下一个子请求是不是第一个（首个子请求保留原始未对齐地址）</td><td>:294-302</td></tr>
+            <tr><td>gen_stage0/1/2</td><td>子请求生成流水，带 valid 的可压缩流水</td><td>:213-245</td></tr>
+            <tr><td>desc_q0/q1</td><td>2 项描述符队列，等 ROB 表项号</td><td>:314-345</td></tr>
+            <tr><td>prev_entry_id</td><td>上一个子请求的表项号，供 ROB 把子请求串成链</td><td>:347-353</td></tr>
+            <tr><td>child_len_fifo</td><td>子请求拍数，W 通道按它切分（深度 4）</td><td>:388-400</td></tr>
+            <tr><td>w_child_active / w_beats_remaining</td><td>正在放行的子请求及其剩余拍数</td><td>:404-424</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <h2>行为要点</h2>
+      <ul class="notes">
+        <li>不需要拆分的请求（INCR/WRAP 不超过 4 拍，或 FIXED）也走完整的 5 级，输出就是一个子请求，first 和 last 都为 1。</li>
+        <li>子请求必须拿到 ROB 预分配的表项号才能输出；表项号用完时停在 desc_q，ready 链逐级反压，直到 <span class="mono">s_axrdy</span> 拉低。</li>
+        <li>写通道里，长度 FIFO 满时也不发 AX（<span class="mono">fifo_ready_for_ax</span>），所以 AW 最多比 W 多领先长度 FIFO 深度（4）个子请求。</li>
+        <li>W 数据本身不寄存，<span class="mono">s_wrdy = w_child_active &amp;&amp; m_wrdy</span>；第一拍 W 最早在第 7 拍通过，零负载下 W 不在关键路径上，因为写数据要等 DBIDResp 回来才发出。</li>
+        <li>建议的快速通道：拆分器完全空闲（无当前请求、无 pending、三级流水和 desc_q 都空）且请求不用拆时，直接写入 desc_q，可以省 4 拍且不改变顺序。拆分的请求照走原路径。</li>
+      </ul>
+    </section>
+  </div>
+</main>
+</body>
+</html>

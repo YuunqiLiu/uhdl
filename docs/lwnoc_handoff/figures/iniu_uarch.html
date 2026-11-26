@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INIU 微架构</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one wide block diagram (scrolls sideways on phones), then a path table and the assumptions. */
+:root {
+  --bg: #f6f7f9;
+  --fg: #1c2330;
+  --muted: #5b6576;
+  --line: #3a4456;
+  --sys: #e8edf5;
+  --top: #e6f0ec;
+  --cdc: #f3eee4;
+  --block: #ffffff;
+  --hot: #b4531c;
+  --hot-fill: #fbe9dd;
+  --rule: #d5dbe4;
+  --sans: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --fg: #e3e8ef; --muted: #9aa5b5; --line: #b7c1cf;
+    --sys: #1b2230; --top: #172520; --cdc: #262116; --block: #202838;
+    --hot: #f0955a; --hot-fill: #3a2418; --rule: #2c3544; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --fg: #e3e8ef; --muted: #9aa5b5; --line: #b7c1cf;
+  --sys: #1b2230; --top: #172520; --cdc: #262116; --block: #202838;
+  --hot: #f0955a; --hot-fill: #3a2418; --rule: #2c3544; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+main { max-width: 1440px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; max-width: 72ch; }
+h1 { font-size: 26px; line-height: 1.25; margin: 0; text-wrap: balance; letter-spacing: 0.01em; }
+h2 { font-size: 18px; margin: 0 0 10px; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; }
+.mono { font-family: var(--mono); }
+.diagram { overflow-x: auto; background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; }
+.diagram svg { display: block; width: 100%; min-width: 1100px; height: auto; }
+figure { margin: 0; display: grid; gap: 10px; }
+figcaption { color: var(--muted); font-size: 14px; max-width: 90ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 22px; height: 12px; border-radius: 2px; border: 1.5px solid var(--line); background: var(--block); display: inline-block; }
+.sw.hot { border-color: var(--hot); background: var(--hot-fill); }
+.sw.cdc { border-style: dashed; background: var(--cdc); }
+
+/* SVG classes (styled from the page; the SVG itself carries no <style>) */
+.rg-sys { fill: var(--sys); }
+.rg-top { fill: var(--top); }
+.rg-cdc { fill: var(--cdc); }
+.rg-lab { fill: var(--muted); font: 600 13px var(--sans); letter-spacing: 0.04em; }
+.b rect { fill: var(--block); stroke: var(--line); stroke-width: 1.2; }
+.b.hot rect { fill: var(--hot-fill); stroke: var(--hot); stroke-width: 1.8; }
+.b.af rect { fill: var(--cdc); stroke-dasharray: 5 3; }
+.b.port rect { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 2 2; }
+.n { fill: var(--fg); font: 600 12.5px var(--sans); text-anchor: middle; }
+.c { fill: var(--muted); font: 400 11.5px var(--mono); text-anchor: middle; }
+.b.hot .c { fill: var(--hot); font-weight: 600; }
+.w { stroke: var(--line); stroke-width: 1.3; fill: none; }
+.w.dash { stroke-dasharray: 4 3; }
+.ah { fill: var(--line); }
+.al { fill: var(--muted); font: 400 11.5px var(--sans); }
+.grp { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+.tbl { overflow-x: auto; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; letter-spacing: 0.04em; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.notes { display: grid; gap: 6px; color: var(--muted); font-size: 14px; max-width: 90ch; margin: 0; padding-left: 1.2em; }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <h1>INIU 微架构（ROB 模式）</h1>
+    <p class="sub">MNOC 的上游网络接口：左边接 AXI Master，右边接环站。图中每个模块下方是零负载时它在该路径上占的拍数，按 <span class="mono">lwnoc_mnoc</span> RTL 静态计数。</p>
+  </header>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1400 680" role="img" aria-label="INIU 微架构：五条路径从左边的 AXI 接口穿过 Sys Side、四个异步 FIFO 和 Top Side 到右边的环站。读请求要经过拆分器、行为映射和读 ROB，读数据要先在读数据 SRAM 里收齐整段突发，写数据要等 DBIDResp 回来才从写数据 SRAM 读出发送。">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" class="ah"/>
+          </marker>
+        </defs>
+
+        <!-- clock-domain regions -->
+        <rect class="rg-sys" x="105" y="45" width="908" height="600" rx="6"/>
+        <rect class="rg-cdc" x="1013" y="45" width="104" height="600"/>
+        <rect class="rg-top" x="1117" y="45" width="111" height="600" rx="6"/>
+        <text class="rg-lab" x="60" y="66" text-anchor="middle">AXI 从接口</text>
+        <text class="rg-lab" x="560" y="66" text-anchor="middle">Sys Side · AXI 时钟</text>
+        <text class="rg-lab" x="1065" y="66" text-anchor="middle">异步 FIFO</text>
+        <text class="rg-lab" x="1172" y="66" text-anchor="middle">Top Side · 环时钟</text>
+        <text class="rg-lab" x="1300" y="66" text-anchor="middle">环站</text>
+        <rect class="grp" x="113" y="78" width="94" height="547" rx="4"/>
+        <text class="al" x="160" y="638" text-anchor="middle">lpctrl（低功耗）</text>
+
+        <!-- ===== AR lane, c=110 ===== -->
+        <g class="b port"><rect x="25" y="90" width="70" height="40" rx="4"/><text class="n" x="60" y="114">AR</text></g>
+        <line class="w" x1="95" y1="110" x2="118" y2="110" marker-end="url(#ah)"/>
+        <g class="b"><rect x="120" y="90" width="80" height="40" rx="4"/><text class="n" x="160" y="107">AR 保持</text><text class="c" x="160" y="123">1 拍</text></g>
+        <line class="w" x1="200" y1="110" x2="213" y2="110" marker-end="url(#ah)"/>
+        <g class="b"><rect x="215" y="90" width="70" height="40" rx="4"/><text class="n" x="250" y="107">AR FIFO</text><text class="c" x="250" y="123">1 拍</text></g>
+        <line class="w" x1="285" y1="110" x2="298" y2="110" marker-end="url(#ah)"/>
+        <g class="b hot"><rect x="300" y="90" width="110" height="40" rx="4"/><text class="n" x="355" y="107">突发拆分器</text><text class="c" x="355" y="123">5 拍</text></g>
+        <line class="w" x1="410" y1="110" x2="423" y2="110" marker-end="url(#ah)"/>
+        <g class="b"><rect x="425" y="90" width="80" height="40" rx="4"/><text class="n" x="465" y="107">目标解析</text><text class="c" x="465" y="123">0 拍</text></g>
+        <line class="w" x1="505" y1="110" x2="518" y2="110" marker-end="url(#ah)"/>
+        <g class="b hot"><rect x="520" y="90" width="80" height="40" rx="4"/><text class="n" x="560" y="107">行为映射</text><text class="c" x="560" y="123">1 拍</text></g>
+        <line class="w" x1="600" y1="110" x2="613" y2="110" marker-end="url(#ah)"/>
+        <g class="b hot"><rect x="615" y="90" width="95" height="40" rx="4"/><text class="n" x="662" y="107">读 ROB 表项</text><text class="c" x="662" y="123">1 拍</text></g>
+        <polyline class="w" points="710,110 800,110 800,150 828,150" marker-end="url(#ah)"/>
+        <text class="al" x="755" y="102" text-anchor="middle">ReadNoSnp</text>
+
+        <!-- ===== AW lane, c=210 ===== -->
+        <g class="b port"><rect x="25" y="190" width="70" height="40" rx="4"/><text class="n" x="60" y="214">AW</text></g>
+        <line class="w" x1="95" y1="210" x2="118" y2="210" marker-end="url(#ah)"/>
+        <g class="b"><rect x="120" y="190" width="80" height="40" rx="4"/><text class="n" x="160" y="207">AW FIFO+保持</text><text class="c" x="160" y="223">2 拍</text></g>
+        <line class="w" x1="200" y1="210" x2="298" y2="210" marker-end="url(#ah)"/>
+        <g class="b hot"><rect x="300" y="190" width="110" height="40" rx="4"/><text class="n" x="355" y="207">突发拆分器</text><text class="c" x="355" y="223">5 拍</text></g>
+        <line class="w" x1="410" y1="210" x2="423" y2="210" marker-end="url(#ah)"/>
+        <g class="b"><rect x="425" y="190" width="80" height="40" rx="4"/><text class="n" x="465" y="207">命令合并</text><text class="c" x="465" y="223">2 拍</text></g>
+        <line class="w" x1="505" y1="210" x2="518" y2="210" marker-end="url(#ah)"/>
+        <g class="b"><rect x="520" y="190" width="80" height="40" rx="4"/><text class="n" x="560" y="207">AW 切片</text><text class="c" x="560" y="223">1 拍</text></g>
+        <line class="w" x1="600" y1="210" x2="613" y2="210" marker-end="url(#ah)"/>
+        <g class="b"><rect x="615" y="190" width="95" height="40" rx="4"/><text class="n" x="662" y="207">写 ROB 表项</text><text class="c" x="662" y="223">2 拍</text></g>
+        <line class="w" x1="710" y1="210" x2="718" y2="210" marker-end="url(#ah)"/>
+        <g class="b"><rect x="720" y="190" width="75" height="40" rx="4"/><text class="n" x="757" y="207">请求切片</text><text class="c" x="757" y="223">1 拍</text></g>
+        <polyline class="w" points="795,210 812,210 812,170 828,170" marker-end="url(#ah)"/>
+        <text class="al" x="757" y="246" text-anchor="middle">WriteNoSnp，不等 W</text>
+
+        <!-- shared REQ output, c=160 -->
+        <g class="b"><rect x="830" y="140" width="80" height="40" rx="4"/><text class="n" x="870" y="157">读写仲裁</text><text class="c" x="870" y="173">0 拍</text></g>
+        <line class="w" x1="910" y1="160" x2="923" y2="160" marker-end="url(#ah)"/>
+        <g class="b"><rect x="925" y="140" width="80" height="40" rx="4"/><text class="n" x="965" y="157">切片·ECC 编码</text><text class="c" x="965" y="173">1 拍</text></g>
+        <line class="w" x1="1005" y1="160" x2="1018" y2="160" marker-end="url(#ah)"/>
+        <g class="b af"><rect x="1020" y="140" width="90" height="40" rx="4"/><text class="n" x="1065" y="157">TX REQ</text><text class="c" x="1065" y="173">≈4 拍</text></g>
+        <line class="w" x1="1110" y1="160" x2="1128" y2="160" marker-end="url(#ah)"/>
+        <g class="b"><rect x="1130" y="140" width="90" height="40" rx="4"/><text class="n" x="1175" y="157">请求切片</text><text class="c" x="1175" y="173">1 拍</text></g>
+        <line class="w" x1="1220" y1="160" x2="1243" y2="160" marker-end="url(#ah)"/>
+        <g class="b port"><rect x="1245" y="140" width="110" height="40" rx="4"/><text class="n" x="1300" y="164">TX REQ</text></g>
+
+        <!-- flow-control busy from the ring -->
+        <g class="b port"><rect x="1245" y="240" width="110" height="34" rx="4"/><text class="n" x="1300" y="261">门限忙</text></g>
+        <polyline class="w dash" points="1245,257 700,257 700,232" marker-end="url(#ah)"/>
+        <text class="al" x="975" y="251" text-anchor="middle">flow_ctrl_busy（同步 3 级）：目标忙时 ROB 表项不发请求</text>
+
+        <!-- ===== W lane, c=310 ===== -->
+        <g class="b port"><rect x="25" y="290" width="70" height="40" rx="4"/><text class="n" x="60" y="314">W</text></g>
+        <line class="w" x1="95" y1="310" x2="118" y2="310" marker-end="url(#ah)"/>
+        <g class="b"><rect x="120" y="290" width="80" height="40" rx="4"/><text class="n" x="160" y="307">W FIFO</text><text class="c" x="160" y="323">AW 后放行</text></g>
+        <line class="w" x1="200" y1="310" x2="213" y2="310" marker-end="url(#ah)"/>
+        <g class="b"><rect x="215" y="290" width="70" height="40" rx="4"/><text class="n" x="250" y="307">W 切片</text><text class="c" x="250" y="323">1 拍</text></g>
+        <line class="w" x1="285" y1="310" x2="298" y2="310" marker-end="url(#ah)"/>
+        <g class="b"><rect x="300" y="290" width="110" height="40" rx="4"/><text class="n" x="355" y="307">拆分器 W 对齐</text><text class="c" x="355" y="323">按子请求放行</text></g>
+        <line class="w" x1="410" y1="310" x2="423" y2="310" marker-end="url(#ah)"/>
+        <g class="b"><rect x="425" y="290" width="180" height="40" rx="4"/><text class="n" x="515" y="307">写数据 SRAM（带 ECC）</text><text class="c" x="515" y="323">写入；读出 4 拍</text></g>
+        <line class="w" x1="605" y1="310" x2="613" y2="310" marker-end="url(#ah)"/>
+        <g class="b"><rect x="615" y="290" width="95" height="40" rx="4"/><text class="n" x="662" y="307">写数据发送器</text><text class="c" x="662" y="323">3 拍</text></g>
+        <line class="w" x1="710" y1="310" x2="923" y2="310" marker-end="url(#ah)"/>
+        <text class="al" x="816" y="302" text-anchor="middle">NCBWrData</text>
+        <g class="b"><rect x="925" y="290" width="80" height="40" rx="4"/><text class="n" x="965" y="307">切片·ECC 编码</text><text class="c" x="965" y="323">1 拍</text></g>
+        <line class="w" x1="1005" y1="310" x2="1018" y2="310" marker-end="url(#ah)"/>
+        <g class="b af"><rect x="1020" y="290" width="90" height="40" rx="4"/><text class="n" x="1065" y="307">TX DAT</text><text class="c" x="1065" y="323">≈4 拍</text></g>
+        <line class="w" x1="1110" y1="310" x2="1128" y2="310" marker-end="url(#ah)"/>
+        <g class="b"><rect x="1130" y="290" width="90" height="40" rx="4"/><text class="n" x="1175" y="307">数据切片</text><text class="c" x="1175" y="323">1 拍</text></g>
+        <line class="w" x1="1220" y1="310" x2="1243" y2="310" marker-end="url(#ah)"/>
+        <g class="b port"><rect x="1245" y="290" width="110" height="40" rx="4"/><text class="n" x="1300" y="314">TX DAT</text></g>
+
+        <!-- ===== RSP lane, c=430 (right to left) ===== -->
+        <g class="b port"><rect x="1245" y="410" width="110" height="40" rx="4"/><text class="n" x="1300" y="434">RX RSP</text></g>
+        <line class="w" x1="1245" y1="430" x2="1222" y2="430" marker-end="url(#ah)"/>
+        <g class="b"><rect x="1130" y="410" width="90" height="40" rx="4"/><text class="n" x="1175" y="427">响应切片</text><text class="c" x="1175" y="443">1 拍</text></g>
+        <line class="w" x1="1130" y1="430" x2="1112" y2="430" marker-end="url(#ah)"/>
+        <g class="b af"><rect x="1020" y="410" width="90" height="40" rx="4"/><text class="n" x="1065" y="427">RX RSP</text><text class="c" x="1065" y="443">≈4 拍</text></g>
+        <line class="w" x1="1020" y1="430" x2="1007" y2="430" marker-end="url(#ah)"/>
+        <g class="b"><rect x="925" y="410" width="80" height="40" rx="4"/><text class="n" x="965" y="427">ECC 解码·分流</text><text class="c" x="965" y="443">0 拍</text></g>
+        <line class="w" x1="925" y1="430" x2="817" y2="430" marker-end="url(#ah)"/>
+        <text class="al" x="871" y="422" text-anchor="middle">DBIDResp</text>
+        <g class="b"><rect x="720" y="410" width="95" height="40" rx="4"/><text class="n" x="767" y="427">DBID 寄存</text><text class="c" x="767" y="443">1 拍</text></g>
+        <polyline class="w" points="767,410 767,372 662,372 662,333" marker-end="url(#ah)"/>
+        <text class="al" x="676" y="390">写 ROB 解码后启动发送（1 拍）</text>
+        <polyline class="w" points="965,450 965,490 712,490" marker-end="url(#ah)"/>
+        <text class="al" x="840" y="482" text-anchor="middle">Comp</text>
+
+        <!-- ===== B lane, c=490 ===== -->
+        <g class="b"><rect x="615" y="470" width="95" height="40" rx="4"/><text class="n" x="662" y="487">响应合并</text><text class="c" x="662" y="503">2 拍</text></g>
+        <line class="w" x1="615" y1="490" x2="507" y2="490" marker-end="url(#ah)"/>
+        <text class="al" x="561" y="482" text-anchor="middle">子请求收齐</text>
+        <g class="b"><rect x="425" y="470" width="80" height="40" rx="4"/><text class="n" x="465" y="487">B FIFO</text><text class="c" x="465" y="503">2 拍</text></g>
+        <line class="w" x1="425" y1="490" x2="412" y2="490" marker-end="url(#ah)"/>
+        <g class="b"><rect x="300" y="470" width="110" height="40" rx="4"/><text class="n" x="355" y="487">B 切片</text><text class="c" x="355" y="503">1 拍</text></g>
+        <line class="w" x1="300" y1="490" x2="202" y2="490" marker-end="url(#ah)"/>
+        <g class="b"><rect x="120" y="470" width="80" height="40" rx="4"/><text class="n" x="160" y="487">B 保持</text><text class="c" x="160" y="503">1 拍</text></g>
+        <line class="w" x1="120" y1="490" x2="97" y2="490" marker-end="url(#ah)"/>
+        <g class="b port"><rect x="25" y="470" width="70" height="40" rx="4"/><text class="n" x="60" y="494">B</text></g>
+
+        <!-- ===== R lane, c=590 (right to left) ===== -->
+        <g class="b port"><rect x="1245" y="570" width="110" height="40" rx="4"/><text class="n" x="1300" y="594">RX DAT</text></g>
+        <line class="w" x1="1245" y1="590" x2="1222" y2="590" marker-end="url(#ah)"/>
+        <g class="b"><rect x="1130" y="570" width="90" height="40" rx="4"/><text class="n" x="1175" y="587">数据切片</text><text class="c" x="1175" y="603">1 拍</text></g>
+        <line class="w" x1="1130" y1="590" x2="1112" y2="590" marker-end="url(#ah)"/>
+        <g class="b af"><rect x="1020" y="570" width="90" height="40" rx="4"/><text class="n" x="1065" y="587">RX DAT</text><text class="c" x="1065" y="603">≈4 拍</text></g>
+        <line class="w" x1="1020" y1="590" x2="1007" y2="590" marker-end="url(#ah)"/>
+        <g class="b"><rect x="925" y="570" width="80" height="40" rx="4"/><text class="n" x="965" y="587">ECC 解码</text><text class="c" x="965" y="603">0 拍</text></g>
+        <line class="w" x1="925" y1="590" x2="817" y2="590" marker-end="url(#ah)"/>
+        <text class="al" x="871" y="582" text-anchor="middle">CompData</text>
+        <g class="b"><rect x="720" y="570" width="95" height="40" rx="4"/><text class="n" x="767" y="587">读数据切片</text><text class="c" x="767" y="603">1 拍</text></g>
+        <line class="w" x1="720" y1="590" x2="712" y2="590" marker-end="url(#ah)"/>
+        <g class="b hot"><rect x="520" y="570" width="190" height="40" rx="4"/><text class="n" x="615" y="587">读数据 SRAM：收齐整段突发</text><text class="c" x="615" y="603">等最后一拍</text></g>
+        <line class="w" x1="520" y1="590" x2="507" y2="590" marker-end="url(#ah)"/>
+        <g class="b"><rect x="425" y="570" width="80" height="40" rx="4"/><text class="n" x="465" y="587">读发送器</text><text class="c" x="465" y="603">2 拍</text></g>
+        <line class="w" x1="425" y1="590" x2="412" y2="590" marker-end="url(#ah)"/>
+        <g class="b"><rect x="300" y="570" width="110" height="40" rx="4"/><text class="n" x="355" y="587">SRAM 读出</text><text class="c" x="355" y="603">3 拍</text></g>
+        <line class="w" x1="300" y1="590" x2="287" y2="590" marker-end="url(#ah)"/>
+        <g class="b"><rect x="215" y="570" width="70" height="40" rx="4"/><text class="n" x="250" y="587">R 切片</text><text class="c" x="250" y="603">1 拍</text></g>
+        <line class="w" x1="215" y1="590" x2="202" y2="590" marker-end="url(#ah)"/>
+        <g class="b"><rect x="120" y="570" width="80" height="40" rx="4"/><text class="n" x="160" y="587">R 保持</text><text class="c" x="160" y="603">1 拍</text></g>
+        <line class="w" x1="120" y1="590" x2="97" y2="590" marker-end="url(#ah)"/>
+        <g class="b port"><rect x="25" y="570" width="70" height="40" rx="4"/><text class="n" x="60" y="594">R</text></g>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="sw hot"></i>延迟的主要来源，OOO 模式没有这几级</span>
+      <span><i class="sw cdc"></i>异步 FIFO：写入 1 拍 + 同步 2 拍 + 输出寄存器 1 拍（时钟相同时约 4 拍）</span>
+      <span><i class="sw"></i>其余模块，拍数为零负载值</span>
+    </div>
+    <figcaption>读请求在 Sys Side 要走 10 拍才写进异步 FIFO，其中拆分器、行为映射和读 ROB 表项占 7 拍；读数据回来后先在读数据 SRAM 里收齐整段突发，再统一读出发送；写数据要等 TNIU 的 DBIDResp 回来，才从写数据 SRAM 读出上环。四个异步 FIFO 把 Sys Side 和 Top Side 隔开，Top Side 只有寄存器切片。</figcaption>
+  </figure>
+
+  <section>
+    <h2>各条路径的零负载延迟</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>路径</th><th>从</th><th>到</th><th>拍数</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>读请求</td><td>AR 握手</td><td>环上 ReadNoSnp</td><td class="num">15</td><td>Sys 11 拍 + Top 4 拍。OOO 模式只要 8 拍</td></tr>
+          <tr><td>读数据</td><td>CompData 最后一拍</td><td>AXI R 第一拍</td><td class="num">13</td><td>ROB 模式收齐整段突发再发；4 拍突发从第一拍算约 16 拍。OOO 模式逐拍转发，每拍 9 拍</td></tr>
+          <tr><td>写请求</td><td>AW 握手</td><td>环上 WriteNoSnp</td><td class="num">19</td><td>不等 W 数据；拆分器与读路径相同</td></tr>
+          <tr><td>写数据</td><td>DBIDResp 到达</td><td>环上第一拍 NCBWrData</td><td class="num">20</td><td>写数据 SRAM 带 ECC，读出要 4 拍；W 数据零负载下早已写入</td></tr>
+          <tr><td>写响应</td><td>Comp 到达</td><td>AXI B</td><td class="num">11</td><td>拆分成多个子请求时，B 要等全部子请求完成</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>前提</h2>
+    <ul class="notes">
+      <li>默认配置：ROB 模式（<span class="mono">MNOC_INIU_SUPPORT_ROB=1</span>），Hash 不打拍（<span class="mono">MNOC_HASH_PIPE_EN=0</span>），异步 FIFO 同步 2 级。</li>
+      <li>零负载：FIFO 为空，下游 ready 为 1，没有地址冲突，目标不忙；Sys 和环时钟按同频对齐计。时钟不同时各段按各自的时钟计，每次跨时钟另有 0–1 拍的相位误差。</li>
+      <li>目标解析的查询结果从模块外部连回，这里按纯组合计。</li>
+      <li>拍数来自 RTL 静态分析，没有经过仿真。</li>
+    </ul>
+  </section>
+</main>
+
+</body>
+</html>
